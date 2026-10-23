@@ -299,7 +299,8 @@ function settingsPerf(body) {
 }
 function settingsAi(body) {
   body.innerHTML = `<h3>AI Editor</h3>
-    <div class="set-row col"><b>Anthropic API key</b><small>The AI Editor uses Claude. Create a key at console.anthropic.com. Usage is billed by Anthropic to that key. It's stored only on this computer.</small>
+    <p class="sub">The AI Editor is included with Premium - nothing to set up.</p>
+    <div class="set-row col"><b>Your own Anthropic API key (optional, advanced)</b><small>Only if you want the AI to run on your own key instead. Leave empty to use the one included with Premium.</small>
       <input class="num-input" id="aiKey" type="password" placeholder="sk-ant-…"></div>
     <div class="set-row col"><b>Model</b><input class="num-input" id="aiModel"></div>
     <div class="set-row col"><b>Captions accuracy</b><small>Bigger models are more accurate but slower and download once.</small><select class="dev-select" id="asrModel"></select></div>`;
@@ -313,9 +314,10 @@ function settingsAi(body) {
 }
 function settingsAbout(body) {
   body.innerHTML = `<h3>About Flux</h3>
-    <div style="display:flex;gap:14px;align-items:center;margin-bottom:14px"><img src="logo.png" style="width:56px;height:56px;border-radius:14px"><div><b style="font-size:16px" class="about-ver">Flux</b><br><small style="color:var(--muted)">A simple, friendly video editor</small></div></div>
+    <div style="display:flex;gap:14px;align-items:center;margin-bottom:14px"><img src="logo.png" style="width:56px;height:56px;border-radius:14px"><div><b style="font-size:16px" class="about-ver">Flux</b><br><small style="color:var(--muted)">A simple, friendly video editor</small></div><span style="flex:1"></span><button class="btn" id="btnCheckUpd">Check for updates</button></div>
     <p class="sub">Projects are saved automatically on this computer. Music from the Music tab comes from Kevin MacLeod (incompetech.com, CC BY 4.0) and the Internet Archive. Check each song's license and add the credit when it asks for one.</p>`;
   if (api && api.appVersion) api.appVersion().then((v) => { const e = $('.about-ver', body); if (e) e.textContent = 'Flux ' + v; });
+  $('#btnCheckUpd', body).onclick = async (e) => { e.target.disabled = true; e.target.textContent = 'Checking…'; await checkForUpdates(false); e.target.disabled = false; e.target.textContent = 'Check for updates'; };
 }
 
 /* ---------- Full screen ---------- */

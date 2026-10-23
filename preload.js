@@ -50,10 +50,15 @@ contextBridge.exposeInMainWorld('flux', {
   onTranscribeProgress: (cb) => ipcRenderer.on('asr:progress', (_e, v) => cb(v)),
 
   // premium licence
+  mediaStrip: (opts) => ipcRenderer.invoke('media:strip', opts),
   mediaPeaks: (file) => ipcRenderer.invoke('media:peaks', file),
   licenseVerify: (opts) => ipcRenderer.invoke('license:verify', opts),
   licenseActivate: (key) => ipcRenderer.invoke('license:activate', key),
   licenseValidate: (opts) => ipcRenderer.invoke('license:validate', opts),
   appVersion: () => ipcRenderer.invoke('app:version'),
+  fontGet: (opts) => ipcRenderer.invoke('font:get', opts),
+  updateCheck: () => ipcRenderer.invoke('update:check'),
+  updateInstall: () => ipcRenderer.invoke('update:install'),
+  onUpdateProgress: (cb) => ipcRenderer.on('update:progress', (_e, v) => cb(v)),
   openExternal: (url) => ipcRenderer.invoke('app:openExternal', url)
 });

@@ -1,6 +1,7 @@
 // Flux accounts server (runs on Netlify).
 // Accounts are stored in Netlify Blobs. Premium = active Stripe subscription, or a gift from the admin panel.
-// Settings on Netlify: STRIPE_SECRET_KEY (check subscriptions), GMAIL_APP_PASSWORD (send email codes).
+// Settings on Netlify: STRIPE_SECRET_KEY (check subscriptions), GMAIL_APP_PASSWORD (send email codes),
+// ANTHROPIC_API_KEY (AI Editor for Premium users).
 import { getStore } from '@netlify/blobs';
 import crypto from 'node:crypto';
 import { promisify } from 'node:util';
@@ -10,6 +11,8 @@ export const config = { path: '/api/*' };
 
 const ADMIN_EMAIL = 'noralenfloricica@gmail.com';
 const TOKEN_DAYS = 120;
+const AI_MODEL = 'claude-haiku-5-5';
+const AI_DAILY_LIMIT = 60;
 const STRIPE_CACHE_MS = 20 * 60 * 1000;
 const scrypt = promisify(crypto.scrypt);
 
@@ -219,6 +222,31 @@ export default async (req) => {
     if (!me || !isVerified(me)) return fail('Please sign in again.', 401);
 
     if (route === 'me') return json({ account: await publicUser(me, new URL(req.url).searchParams.get('refresh') === '1') });
+
+    // ---------- AI Editor (Premium) ----------
+    if (route === 'ai' && req.method === 'POST') {
+      const st = await status(me, false);
+      if (!st.premium) return fail('The AI Editor is a Premium feature.', 402);
+      if (!process.env.ANTHROPIC_API_KEY) return fail('The AI Editor isn\'t switched on yet. Please try again later.', 503);
+      const day = new Date().toISOString().slice(0, 10);
+      if (me.aiDay !== day) { me.aiDay = day; me.aiCount = 0; }
+      if (me.email !== ADMIN_EMAIL && me.aiCount >= AI_DAILY_LIMIT) return fail(`You've used the AI Editor ${AI_DAILY_LIMIT} times today. It resets tomorrow.`, 429);
+      const system = String(body.system || '');
+      if (!system.startsWith('You are the AI editor inside Flux')) return fail('Bad request.');
+      const messages = (Array.isArray(body.messages) ? body.messages : []).slice(-10)
+        .map((m) => ({ role: m.role === 'assistant' ? 'assistant' : 'user', content: String(m.content || '').slice(0, 60000) }));
+      if (!messages.length) return fail('Bad request.');
+      me.aiCount = (me.aiCount || 0) + 1;
+      await saveUser(me);
+      const r = await fetch('https://api.anthropic.com/v1/messages', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', 'x-api-key': process.env.ANTHROPIC_API_KEY, 'anthropic-version': '2023-06-01' },
+        body: JSON.stringify({ model: AI_MODEL, max_tokens: 2500, system: system.slice(0, 20000), messages })
+      });
+      const j = await r.json().catch(() => ({}));
+      if (!r.ok) { console.error('anthropic', r.status, j); return fail('The AI is busy right now. Try again in a minute.', 502); }
+      return json({ text: (j.content || []).filter((b) => b.type === 'text').map((b) => b.text).join('\n'), left: me.email === ADMIN_EMAIL ? null : AI_DAILY_LIMIT - me.aiCount });
+    }
 
     if (route === 'password' && req.method === 'POST') {
       if (!(await checkPassword(String(body.old || ''), me))) return fail('Your current password is wrong.', 401);

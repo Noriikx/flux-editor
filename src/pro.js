@@ -28,6 +28,11 @@ function isPremium() {
   const a = settings.account;
   return !!(a && a.token && a.premium && (!a.until || a.until > Date.now()));
 }
+function requirePremium(feature) {
+  if (isPremium()) return true;
+  openPremium(feature);
+  return false;
+}
 function openCheckout() {
   const a = settings.account;
   const url = CHECKOUT_URL + (a && a.email ? '?prefilled_email=' + encodeURIComponent(a.email) : '');
@@ -425,8 +430,34 @@ TRANSITIONS.push(
   { id: 'glitch', name: 'Glitch', pro: true },
   { id: 'whip', name: 'Whip pan', pro: true },
   { id: 'flip', name: 'Flip', pro: true },
-  { id: 'zoomblur', name: 'Zoom blur', pro: true }
+  { id: 'zoomblur', name: 'Zoom blur', pro: true },
+  { id: 'slideLeft', name: 'Slide from left' },
+  { id: 'slideDown', name: 'Slide down' },
+  { id: 'pushRight', name: 'Push right' },
+  { id: 'pushDown', name: 'Push down' },
+  { id: 'wipeLeft', name: 'Wipe left' },
+  { id: 'wipeUp', name: 'Wipe up' },
+  { id: 'splitH', name: 'Split open' },
+  { id: 'diamond', name: 'Diamond' },
+  { id: 'zoomOut', name: 'Zoom out' },
+  { id: 'heart', name: 'Heart', pro: true },
+  { id: 'star', name: 'Star', pro: true },
+  { id: 'checker', name: 'Checkerboard', pro: true },
+  { id: 'bars', name: 'Bars', pro: true },
+  { id: 'spinZoom', name: 'Spin zoom', pro: true },
+  { id: 'bounce', name: 'Bounce in', pro: true },
+  { id: 'shake', name: 'Camera shake', pro: true },
+  { id: 'burn', name: 'Light leak', pro: true },
+  { id: 'swing', name: 'Swing', pro: true }
 );
+function easeOutBounce(x) {
+  const n1 = 7.5625, d1 = 2.75;
+  if (x < 1 / d1) return n1 * x * x;
+  if (x < 2 / d1) return n1 * (x -= 1.5 / d1) * x + 0.75;
+  if (x < 2.5 / d1) return n1 * (x -= 2.25 / d1) * x + 0.9375;
+  return n1 * (x -= 2.625 / d1) * x + 0.984375;
+}
+const tHash = (i) => { const x = Math.sin(i * 127.1 + 311.7) * 43758.5453; return x - Math.floor(x); };
 const baseTransitionFx = transitionFx;
 transitionFx = function (type, p, role, W, H) {
   const e = easeInOut(clamp(p, 0, 1));
@@ -447,6 +478,46 @@ transitionFx = function (type, p, role, W, H) {
     case 'zoomblur':
       if (isIn) { fx.alpha = e; fx.scale = 1 + (1 - e) * 0.7; fx.blur = (1 - e) * 28; }
       else { fx.alpha = 1 - e; fx.scale = 1 + e * 1.4; fx.blur = e * 28; }
+      return fx;
+    case 'slideLeft': if (isIn) fx.dx = -(1 - e) * W; return fx;
+    case 'slideDown': if (isIn) fx.dy = -(1 - e) * H; return fx;
+    case 'pushRight': fx.dx = isIn ? -(1 - e) * W : e * W; return fx;
+    case 'pushDown': fx.dy = isIn ? -(1 - e) * H : e * H; return fx;
+    case 'wipeLeft': if (isIn) fx.clip = (g) => g.rect(W - e * W, 0, e * W, H); return fx;
+    case 'wipeUp': if (isIn) fx.clip = (g) => g.rect(0, H - e * H, W, e * H); return fx;
+    case 'splitH': if (isIn) fx.clip = (g) => g.rect(0, H / 2 - (e * H) / 2, W, e * H); return fx;
+    case 'diamond': if (isIn) fx.clip = (g) => { const r = e * (W + H) / 2 + 0.01; g.moveTo(W / 2, H / 2 - r); g.lineTo(W / 2 + r, H / 2); g.lineTo(W / 2, H / 2 + r); g.lineTo(W / 2 - r, H / 2); g.closePath(); }; return fx;
+    case 'zoomOut':
+      if (isIn) { fx.alpha = e; fx.scale = 0.6 + 0.4 * e; } else { fx.alpha = 1 - e * 0.5; fx.scale = 1 - 0.25 * e; }
+      return fx;
+    case 'heart': if (isIn) fx.clip = (g) => {
+      const s2 = e * Math.hypot(W, H) * 0.95 + 0.01, cx = W / 2, cy = H / 2 + s2 * 0.1;
+      g.moveTo(cx, cy + s2 * 0.35);
+      g.bezierCurveTo(cx - s2 * 0.7, cy - s2 * 0.05, cx - s2 * 0.35, cy - s2 * 0.55, cx, cy - s2 * 0.25);
+      g.bezierCurveTo(cx + s2 * 0.35, cy - s2 * 0.55, cx + s2 * 0.7, cy - s2 * 0.05, cx, cy + s2 * 0.35);
+      g.closePath();
+    }; return fx;
+    case 'star': if (isIn) fx.clip = (g) => {
+      const R = e * Math.hypot(W, H) * 0.9 + 0.01, r = R * 0.45;
+      for (let i = 0; i < 10; i++) { const a = -Math.PI / 2 + (i * Math.PI) / 5, rr = i % 2 ? r : R; g[i ? 'lineTo' : 'moveTo'](W / 2 + Math.cos(a) * rr, H / 2 + Math.sin(a) * rr); }
+      g.closePath();
+    }; return fx;
+    case 'checker': if (isIn) fx.clip = (g) => { const n = 8, cw = W / n, ch = H / 6; for (let y = 0; y < 6; y++) for (let x = 0; x < n; x++) if (tHash(y * n + x) < e * 1.05) g.rect(x * cw, y * ch, cw + 0.5, ch + 0.5); }; return fx;
+    case 'bars': if (isIn) fx.clip = (g) => { const n = 9, bw = W / n; for (let i = 0; i < n; i++) { const hh = clamp(e * 1.6 - (i % 3) * 0.15, 0, 1) * H; g.rect(i * bw, i % 2 ? 0 : H - hh, bw + 0.5, hh); } }; return fx;
+    case 'spinZoom':
+      if (isIn) { fx.alpha = e; fx.scale = 0.2 + 0.8 * e; fx.rot = -(1 - e) * Math.PI * 2; }
+      else { fx.alpha = 1 - e; fx.scale = 1 + e * 1.5; fx.rot = e * Math.PI; }
+      return fx;
+    case 'bounce': if (isIn) fx.dy = -(1 - easeOutBounce(clamp(p, 0, 1))) * H; return fx;
+    case 'shake': {
+      half(); const amt = (1 - Math.abs(2 * e - 1)) * Math.min(W, H) * 0.06;
+      fx.dx = (tHash(Math.floor(p * 40)) - 0.5) * 2 * amt; fx.dy = (tHash(Math.floor(p * 40) + 99) - 0.5) * 2 * amt;
+      fx.blur = amt * 0.15; return fx;
+    }
+    case 'burn': half(); fx.cover = { color: '#ffb35c', alpha: (1 - Math.abs(2 * e - 1)) * 0.95 }; fx.blur = (1 - Math.abs(2 * e - 1)) * 10; return fx;
+    case 'swing':
+      if (isIn) { fx.alpha = e; fx.rot = -(1 - e) * 0.5; fx.dx = -(1 - e) * W * 0.3; fx.scale = 0.85 + 0.15 * e; }
+      else { fx.alpha = 1 - e * 0.4; fx.rot = e * 0.3; fx.dx = e * W * 0.2; }
       return fx;
   }
   return baseTransitionFx(type, p, role, W, H);

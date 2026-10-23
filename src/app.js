@@ -1584,37 +1584,93 @@ function renderRuler() {
 }
 
 const waveCache = new Map();
-function waveCanvas(c, widthPx) {
+// Loudness -> bar height. 0 dB (the loudest a file can be) reaches the top of the clip.
+const WAVE_FLOOR_DB = -42;
+const waveLevel = (a) => (a <= 0.0001 ? 0 : clamp((20 * Math.log10(a) - WAVE_FLOOR_DB) / -WAVE_FLOOR_DB, 0, 1));
+function waveCanvas(c, widthPx, volOverride) {
   const peaks = rt.peaks.get(c.mediaId);
   const m = getMedia(c.mediaId);
   if (!peaks || !m || !m.duration) return null;
-  const w = Math.max(1, Math.min(4000, Math.round(widthPx)));
-  const vol = Math.max(0.01, c.volume == null ? 1 : c.volume);
+  const w = Math.max(1, Math.min(6000, Math.round(widthPx)));
+  const vol = Math.max(0, volOverride != null ? volOverride : (c.volume == null ? 1 : c.volume));
   const key = `${c.mediaId}|${c.in.toFixed(3)}|${c.out.toFixed(3)}|${w}|${vol.toFixed(2)}`;
   if (waveCache.has(key)) return cloneCanvas(waveCache.get(key));
   const abs = rt.peaksAbs.get(c.mediaId) || peaks;
-  const H = 60, half = H / 2;
+  const dpr = Math.min(2, window.devicePixelRatio || 1);
+  const H = 120, W = Math.min(8000, Math.round(w * dpr));
   const cv = document.createElement('canvas');
-  cv.width = w; cv.height = H;
+  cv.width = W; cv.height = H;
   const g = cv.getContext('2d');
-  // One bar every 3px. Height = how loud it is at 100% volume (half the clip = full level).
-  // The clip is scaled by the volume on screen, so bars grow or shrink as you drag the line.
-  const clipAt = half / vol; // anything taller than this will be too loud after the volume change
-  for (let x = 0; x < w; x += 3) {
+  const top = 4, room = H - top; // a little space so red "too loud" tips still show
+  const grad = g.createLinearGradient(0, top, 0, H);
+  grad.addColorStop(0, 'rgba(255,255,255,0.98)');
+  grad.addColorStop(0.55, 'rgba(196,255,226,0.95)');
+  grad.addColorStop(1, 'rgba(120,230,175,0.9)');
+  const step = 3 * dpr, bw = Math.max(1, 2 * dpr);
+  for (let x = 0; x < W; x += step) {
     let v = 0;
-    for (let k = 0; k < 3; k++) {
-      const tt = c.in + ((x + k) / w) * (c.out - c.in);
-      const idx = clamp(Math.floor((tt / m.duration) * abs.length), 0, abs.length - 1);
-      v = Math.max(v, abs[idx] || 0);
+    const t0 = c.in + (x / W) * (c.out - c.in), t1 = c.in + ((x + step) / W) * (c.out - c.in);
+    const i0 = clamp(Math.floor((t0 / m.duration) * abs.length), 0, abs.length - 1);
+    const i1 = clamp(Math.ceil((t1 / m.duration) * abs.length), i0 + 1, abs.length);
+    for (let i = i0; i < i1; i++) if (abs[i] > v) v = abs[i];
+    const amp = v * vol;
+    const h = Math.max(2, waveLevel(Math.min(amp, 1)) * room);
+    g.fillStyle = grad;
+    g.beginPath();
+    g.roundRect ? g.roundRect(x, H - h, bw, h, [Math.min(bw / 2, 2), Math.min(bw / 2, 2), 0, 0]) : g.rect(x, H - h, bw, h);
+    g.fill();
+    if (amp > 1.06) { // too loud: it will distort
+      g.fillStyle = 'rgba(255,82,82,0.98)';
+      g.fillRect(x, H - h, bw, Math.min(h, 6 + Math.min(1, amp - 1) * 18));
     }
-    const h = Math.max(1.5, Math.min(H, v * half));
-    g.fillStyle = 'rgba(214,255,234,0.92)';
-    g.fillRect(x, H - Math.min(h, clipAt), 2, Math.min(h, clipAt));
-    if (h > clipAt) { g.fillStyle = 'rgba(255,92,92,0.95)'; g.fillRect(x, H - h, 2, h - clipAt); }
   }
   if (waveCache.size > 300) waveCache.clear();
   waveCache.set(key, cv);
   return cloneCanvas(cv);
+}
+
+// ---------- video frames on the timeline ----------
+rt.strips = rt.strips || new Map();
+const stripLoading = new Set();
+function loadStrip(m) {
+  if (!m || !api || !api.mediaStrip || stripLoading.has(m.id) || rt.strips.has(m.id) || !m.duration) return;
+  stripLoading.add(m.id);
+  const count = clamp(Math.round(m.duration / (lowEnd() ? 2 : 1)), 8, lowEnd() ? 80 : 160);
+  api.mediaStrip({ file: m.path, duration: m.duration, count }).then((r) => {
+    if (!r) return;
+    const img = new Image();
+    img.onload = () => { rt.strips.set(m.id, { url: api.mediaUrl(r.file), n: r.n, cols: r.cols, rows: r.rows, ar: (img.naturalWidth / r.cols) / (img.naturalHeight / r.rows) }); fillFilmstrips(); };
+    img.src = api.mediaUrl(r.file);
+  }).finally(() => stripLoading.delete(m.id));
+}
+// Fill each video clip with frames from its own part of the video.
+function fillFilmstrips() {
+  for (const ce of $$('.clip.kind-video', tlLanes)) {
+    const c = getClip(ce.dataset.id), m = c && getMedia(c.mediaId);
+    if (!c || !m) continue;
+    const st = rt.strips.get(m.id);
+    if (!st) { loadStrip(m); continue; }
+    let film = $('.film', ce);
+    if (!film) { film = el('div', 'film'); ce.insertBefore(film, ce.firstChild); }
+    film.className = 'film frames';
+    film.style.backgroundImage = '';
+    const h = ce.clientHeight || 40, w = ce.clientWidth;
+    const tw = Math.max(16, h * st.ar);
+    const n = Math.min(400, Math.ceil(w / tw) + 1);
+    if (film._sig === `${n}|${tw}|${c.in}|${c.out}|${w}`) continue;
+    film._sig = `${n}|${tw}|${c.in}|${c.out}|${w}`;
+    film.innerHTML = '';
+    for (let k = 0; k < n; k++) {
+      const t = c.in + Math.min(1, ((k + 0.5) * tw) / Math.max(1, w)) * (c.out - c.in);
+      const idx = clamp(Math.floor((t / m.duration) * st.n), 0, st.n - 1);
+      const f = el('i');
+      f.style.width = tw + 'px';
+      f.style.backgroundImage = `url("${st.url}")`;
+      f.style.backgroundSize = `${st.cols * 100}% ${st.rows * 100}%`;
+      f.style.backgroundPosition = `${st.cols > 1 ? ((idx % st.cols) / (st.cols - 1)) * 100 : 0}% ${st.rows > 1 ? (Math.floor(idx / st.cols) / (st.rows - 1)) * 100 : 0}%`;
+      film.appendChild(f);
+    }
+  }
 }
 function cloneCanvas(src) {
   const c = document.createElement('canvas');
@@ -1649,8 +1705,8 @@ function renderLanes() {
       }
       if (c.kind === 'audio') {
         const vol = kv(c, 'volume', clamp(state.time - c.start, 0, dur(c)));
-        const wc = waveCanvas(c, w);
-        if (wc) { wc.className = 'wave'; wc.style.width = w + 'px'; wc.style.transform = `scaleY(${vol})`; ce.appendChild(wc); }
+        const wc = waveCanvas(c, w, vol);
+        if (wc) { wc.className = 'wave'; wc.style.width = w + 'px'; ce.appendChild(wc); }
         else {
           const m0 = getMedia(c.mediaId);
           if (m0 && !m0.missing && !m0.error) { loadPeaks(m0); ce.appendChild(el('div', 'wave-loading', 'Reading sound…')); }
@@ -1713,6 +1769,7 @@ function renderLanes() {
     }
     tlLanes.appendChild(lane);
   }
+  fillFilmstrips();
 }
 // 200% at the top of the clip, 100% in the middle, silent at the bottom
 function volLineTop(v) { return clamp(92 - (v / 2) * 84, 8, 92); }
@@ -1866,7 +1923,7 @@ function trySnap(values, excludeId) {
       drag.line.style.top = volLineTop(v) + '%';
       drag.line.firstChild.textContent = Math.round(v * 100) + '%';
       const wv = drag.line.parentElement.querySelector('.wave');
-      if (wv) wv.style.transform = `scaleY(${v})`;
+      if (wv) { const nw = waveCanvas(drag.c, parseFloat(wv.style.width) || wv.clientWidth, v); if (nw) { nw.className = 'wave'; nw.style.width = wv.style.width; wv.replaceWith(nw); } }
       return;
     }
     if (!drag.moved && Math.abs(e.clientX - drag.x0) < 3 && drag.mode === 'move' && !laneChanged(e)) return;
@@ -2307,8 +2364,8 @@ function renderInspector() {
   if (c.kind === 'video' || c.kind === 'audio') {
     const s = section(body, 'Speed', () => setSpeed(c, 1));
     if (partners(c).length) s.insertAdjacentHTML('beforeend', '<p class="hint" style="margin:0 0 8px">🔗 Linked with its sound - speed, trims and cuts apply to both. Hold <kbd>Alt</kbd> while dragging to move just one.</p>');
-    chips(s, [0.25, 0.5, 1, 1.5, 2, 4].map((v) => ({ label: v + 'x', value: v })), c.speed, (v) => commit(() => setSpeed(c, v)));
-    slider(s, 'Custom', { min: 0.25, max: 4, step: 0.05, get: () => c.speed, set: (v) => setSpeed(c, v), fmt: (v) => v.toFixed(2) + 'x', def: 1 });
+    chips(s, [0.25, 0.5, 1, 2, 4, 10].map((v) => ({ label: v + 'x', value: v })), c.speed, (v) => commit(() => setSpeed(c, v)));
+    slider(s, 'Custom', { min: 0.1, max: 10, step: 0.05, get: () => c.speed, set: (v) => setSpeed(c, v), fmt: (v) => v.toFixed(2) + 'x', def: 1 });
 
     if (c.kind === 'video' && partners(c).length) {
       const a0 = section(body, 'Sound');
@@ -2387,11 +2444,8 @@ function textInspector(body, c) {
   ta.addEventListener('blur', () => { endEdit(); renderInspectorHeadOnly(c); });
   s.appendChild(ta);
   const ff = el('div', 'field wide');
-  ff.innerHTML = `<label>Font</label><select></select>`;
-  const fs = $('select', ff);
-  for (const f of FONTS) { const o = el('option'); o.value = f; o.textContent = f; o.style.fontFamily = f; fs.appendChild(o); }
-  fs.value = t.font;
-  fs.onchange = () => commit(() => { t.font = fs.value; });
+  ff.innerHTML = `<label>Font</label>`;
+  ff.appendChild(fontPicker(t.font, (name) => commit(() => { t.font = name; })));
   s.appendChild(ff);
   slider(s, 'Size', { min: 16, max: 320, get: () => t.size, set: (v) => (t.size = v), fmt: (v) => v, def: 96, live: false });
   lengthField(s, c);
@@ -2652,6 +2706,7 @@ async function loadProjectData(data) {
   P.output = P.output || { res: 1080, fps: 30 };
   FPS = P.output.fps || 30;
   ensureSoundTrack();
+  if (typeof ensureProjectFonts === 'function') ensureProjectFonts();
   state.selectedId = null;
   state.time = 0;
   hist.undo = []; hist.redo = []; hist.when = [];
@@ -2738,6 +2793,7 @@ async function runExport(opts) {
   const total = projectDuration();
   const target = api ? await api.exportChoose({ format: opts.format, name: P.name }) : 'browser-test.' + opts.format;
   if (!target) return;
+  if (typeof ensureProjectFonts === 'function') await ensureProjectFonts();
   const [W, H] = refSize();
   const factor = opts.res / Math.min(W, H);
   const outW = Math.round((W * factor) / 2) * 2, outH = Math.round((H * factor) / 2) * 2;

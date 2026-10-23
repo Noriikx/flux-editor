@@ -391,6 +391,29 @@ ipcMain.handle('media:peaks', (_e, file) => new Promise((resolve) => {
   p.on('error', () => resolve(null));
 }));
 
+// ---------- Video frames for the timeline (one picture sheet per video, cached) ----------
+const stripJobs = new Map();
+ipcMain.handle('media:strip', (_e, { file, duration, count }) => {
+  const ff = ffmpegPath();
+  if (!ff || !file) return null;
+  let st; try { st = fs.statSync(file); } catch { return null; }
+  const n = Math.max(4, Math.min(160, Math.round(count || 30)));
+  const cols = 10, rows = Math.ceil(n / cols);
+  const key = require('crypto').createHash('md5').update(file + '|' + st.size + '|' + st.mtimeMs + '|' + n).digest('hex');
+  const out = path.join(ensureDir(path.join(dataDir(), 'cache', 'strips')), key + '.jpg');
+  if (fs.existsSync(out)) return { file: out, n, cols, rows };
+  if (stripJobs.has(key)) return stripJobs.get(key);
+  const job = new Promise((resolve) => {
+    const d = Math.max(0.1, +duration || 1);
+    const vf = `fps=${(n / d).toFixed(6)},scale=-2:90,tile=${cols}x${rows}`;
+    const p = spawn(ff, ['-v', 'error', '-y', '-i', file, '-an', '-vf', vf, '-frames:v', '1', '-q:v', '5', out]);
+    p.on('close', (code) => resolve(code === 0 && fs.existsSync(out) ? { file: out, n, cols, rows } : null));
+    p.on('error', () => resolve(null));
+  }).finally(() => stripJobs.delete(key));
+  stripJobs.set(key, job);
+  return job;
+});
+
 // ---------- version history (Time machine) ----------
 const versionsFile = (id) => path.join(projectsDir(), safeId(id) + '.versions.json');
 ipcMain.handle('versions:list', (_e, id) => { try { return JSON.parse(fs.readFileSync(versionsFile(id), 'utf8')); } catch { return []; } });
@@ -507,6 +530,109 @@ ipcMain.handle('license:activate', async (_e, key) => {
 ipcMain.handle('license:validate', async (_e, { key, instanceId }) => {
   try { return await lsCall('validate', { license_key: key, instance_id: instanceId }); }
   catch { return { offline: true }; }
+});
+
+// ---------- Fonts (downloaded from Google Fonts once, then kept offline) ----------
+const fontJobs = new Map();
+const CHROME_UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/138.0.0.0 Safari/537.36';
+async function downloadFont(family, weights) {
+  const dir = ensureDir(path.join(dataDir(), 'fonts'));
+  const slug = family.toLowerCase().replace(/[^a-z0-9]+/g, '-');
+  const manifest = path.join(dir, slug + '.json');
+  try { const m = JSON.parse(fs.readFileSync(manifest, 'utf8')); if (m.length && m.every((f) => fs.existsSync(f.file))) return m; } catch {}
+  const faces = [];
+  for (const w of weights) {
+    const url = `https://fonts.googleapis.com/css2?family=${encodeURIComponent(family).replace(/%20/g, '+')}:wght@${w}&display=swap`;
+    const res = await net.fetch(url, { headers: { 'User-Agent': CHROME_UA } });
+    if (!res.ok) { if (w === weights[0]) throw new Error('Font not found: ' + family); continue; }
+    const css = await res.text();
+    const re = /(?:\/\*\s*([\w-]+)\s*\*\/\s*)?@font-face\s*\{([^}]*)\}/g;
+    let mm;
+    while ((mm = re.exec(css))) {
+      const sub = mm[1] || '', b = mm[2];
+      const src = (/url\((https:[^)]+)\)/.exec(b) || [])[1];
+      const range = (/unicode-range:\s*([^;]+);/.exec(b) || [])[1] || '';
+      if (!src) continue;
+      // keep the subsets that cover European languages (incl. Romanian)
+      if (sub && !/^latin(-ext)?$/.test(sub)) continue;
+      const file = path.join(dir, `${slug}-${w}-${sub || 'all'}.woff2`);
+      if (!fs.existsSync(file)) {
+        const f = await net.fetch(src, { headers: { 'User-Agent': CHROME_UA } });
+        if (!f.ok) continue;
+        fs.writeFileSync(file, Buffer.from(await f.arrayBuffer()));
+      }
+      faces.push({ file, weight: w, range });
+    }
+  }
+  if (!faces.length) throw new Error('Could not download ' + family);
+  fs.writeFileSync(manifest, JSON.stringify(faces));
+  return faces;
+}
+ipcMain.handle('font:get', async (_e, { family, weights }) => {
+  const key = family + '|' + (weights || []).join(',');
+  if (!fontJobs.has(key)) fontJobs.set(key, downloadFont(String(family), (weights && weights.length ? weights : [400]).map(Number)).finally(() => setTimeout(() => fontJobs.delete(key), 1000)));
+  try { return { faces: await fontJobs.get(key) }; } catch (err) { return { error: err.message || String(err) }; }
+});
+
+// ---------- Updates (from GitHub Releases) ----------
+const REPO = 'Noriikx/flux-editor';
+const verNum = (v) => String(v || '0').replace(/^v/, '').split('.').map((x) => parseInt(x, 10) || 0);
+const newer = (a, b) => { const x = verNum(a), y = verNum(b); for (let i = 0; i < 3; i++) { if ((x[i] || 0) !== (y[i] || 0)) return (x[i] || 0) > (y[i] || 0); } return false; };
+function updateAsset(rel) {
+  const assets = rel.assets || [];
+  if (process.platform === 'win32') return assets.find((a) => /\.exe$/i.test(a.name));
+  if (process.platform === 'darwin') return assets.find((a) => a.name === `Flux-mac-${process.arch}.dmg`) || assets.find((a) => /\.dmg$/i.test(a.name));
+  return null;
+}
+ipcMain.handle('update:check', async () => {
+  try {
+    const res = await net.fetch(`https://api.github.com/repos/${REPO}/releases/latest`, { headers: { Accept: 'application/vnd.github+json', 'User-Agent': 'Flux' } });
+    if (!res.ok) return { error: 'Could not check for updates (' + res.status + ')' };
+    const rel = await res.json();
+    const latest = String(rel.tag_name || '').replace(/^v/, '');
+    const asset = updateAsset(rel);
+    return { current: app.getVersion(), latest, available: newer(latest, app.getVersion()) && !!asset, notes: rel.body || '', size: asset ? asset.size : 0 };
+  } catch (err) { return { error: 'No internet connection.' }; }
+});
+let updating = false;
+ipcMain.handle('update:install', async (e) => {
+  if (updating) return { error: 'Already updating' };
+  updating = true;
+  const send = (v) => { try { e.sender.send('update:progress', v); } catch {} };
+  try {
+    const res = await net.fetch(`https://api.github.com/repos/${REPO}/releases/latest`, { headers: { Accept: 'application/vnd.github+json', 'User-Agent': 'Flux' } });
+    const rel = await res.json();
+    const asset = updateAsset(rel);
+    if (!asset) throw new Error('No download for this computer yet. Try again later.');
+    const file = path.join(os.tmpdir(), asset.name.replace(/(\.\w+)$/, '-' + String(rel.tag_name).replace(/[^\w.-]/g, '') + '$1'));
+    const dl = await net.fetch(asset.browser_download_url);
+    if (!dl.ok || !dl.body) throw new Error('Download failed (' + dl.status + ')');
+    const total = +dl.headers.get('content-length') || asset.size || 0;
+    const out = fs.createWriteStream(file);
+    let got = 0;
+    const reader = dl.body.getReader();
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      got += value.length;
+      if (!out.write(Buffer.from(value))) await new Promise((r) => out.once('drain', r));
+      send({ value: total ? got / total : 0 });
+    }
+    await new Promise((r, j) => out.end((err) => (err ? j(err) : r())));
+    if (total && got < total) throw new Error('The download was cut off. Try again.');
+    send({ value: 1, stage: 'install' });
+    if (process.platform === 'win32') {
+      // Silent install over the current version, then start Flux again.
+      spawn(file, ['/S', '--force-run'], { detached: true, stdio: 'ignore' }).unref();
+      setTimeout(() => app.quit(), 600);
+    } else {
+      await shell.openPath(file);
+    }
+    return { ok: true };
+  } catch (err) {
+    updating = false;
+    return { error: err.message || String(err) };
+  }
 });
 ipcMain.handle('app:version', () => app.getVersion());
 ipcMain.handle('app:openExternal', (_e, url) => { if (/^https:\/\//.test(url)) shell.openExternal(url); });

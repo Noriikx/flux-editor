@@ -550,12 +550,12 @@ Available actions:
 {"type":"delete","clipId":"...","closeGap":true}
 {"type":"trim","clipId":"...","start":2,"end":9}   (new timeline start/end of that clip, within its media)
 {"type":"move","clipId":"...","start":4}
-{"type":"speed","clipId":"...","speed":1.5}
+{"type":"speed","clipId":"...","speed":1.5}   (0.1 to 10)
 {"type":"volume","clipId":"...","volume":0.8}   (1 = normal, max 3)
 {"type":"fade","clipId":"...","in":0.5,"out":1}
 {"type":"filter","clipId":"...|all","filter":"none|vivid|warm|cool|bw|noir|vintage|faded|dreamy|drama|pop|sunset"}
 {"type":"motion","clipId":"...","motion":"none|zoomIn|zoomOut|panLeft|panRight|panUp|shake"}
-{"type":"transition","clipId":"...|all","transition":"fade|black|white|slide|slideUp|push|wipe|zoom|blur|circle|spin|diag|barn|iris|pushUp|clock|blinds|pixel|glitch|whip|flip|zoomblur","duration":0.6}
+{"type":"transition","clipId":"...|all","transition":"${TRANSITIONS.slice(1).map((t) => t.id).join('|')}","duration":0.6}
 {"type":"aspect","aspect":"16:9|9:16|1:1|4:5"}
 {"type":"marker","time":10}
 {"type":"addMedia","mediaId":"...","start":0}   (put a library file on the timeline)
@@ -600,13 +600,6 @@ function renderAi() {
   const p = aiPanelEl();
   const box = $('.ai-msgs', p);
   box.innerHTML = '';
-  if (!settings.aiKey) {
-    box.innerHTML = `<div class="ai-setup"><b>Connect the AI</b><p>The AI Editor uses Claude. Paste an Anthropic API key to turn it on - you can create one at <b>console.anthropic.com</b>. Anthropic charges for usage on your key; the key stays on this computer.</p>
-      <input class="num-input ai-key" placeholder="sk-ant-…" type="password"><button class="btn primary">Save key</button></div>`;
-    $('.ai-setup button', box).onclick = () => { const v = $('.ai-key', box).value.trim(); if (!v) return; settings.aiKey = v; saveSettings(); renderAi(); };
-    $('.ai-examples', p).style.display = 'none';
-    return;
-  }
   $('.ai-examples', p).style.display = ai.messages.length ? 'none' : '';
   if (!ai.messages.length) box.innerHTML = '<div class="ai-hello">Hi! I can edit your video for you. Try one of these, or type anything.</div>';
   for (const m of ai.messages) {
@@ -628,15 +621,19 @@ async function sendAi() {
   const ta = $('textarea', p);
   const text = ta.value.trim();
   if (!text || ai.busy) return;
-  if (!settings.aiKey) return renderAi();
   ta.value = '';
   ai.messages.push({ role: 'user', content: text });
   ai.busy = true; renderAi();
   const history = ai.messages.slice(-10).map((m) => ({ role: m.role, content: m.role === 'user' ? m.content : (m.raw || m.content) }));
   history[history.length - 1] = { role: 'user', content: `Project right now:\n${JSON.stringify(aiContext())}\n\nRequest: ${text}` };
   try {
-    if (!api || !api.aiChat) throw new Error('The AI Editor works in the Flux desktop app.');
-    const r = await api.aiChat({ key: settings.aiKey, model: settings.aiModel || 'claude-sonnet-5-5', system: AI_SYSTEM, messages: history });
+    let r;
+    if (settings.aiKey && api && api.aiChat) r = await api.aiChat({ key: settings.aiKey, model: settings.aiModel || 'claude-sonnet-5-5', system: AI_SYSTEM, messages: history });
+    else {
+      const a = settings.account;
+      if (!a || !a.token) throw new Error('Please sign in first.');
+      r = await apiCall('ai', { system: AI_SYSTEM, messages: history }, a.token);
+    }
     if (r.error) throw new Error(r.error);
     let plan;
     try { plan = JSON.parse(r.text.slice(r.text.indexOf('{'), r.text.lastIndexOf('}') + 1)); } catch { plan = { reply: r.text, actions: [] }; }
@@ -686,7 +683,7 @@ async function runAiActions(actions) {
           done.push(`Trimmed ${clipLabel(c)}`); break;
         }
         case 'move': if (!c) break; commit(() => { const d = Math.max(0, +a.start) - c.start; for (const x of [c, ...partners(c)]) x.start = Math.max(0, x.start + d); }); done.push(`Moved ${clipLabel(c)}`); break;
-        case 'speed': if (!c) break; commit(() => setSpeed(c, clamp(+a.speed || 1, 0.25, 4))); done.push(`Speed ${a.speed}x on ${clipLabel(c)}`); break;
+        case 'speed': if (!c) break; commit(() => setSpeed(c, clamp(+a.speed || 1, 0.1, 10))); done.push(`Speed ${a.speed}x on ${clipLabel(c)}`); break;
         case 'volume': if (!c) break; commit(() => { const t = soundSource(c) || c; t.volume = clamp(+a.volume, 0, 3); }); done.push(`Volume ${Math.round(a.volume * 100)}%`); break;
         case 'fade': if (!c) break; commit(() => { for (const x of [c, ...partners(c)]) { if (a.in != null) x.fadeIn = +a.in; if (a.out != null) x.fadeOut = +a.out; } }); done.push('Added fades'); break;
         case 'filter': commit(() => { for (const x of a.clipId === 'all' ? P.clips.filter(isVisual) : [c].filter(Boolean)) x.filter = a.filter; }); done.push(`Look: ${filterById(a.filter).name}`); break;

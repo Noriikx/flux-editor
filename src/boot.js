@@ -6,6 +6,7 @@
   setupVoice();
   initEditor();
   setupSmartTools();
+  setupClipTools();
   $('#btnRecTl').onclick = () => toggleRecording();
   $('#transAll').onclick = () => applyTransitionToAll('fade');
   $('#transNone').onclick = () => applyTransitionToAll('none');
@@ -15,6 +16,7 @@
   $('#btnPremium').onclick = () => openPremium();
   updatePremiumBadge();
   setupAccount();
+  setupUpdates();
   if (api && api.setStartFullscreen) api.setStartFullscreen(!!settings.startFullscreen);
   if (api && api.isFullscreen) api.isFullscreen().then((fs) => document.body.classList.toggle('is-fullscreen', !!fs));
   goHome();
