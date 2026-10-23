@@ -508,6 +508,7 @@ ipcMain.handle('license:validate', async (_e, { key, instanceId }) => {
   try { return await lsCall('validate', { license_key: key, instance_id: instanceId }); }
   catch { return { offline: true }; }
 });
+ipcMain.handle('app:version', () => app.getVersion());
 ipcMain.handle('app:openExternal', (_e, url) => { if (/^https:\/\//.test(url)) shell.openExternal(url); });
 
 // Stripe licence keys: FLUX-<data>.<signature>, signed by your website after payment, checked here offline.

@@ -55,48 +55,71 @@ function signOut(expired) {
 /* ---------------- sign-in screen ---------------- */
 function showAuth(note) {
   let el = $('#auth');
-  if (!el) {
-    el = document.createElement('section');
-    el.id = 'auth';
-    document.body.appendChild(el);
-  }
-  let mode = 'login';
-  const draw = (msg, err) => {
+  if (!el) { el = document.createElement('section'); el.id = 'auth'; document.body.appendChild(el); }
+  document.body.classList.add('needs-auth');
+  let mode = 'login', email = '', msg = note || '', err = false;
+  const titles = { login: ['Welcome back', 'Sign in to Flux'], signup: ['Create your account', 'Free account · Premium is optional'],
+    code: ['Check your email', ''], forgot: ['Forgot password', 'We’ll email you a code'], reset: ['New password', ''] };
+  const done = (r, text) => {
+    storeAccount(r.token, r.account);
+    el.remove(); document.body.classList.remove('needs-auth');
+    toast(text);
+  };
+  const field = (name, label, type, extra = '') => `<label>${label}<input type="${type}" name="${name}" required ${extra}></label>`;
+  const draw = () => {
+    const [h, sub] = titles[mode];
+    const body = {
+      login: field('email', 'Email', 'email', 'autocomplete="email" placeholder="you@example.com"') + field('password', 'Password', 'password', 'autocomplete="current-password"'),
+      signup: field('email', 'Email', 'email', 'autocomplete="email" placeholder="you@example.com"') + field('password', 'Password', 'password', 'minlength="8" autocomplete="new-password" placeholder="At least 8 characters"') + field('password2', 'Repeat password', 'password', 'autocomplete="new-password"'),
+      code: field('code', 'Code', 'text', 'inputmode="numeric" maxlength="6" class="code-input" placeholder="000000" autocomplete="one-time-code"'),
+      forgot: field('email', 'Email', 'email', 'autocomplete="email"'),
+      reset: field('code', 'Code from the email', 'text', 'inputmode="numeric" maxlength="6" class="code-input" placeholder="000000"') + field('password', 'New password', 'password', 'minlength="8" autocomplete="new-password" placeholder="At least 8 characters"')
+    }[mode];
+    const btn = { login: 'Sign in', signup: 'Create account', code: 'Confirm', forgot: 'Send code', reset: 'Save new password' }[mode];
     el.innerHTML = `
       <div class="auth-card">
         <img src="logo.png" alt="" class="auth-logo">
-        <h1>${mode === 'login' ? 'Welcome back' : 'Create your account'}</h1>
-        <p class="sub">${mode === 'login' ? 'Sign in to Flux' : 'Free account · Premium is optional'}</p>
-        <div class="auth-tabs"><button data-m="login" class="${mode === 'login' ? 'on' : ''}">Sign in</button><button data-m="signup" class="${mode === 'signup' ? 'on' : ''}">Create account</button></div>
-        <form autocomplete="on">
-          <label>Email<input type="email" name="email" required autocomplete="email" placeholder="you@example.com"></label>
-          <label>Password<input type="password" name="password" required minlength="${mode === 'signup' ? 8 : 1}" autocomplete="${mode === 'login' ? 'current-password' : 'new-password'}" placeholder="${mode === 'signup' ? 'At least 8 characters' : ''}"></label>
-          ${mode === 'signup' ? '<label>Repeat password<input type="password" name="password2" required autocomplete="new-password"></label>' : ''}
-          <div class="auth-msg ${err ? 'err' : ''}">${msg || ''}</div>
-          <button class="btn primary auth-go" type="submit">${mode === 'login' ? 'Sign in' : 'Create account'}</button>
+        <h1>${h}</h1>
+        <p class="sub">${sub || 'We sent a 6-digit code to <b>' + email.replace(/</g, '&lt;') + '</b>'}</p>
+        ${mode === 'login' || mode === 'signup' ? `<div class="auth-tabs"><button data-m="login" class="${mode === 'login' ? 'on' : ''}">Sign in</button><button data-m="signup" class="${mode === 'signup' ? 'on' : ''}">Create account</button></div>` : '<div style="height:14px"></div>'}
+        <form autocomplete="on">${body}
+          <div class="auth-msg ${err ? 'err' : ''}"></div>
+          <button class="btn primary auth-go" type="submit">${btn}</button>
         </form>
-        ${mode === 'login' ? '<p class="hint">Forgot your password? Email the Flux owner from your account email and they can reset it.</p>' : ''}
+        <div class="auth-links">
+          ${mode === 'login' ? '<a href="#" data-go="forgot">Forgot password?</a>' : ''}
+          ${mode === 'code' ? '<a href="#" data-go="resend">Send the code again</a><a href="#" data-go="login">Back</a>' : ''}
+          ${mode === 'forgot' || mode === 'reset' ? '<a href="#" data-go="login">Back to sign in</a>' : ''}
+          ${mode === 'code' || mode === 'reset' ? '<span>Can’t find it? Check Spam.</span>' : ''}
+        </div>
         <button class="auth-quit" data-a="quit">Exit Flux</button>
       </div>`;
-    $$('.auth-tabs button', el).forEach((b) => b.onclick = () => { mode = b.dataset.m; draw(); });
+    $('.auth-msg', el).textContent = msg;
+    $$('.auth-tabs button', el).forEach((b) => b.onclick = () => { mode = b.dataset.m; msg = ''; draw(); });
+    $$('[data-go]', el).forEach((a) => a.onclick = async (e) => {
+      e.preventDefault();
+      if (a.dataset.go === 'resend') { await apiCall('resend', { email }); msg = 'New code sent (you can ask once a minute).'; err = false; return draw(); }
+      mode = a.dataset.go; msg = ''; draw();
+    });
     $('[data-a=quit]', el).onclick = () => api && api.quit ? api.quit() : null;
     const f = $('form', el);
-    setTimeout(() => f.email.focus(), 30);
+    if (f.email && email) f.email.value = email;
+    setTimeout(() => (f.code || f.email).focus(), 30);
     f.onsubmit = async (e) => {
       e.preventDefault();
-      const email = f.email.value.trim(), password = f.password.value;
-      if (mode === 'signup' && password !== f.password2.value) return draw('The two passwords are not the same.', true);
+      if (f.email) email = f.email.value.trim();
+      if (mode === 'signup' && f.password.value !== f.password2.value) { msg = 'The two passwords are not the same.'; err = true; return draw(); }
       const go = $('.auth-go', el); go.disabled = true; go.textContent = 'Please wait…';
-      const r = await apiCall(mode, { email, password });
-      if (r.error) { draw(r.error, true); f.email.value = email; return; }
-      storeAccount(r.token, r.account);
-      el.remove();
-      document.body.classList.remove('needs-auth');
-      toast(mode === 'signup' ? 'Account created - welcome to Flux!' : 'Signed in as ' + r.account.email);
+      const payload = { email, password: f.password && f.password.value, code: f.code && f.code.value };
+      const path = { login: 'login', signup: 'signup', code: 'verify', forgot: 'forgot', reset: 'reset' }[mode];
+      const r = await apiCall(path, payload);
+      if (r.token) return done(r, mode === 'code' ? 'Account confirmed - welcome to Flux!' : mode === 'reset' ? 'Password changed - you’re signed in' : 'Signed in as ' + r.account.email);
+      if (r.needCode || (r.status === 403 && mode === 'login')) { mode = 'code'; msg = ''; err = false; return draw(); }
+      if (mode === 'forgot' && !r.error) { mode = 'reset'; msg = ''; err = false; return draw(); }
+      msg = r.error || 'Something went wrong. Try again.'; err = true; draw();
     };
   };
-  document.body.classList.add('needs-auth');
-  draw(note);
+  draw();
 }
 
 /* ---------------- account button + window ---------------- */

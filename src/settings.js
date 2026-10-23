@@ -313,8 +313,9 @@ function settingsAi(body) {
 }
 function settingsAbout(body) {
   body.innerHTML = `<h3>About Flux</h3>
-    <div style="display:flex;gap:14px;align-items:center;margin-bottom:14px"><img src="logo.png" style="width:56px;height:56px;border-radius:14px"><div><b style="font-size:16px">Flux 2.0</b><br><small style="color:var(--muted)">A simple, friendly video editor</small></div></div>
+    <div style="display:flex;gap:14px;align-items:center;margin-bottom:14px"><img src="logo.png" style="width:56px;height:56px;border-radius:14px"><div><b style="font-size:16px" class="about-ver">Flux</b><br><small style="color:var(--muted)">A simple, friendly video editor</small></div></div>
     <p class="sub">Projects are saved automatically on this computer. Music from the Music tab comes from Kevin MacLeod (incompetech.com, CC BY 4.0) and the Internet Archive. Check each song's license and add the credit when it asks for one.</p>`;
+  if (api && api.appVersion) api.appVersion().then((v) => { const e = $('.about-ver', body); if (e) e.textContent = 'Flux ' + v; });
 }
 
 /* ---------- Full screen ---------- */

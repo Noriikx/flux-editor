@@ -32,7 +32,7 @@
 body { background: var(--ink); color: var(--text); font: 16px/1.6 var(--f-body); margin: 0; -webkit-font-smoothing: antialiased; }
 body::before { content: ""; position: fixed; inset: 0 0 auto; height: env(safe-area-inset-top, 0px); z-index: 10; background: var(--ink); }
 a { color: inherit; }
-img { max-width: 100%; display: block; }
+img { max-width: 100%; height: auto; display: block; }
 .wrap { max-width: 1180px; margin: 0 auto; padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); }
 h1, h2, h3 { font-family: var(--f-display); text-wrap: balance; margin: 0; letter-spacing: -0.02em; }
 :focus-visible { outline: 2px solid var(--lav); outline-offset: 3px; border-radius: 6px; }
@@ -54,7 +54,7 @@ h1, h2, h3 { font-family: var(--f-display); text-wrap: balance; margin: 0; lette
 
 /* hero */
 .hero { padding-block: 72px 28px; }
-.hero-grid { display: grid; grid-template-columns: 1.05fr 1fr; gap: 48px; align-items: center; }
+.hero-grid { display: grid; grid-template-columns: .9fr 1.25fr; gap: 44px; align-items: center; }
 .eyebrow { font: 600 12.5px var(--f-mono); color: var(--lav); letter-spacing: .08em; text-transform: uppercase; display: inline-flex; gap: 10px; align-items: center; }
 .eyebrow i { width: 8px; height: 8px; border-radius: 50%; background: #ff4d6d; box-shadow: 0 0 10px #ff4d6d; }
 .hero h1 { font-size: clamp(42px, 6.4vw, 78px); line-height: .98; font-weight: 800; margin: 18px 0 20px; }
@@ -66,7 +66,7 @@ h1, h2, h3 { font-family: var(--f-display); text-wrap: balance; margin: 0; lette
 .mac-pick { display: flex; gap: 8px; margin-top: 10px; flex-wrap: wrap; }
 .mac-pick a { font-size: 13px; color: var(--lav); }
 .hero-shot { position: relative; }
-.hero-shot img { border-radius: 14px; border: 1px solid var(--line); box-shadow: 0 40px 90px -30px rgba(108,75,255,.55), 0 20px 50px rgba(0,0,0,.6); }
+.hero-shot img { width: 100%; aspect-ratio: 1600 / 940; object-fit: cover; border-radius: 14px; border: 1px solid var(--line); box-shadow: 0 40px 90px -30px rgba(108,75,255,.55), 0 20px 50px rgba(0,0,0,.6); }
 .hero-shot .tag { position: absolute; left: -14px; bottom: 28px; background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 10px 14px; font-size: 13px; display: flex; gap: 10px; align-items: center; box-shadow: 0 14px 30px rgba(0,0,0,.5); }
 .hero-shot .tag b { font-family: var(--f-mono); color: var(--mint); }
 
@@ -91,7 +91,7 @@ section { padding-block: 84px; }
 .feat p { margin: 0; color: var(--muted); font-size: 15px; }
 
 .split { display: grid; grid-template-columns: 1fr 1fr; gap: 40px; align-items: center; }
-.split img { border-radius: 14px; border: 1px solid var(--line); }
+.split img { width: 100%; aspect-ratio: 1600 / 940; object-fit: cover; border-radius: 14px; border: 1px solid var(--line); box-shadow: 0 30px 70px -30px rgba(108,75,255,.45); }
 .checks { list-style: none; padding: 0; margin: 22px 0 0; display: grid; gap: 12px; }
 .checks li { display: flex; gap: 12px; align-items: flex-start; color: var(--muted); }
 .checks li b { color: var(--text); font-weight: 600; }
@@ -258,6 +258,7 @@ footer .wrap { display: flex; justify-content: space-between; gap: 16px; flex-wr
         <details><summary>My Mac says Flux can't be opened.</summary><p>In Finder, right-click Flux in Applications and choose <b>Open</b>, then <b>Open</b> again. You only need to do this once.</p></details>
         <details><summary>What computer do I need?</summary><p>Windows 10 or 11 (64-bit), or macOS 12 or newer. 4 GB of memory works; 8 GB is smoother for HD video. Flux lowers the preview quality automatically on slower laptops - exports always stay full quality.</p></details>
         <details><summary>Do captions work offline?</summary><p>Yes, after a one-time download of the speech model (40-250 MB depending on the accuracy you pick). Your audio never leaves your computer.</p></details>
+        <details><summary>How do I get Premium?</summary><p>Install Flux and make a free account (we email you a code to confirm it). Then click <b>Get Premium</b> and pay with the same email. Premium turns on by itself within a minute, on every computer you sign in to.</p></details>
         <details><summary>Is Premium a subscription?</summary><p>Yes, €4.99 a month. Cancel anytime with the link in your Stripe receipt email - Premium stays on until the paid month ends.</p></details>
       </div>
     </div>

@@ -54,5 +54,6 @@ contextBridge.exposeInMainWorld('flux', {
   licenseVerify: (opts) => ipcRenderer.invoke('license:verify', opts),
   licenseActivate: (key) => ipcRenderer.invoke('license:activate', key),
   licenseValidate: (opts) => ipcRenderer.invoke('license:validate', opts),
+  appVersion: () => ipcRenderer.invoke('app:version'),
   openExternal: (url) => ipcRenderer.invoke('app:openExternal', url)
 });

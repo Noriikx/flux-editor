@@ -1,9 +1,10 @@
 // Flux accounts server (runs on Netlify).
 // Accounts are stored in Netlify Blobs. Premium = active Stripe subscription, or a gift from the admin panel.
-// Only one setting is needed on Netlify: STRIPE_SECRET_KEY (to check subscriptions).
+// Settings on Netlify: STRIPE_SECRET_KEY (check subscriptions), GMAIL_APP_PASSWORD (send email codes).
 import { getStore } from '@netlify/blobs';
 import crypto from 'node:crypto';
 import { promisify } from 'node:util';
+import nodemailer from 'nodemailer';
 
 export const config = { path: '/api/*' };
 
@@ -62,6 +63,35 @@ async function checkPassword(pw, u) {
   const { hash } = await hashPassword(pw, u.salt);
   return crypto.timingSafeEqual(Buffer.from(hash, 'hex'), Buffer.from(u.hash, 'hex'));
 }
+
+
+// ---------- email codes ----------
+const MAIL_FROM = process.env.GMAIL_USER || ADMIN_EMAIL;
+const codeHash = (email, code) => crypto.createHash('sha256').update(email + ':' + code).digest('hex');
+async function sendCode(u, purpose) {
+  if (!process.env.GMAIL_APP_PASSWORD) throw Object.assign(new Error('mail'), { userMsg: 'Email codes are not set up yet. Please try again later.' });
+  if (u.codeSentAt && Date.now() - u.codeSentAt < 60000) return; // max 1 email per minute
+  const code = String(crypto.randomInt(100000, 1000000));
+  u.code = codeHash(u.email, code); u.codeExp = Date.now() + 15 * 60000; u.codeTries = 0; u.codeSentAt = Date.now(); u.codeFor = purpose;
+  await saveUser(u);
+  const t = nodemailer.createTransport({ service: 'gmail', auth: { user: MAIL_FROM, pass: process.env.GMAIL_APP_PASSWORD.replace(/\s/g, '') } });
+  const what = purpose === 'reset' ? 'reset your Flux password' : 'confirm your Flux account';
+  await t.sendMail({
+    from: `"Flux" <${MAIL_FROM}>`, to: u.email,
+    subject: `${code} is your Flux code`,
+    text: `Your code to ${what} is: ${code}\n\nIt works for 15 minutes. If you didn't ask for this, ignore this email.`,
+    html: `<div style="font-family:Segoe UI,Arial,sans-serif;max-width:420px;margin:auto;padding:24px;text-align:center"><h2 style="margin:0 0 8px">Flux</h2><p style="color:#555">Your code to ${what}:</p><div style="font-size:34px;letter-spacing:8px;font-weight:700;background:#f2f0ff;border-radius:12px;padding:16px;margin:16px 0">${code}</div><p style="color:#888;font-size:13px">It works for 15 minutes. If you didn't ask for this, ignore this email.</p></div>`
+  });
+}
+function checkCode(u, code, purpose) {
+  if (!u || !u.code || u.codeFor !== purpose) return 'Ask for a new code.';
+  if (Date.now() > u.codeExp) return 'That code expired. Ask for a new one.';
+  if ((u.codeTries || 0) >= 6) return 'Too many wrong tries. Ask for a new code.';
+  if (codeHash(u.email, String(code || '').trim()) !== u.code) { u.codeTries = (u.codeTries || 0) + 1; return 'Wrong code. Check the email and try again.'; }
+  u.code = null; u.codeExp = 0; u.codeTries = 0; u.codeSentAt = 0;
+  return null;
+}
+const isVerified = (u) => u.verified !== false;
 
 // ---------- Stripe subscription check ----------
 async function stripe(path) {
@@ -124,10 +154,42 @@ export default async (req) => {
       if (!validEmail(email)) return fail('Please enter a real email address.');
       if (pw.length < 8) return fail('Your password needs at least 8 characters.');
       let u = await getUser(email);
-      if (u && u.hash) return fail('There is already an account with this email. Sign in instead.', 409);
-      u = { ...(u || {}), email, createdAt: (u && u.createdAt) || Date.now(), ...(await hashPassword(pw)), lastLogin: Date.now() };
+      if (u && u.hash && isVerified(u)) return fail('There is already an account with this email. Sign in instead.', 409);
+      u = { ...(u || {}), email, createdAt: (u && u.createdAt) || Date.now(), ...(await hashPassword(pw)), verified: false, codeSentAt: 0 };
       await saveUser(u);
-      return json({ token: await makeToken(email), account: await publicUser(u, true) });
+      await sendCode(u, 'verify');
+      return json({ needCode: true, message: 'We emailed a 6-digit code to ' + email + '.' });
+    }
+
+    if (route === 'verify' && req.method === 'POST') {
+      const u = await getUser(norm(body.email));
+      const err = checkCode(u, body.code, 'verify');
+      if (err) { if (u) await saveUser(u); return fail(err); }
+      u.verified = true; u.lastLogin = Date.now();
+      await saveUser(u);
+      return json({ token: await makeToken(u.email), account: await publicUser(u, true) });
+    }
+
+    if (route === 'resend' && req.method === 'POST') {
+      const u = await getUser(norm(body.email));
+      if (u && u.hash && !isVerified(u)) await sendCode(u, 'verify');
+      return json({ ok: true });
+    }
+
+    if (route === 'forgot' && req.method === 'POST') {
+      const u = await getUser(norm(body.email));
+      if (u && u.hash && isVerified(u)) await sendCode(u, 'reset');
+      return json({ ok: true, message: 'If that email has a Flux account, a code is on its way.' });
+    }
+
+    if (route === 'reset' && req.method === 'POST') {
+      const u = await getUser(norm(body.email));
+      if (String(body.password || '').length < 8) return fail('Your new password needs at least 8 characters.');
+      const err = checkCode(u, body.code, 'reset');
+      if (err) { if (u) await saveUser(u); return fail(err); }
+      Object.assign(u, await hashPassword(String(body.password)), { fails: 0, lockUntil: 0, lastLogin: Date.now() });
+      await saveUser(u);
+      return json({ token: await makeToken(u.email), account: await publicUser(u, true) });
     }
 
     if (route === 'login' && req.method === 'POST') {
@@ -141,6 +203,10 @@ export default async (req) => {
         await saveUser(u);
         return fail('Wrong email or password.', 401);
       }
+      if (!isVerified(u)) {
+        await sendCode(u, 'verify');
+        return json({ needCode: true, message: 'Confirm your email first. We sent a code to ' + email + '.' }, 403);
+      }
       u.fails = 0; u.lockUntil = 0; u.lastLogin = Date.now();
       await saveUser(u);
       return json({ token: await makeToken(email), account: await publicUser(u, true) });
@@ -150,7 +216,7 @@ export default async (req) => {
     const email = await readToken(req);
     if (!email) return fail('Please sign in again.', 401);
     const me = await getUser(email);
-    if (!me) return fail('Please sign in again.', 401);
+    if (!me || !isVerified(me)) return fail('Please sign in again.', 401);
 
     if (route === 'me') return json({ account: await publicUser(me, new URL(req.url).searchParams.get('refresh') === '1') });
 
@@ -173,7 +239,7 @@ export default async (req) => {
           const u = await users().get(b.key, { type: 'json' });
           if (!u) continue;
           list.push({
-            email: u.email, createdAt: u.createdAt, lastLogin: u.lastLogin || null, hasPassword: !!u.hash,
+            email: u.email, createdAt: u.createdAt, lastLogin: u.lastLogin || null, hasPassword: !!u.hash && isVerified(u),
             grantUntil: u.grantUntil || 0, subscription: u.stripe ? { active: !!u.stripe.active, until: u.stripe.until || null } : null
           });
         }
@@ -202,6 +268,8 @@ export default async (req) => {
     return fail('Not found.', 404);
   } catch (e) {
     console.error(e);
+    if (e.userMsg) return fail(e.userMsg, 503);
+    if (e.code === 'EAUTH') return fail('The email sender isn\'t working right now. Please try again later.', 503);
     return fail('Something went wrong on the server. Try again.', 500);
   }
 };
