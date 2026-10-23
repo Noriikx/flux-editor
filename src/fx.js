@@ -13,6 +13,7 @@ const EFFECT_TYPES = {
   cctv: { name: 'CCTV', pro: true, params: [['noise', 'Noise', 0, 100, 40], ['lines', 'Scan lines', 0, 100, 50], ['green', 'Green tint', 0, 100, 35]], flags: [['stamp', 'REC & clock', true]] },
   paper: { name: 'Paper edge', pro: true, params: [['rough', 'Roughness', 0, 100, 50], ['border', 'Paper border', 0, 80, 22], ['inset', 'Edge inset', 0, 30, 6]], color: ['paper', 'Paper color', '#f4f1ea'] }
 };
+const FX_EXTRA = {}; // more effects are added by more.js
 const effectsOn = (c) => (c.effects || []).filter((e) => e.on !== false && EFFECT_TYPES[e.type] && (!EFFECT_TYPES[e.type].pro || isPremium()));
 const maskOn = (c) => c.mask && c.mask.shape && c.mask.shape !== 'none' && (c.mask.shape !== 'pen' || (c.mask.points && c.mask.points.length >= 3));
 const needsLayer = (c) => effectsOn(c).length > 0 || maskOn(c);
@@ -21,6 +22,8 @@ function newEffect(type) {
   const t = EFFECT_TYPES[type], e = { id: uid(), type, on: true };
   for (const [k, , , , d] of t.params) e[k] = d;
   if (t.color) e[t.color[0]] = t.color[2];
+  if (t.color2) e[t.color2[0]] = t.color2[2];
+  if (t.choice) e[t.choice[0]] = t.choice[3];
   for (const [k, , d] of t.flags || []) e[k] = d;
   return e;
 }
@@ -190,7 +193,13 @@ function runEffects(c, A, k, local) {
         g.save(); paperPath(g, w, h, inset + border, e.rough * 0.7, seed + 7); g.clip(); g.drawImage(cur, 0, 0); g.restore();
         break;
       }
-      default: continue;
+      default: {
+        const f = FX_EXTRA[e.type];
+        if (!f) continue;
+        B = next();
+        try { f(B.getContext('2d'), cur, e, w, h, k, local); } catch (er) { console.warn('effect', e.type, er); continue; }
+        break;
+      }
     }
     cur = B;
   }
@@ -283,10 +292,17 @@ function fxInspector(body, c) {
     $('[data-a=rm]', card).onclick = () => commit(() => { c.effects = c.effects.filter((x) => x !== fxo); });
     $('[data-a=up]', card).onclick = () => commit(() => { const i = c.effects.indexOf(fxo); if (i > 0) { c.effects.splice(i, 1); c.effects.splice(i - 1, 0, fxo); } });
     for (const [k, label, mn, mx, d] of t.params) slider(card, label, { min: mn, max: mx, get: () => fxo[k], set: (v) => (fxo[k] = v), fmt: (v) => Math.round(v), def: d, live: false });
-    if (t.color) {
-      const row = el('div', 'field'); row.innerHTML = `<label>${t.color[1]}</label><input type="color">`;
-      const ci = $('input', row); ci.value = fxo[t.color[0]] || t.color[2];
-      ci.addEventListener('input', () => { beginEdit(); fxo[t.color[0]] = ci.value; requestDraw(); });
+    if (t.choice) {
+      const [ck, cl, opts] = t.choice;
+      const row = el('div', 'field'); row.innerHTML = '<label></label>'; row.firstChild.textContent = cl;
+      chips(row, opts.map(([v, l]) => ({ label: l, value: v })), fxo[ck], (v) => commit(() => { fxo[ck] = v; }));
+      card.appendChild(row);
+    }
+    for (const col of [t.color, t.color2]) {
+      if (!col) continue;
+      const row = el('div', 'field'); row.innerHTML = `<label>${col[1]}</label><input type="color">`;
+      const ci = $('input', row); ci.value = fxo[col[0]] || col[2];
+      ci.addEventListener('input', () => { beginEdit(); fxo[col[0]] = ci.value; requestDraw(); });
       ci.addEventListener('change', endEdit);
       card.appendChild(row);
     }

@@ -1,11 +1,15 @@
 // Flux - safe bridge between the window and the computer.
 const { contextBridge, ipcRenderer, webUtils } = require('electron');
 
+let mediaBaseCache = null;
+const mediaBase = () => { if (mediaBaseCache === null) { try { mediaBaseCache = ipcRenderer.sendSync('media:base') || ''; } catch { mediaBaseCache = ''; } } return mediaBaseCache; };
 contextBridge.exposeInMainWorld('flux', {
   // media
   openMedia: () => ipcRenderer.invoke('media:open'),
   pathForFile: (file) => { try { return webUtils.getPathForFile(file); } catch { return null; } },
   mediaUrl: (p) => 'flux://app/media/' + encodeURIComponent(p),
+  // for <video>/<audio>: a local address that supports jumping around (seeking)
+  playUrl: (p) => { const base = mediaBase(); return base ? base + encodeURIComponent(p) : 'flux://app/media/' + encodeURIComponent(p); },
   fileExists: (p) => ipcRenderer.invoke('file:exists', p),
   saveMediaFile: (opts) => ipcRenderer.invoke('media:save', opts),
 

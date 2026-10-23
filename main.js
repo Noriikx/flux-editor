@@ -69,6 +69,51 @@ function serveFile(filePath, request) {
   });
 }
 
+// Videos and sounds are played from a tiny private web server on this computer (127.0.0.1 only, secret
+// address) because Chromium can only jump around (seek) inside media that comes over http(s) or file://.
+// Without this, dragging the playhead or jumping in a long video could show a black screen.
+const http = require('http');
+const crypto = require('crypto');
+const mediaToken = crypto.randomBytes(18).toString('hex');
+let mediaPort = 0;
+function startMediaServer() {
+  return new Promise((resolve) => {
+    const srv = http.createServer((req, res) => {
+      const cors = { 'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Headers': 'Range', 'Access-Control-Expose-Headers': 'Content-Range, Content-Length, Accept-Ranges' };
+      if (req.method === 'OPTIONS') { res.writeHead(204, cors); return res.end(); }
+      const prefix = '/' + mediaToken + '/';
+      if (!req.url.startsWith(prefix)) { res.writeHead(403); return res.end(); }
+      let filePath;
+      try { filePath = decodeURIComponent(req.url.slice(prefix.length).split('?')[0]); } catch { res.writeHead(400); return res.end(); }
+      let stat;
+      try { stat = fs.statSync(filePath); if (!stat.isFile()) throw 0; } catch { res.writeHead(404, cors); return res.end(); }
+      const type = MIME[path.extname(filePath).toLowerCase()] || 'application/octet-stream';
+      const range = req.headers.range;
+      let start = 0, end = stat.size - 1, status = 200;
+      if (range) {
+        const m = /bytes=(\d*)-(\d*)/.exec(range);
+        if (m) {
+          if (m[1]) { start = parseInt(m[1], 10); if (m[2]) end = Math.min(parseInt(m[2], 10), stat.size - 1); }
+          else if (m[2]) { start = Math.max(0, stat.size - parseInt(m[2], 10)); }
+          status = 206;
+        }
+      }
+      if (start > end || start >= stat.size) { res.writeHead(416, Object.assign({ 'Content-Range': `bytes */${stat.size}` }, cors)); return res.end(); }
+      const headers = Object.assign({ 'Content-Type': type, 'Accept-Ranges': 'bytes', 'Content-Length': String(end - start + 1), 'Cache-Control': 'no-store' }, cors);
+      if (status === 206) headers['Content-Range'] = `bytes ${start}-${end}/${stat.size}`;
+      res.writeHead(status, headers);
+      if (req.method === 'HEAD') return res.end();
+      const st = fs.createReadStream(filePath, { start, end });
+      st.on('error', () => res.destroy());
+      res.on('close', () => st.destroy());
+      st.pipe(res);
+    });
+    srv.on('error', () => resolve());
+    srv.listen(0, '127.0.0.1', () => { mediaPort = srv.address().port; resolve(); });
+  });
+}
+ipcMain.on('media:base', (e) => { e.returnValue = mediaPort ? `http://127.0.0.1:${mediaPort}/${mediaToken}/` : ''; });
+
 function registerProtocol() {
   const srcDir = path.join(__dirname, 'src');
   protocol.handle('flux', (request) => {
@@ -679,8 +724,9 @@ app.on('second-instance', () => {
   win.show();
   win.focus();
 });
-app.whenReady().then(() => {
+app.whenReady().then(async () => {
   if (!gotLock) return;
+  await startMediaServer();
   // Allow the microphone (for voiceovers) and choosing speakers/headphones
   const allowed = ['media', 'speaker-selection', 'clipboard-sanitized-write', 'fullscreen'];
   session.defaultSession.setPermissionRequestHandler((_wc, permission, cb) => cb(allowed.includes(permission)));

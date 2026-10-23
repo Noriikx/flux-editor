@@ -1,6 +1,17 @@
 /* Flux — changelog. Shown once after an update, and any time from Settings → About. */
 'use strict';
 const CHANGELOG = [
+  { v: '4.7.0', date: '2026-10-24', items: [
+    'Fixed: dragging the playhead now shows the video (no more black screen) - videos can jump to any moment instantly',
+    'Text now goes on Media tracks (like DaVinci) - no separate Text track',
+    'Video and sound are unlinked by default (turn linking back on in Settings → General, or right-click → Link)',
+    'Drag on empty timeline space to box-select clips (Shift adds more). Middle mouse drags the view',
+    'Make any track taller or shorter: drag the bottom edge of its name box',
+    '36 new transitions, 30 new looks and 22 new effects (glow, RGB split, VHS, tilt-shift, duotone, neon edges, kaleidoscope…)',
+    'Library: click to pick items (Shift for several), then press Delete or Backspace to remove them',
+    'Fixed the × and + buttons on library items',
+    'Black video background by default'
+  ] },
   { v: '4.6.0', date: '2026-10-24', items: [
     'Compound clips: select clips (Shift+click), right-click → Make compound clip (Alt+C). Decompose puts them back',
     'Masks: rectangle, circle and pen - with soft edge and invert, drag them right on the video',

@@ -87,7 +87,7 @@ const TEXT_PRESETS = [
 /* ============================ STATE ============================ */
 function defaultTracks() {
   return [
-    { id: 't1', type: 'text', name: 'Text', auto: true, hidden: false, muted: false },
+    { id: 'v3', type: 'video', name: 'Media 3', auto: true, hidden: false, muted: false },
     { id: 'v2', type: 'video', name: 'Media 2', auto: true, hidden: false, muted: false },
     { id: 'v1', type: 'video', name: 'Media 1', auto: true, hidden: false, muted: false },
     { id: 'av', type: 'audio', name: 'Sound 1', auto: true, hidden: false, muted: false },
@@ -125,11 +125,11 @@ const endOf = (c) => c.start + dur(c);
 const projectDuration = () => P.clips.reduce((m, c) => Math.max(m, endOf(c)), 0);
 const refSize = () => ASPECTS[P.aspect] || ASPECTS['16:9'];
 const mediaUrl = (m) => (api ? api.mediaUrl(m.path) : m.path);
-const trackTypeFor = (kind) => (kind === 'audio' ? 'audio' : kind === 'text' ? 'text' : 'video');
+const trackTypeFor = (kind) => (kind === 'audio' ? 'audio' : 'video'); // text goes on Media tracks, like DaVinci
 const isVisual = (c) => c && (c.kind === 'video' || c.kind === 'image' || c.kind === 'compound');
 const hasAudio = (c) => c && (c.kind === 'video' || c.kind === 'audio');
 // The clip whose sound you hear: a video's linked sound clip, or the clip itself.
-function soundTarget(c) { return (c && c.kind === 'video' && typeof partners === 'function' && partners(c).find((x) => x.kind === 'audio')) || c; }
+function soundTarget(c) { return (c && c.kind === 'video' && typeof soundClipOf === 'function' && soundClipOf(c)) || c; }
 
 function fmt(t, withFrames = true) {
   t = Math.max(0, t || 0);
@@ -386,7 +386,8 @@ function probeMedia(m) {
         makeThumb(v, v.videoWidth, v.videoHeight, m).then(() => { v.onerror = null; v.removeAttribute('src'); v.load(); finish(true); });
       };
       v.onerror = () => finish(false);
-      v.src = url;
+      v.crossOrigin = 'anonymous';
+      v.src = api && api.playUrl ? api.playUrl(m.path) : url;
     } else {
       const a = document.createElement('audio');
       a.preload = 'metadata';
@@ -403,7 +404,8 @@ function probeMedia(m) {
         a.currentTime = 1e9;
       };
       a.onerror = () => finish(false);
-      a.src = url;
+      a.crossOrigin = 'anonymous';
+      a.src = api && api.playUrl ? api.playUrl(m.path) : url;
     }
   });
 }
@@ -471,17 +473,20 @@ async function loadPeaks(m) {
 function renderMedia() {
   const grid = $('#mediaGrid');
   grid.innerHTML = '';
+  rt.mediaSel = rt.mediaSel || new Set();
+  for (const id of [...rt.mediaSel]) if (!P.media.some((m) => m.id === id)) rt.mediaSel.delete(id);
   for (const m of P.media) {
-    const item = el('div', `media-item ${m.kind}${m.loading ? ' loading' : ''}${m.missing || m.error ? ' missing' : ''}`);
+    const item = el('div', `media-item ${m.kind}${m.loading ? ' loading' : ''}${m.missing || m.error ? ' missing' : ''}${rt.mediaSel.has(m.id) ? ' picked' : ''}`);
     item.draggable = !m.missing && !m.error && !m.loading;
     item.dataset.id = m.id;
     const thumb = rt.thumbs.get(m.id);
     item.innerHTML = `
-      <div class="thumb" ${thumb ? `style="background-image:url('${thumb}')"` : ''}>${!thumb && !m.loading ? ICON[m.kind] : ''}</div>
-      <span class="kind">${m.tag || m.kind}</span>
-      ${m.kind !== 'image' && m.duration ? `<span class="dur">${fmt(m.duration, false)}</span>` : ''}
-      <button class="remove" data-tip="Remove from library">${ICON.x}</button>
-      <button class="add" data-tip="Add to the end of the timeline">${ICON.plus}</button>
+      <div class="thumb" ${thumb ? `style="background-image:url('${thumb}')"` : ''}>${!thumb && !m.loading ? ICON[m.kind] : ''}
+        <span class="kind">${m.tag || m.kind}</span>
+        ${m.kind !== 'image' && m.duration ? `<span class="dur">${fmt(m.duration, false)}</span>` : ''}
+        <button class="remove" data-tip="Remove from library (or select it and press Delete)">${ICON.x}</button>
+        <button class="add" data-tip="Add to the end of the timeline">${ICON.plus}</button>
+      </div>
       <div class="meta"><div class="name"></div></div>`;
     $('.name', item).textContent = m.missing ? 'Missing: ' + m.name : m.error ? "Can't play: " + m.name : m.name;
     $('.name', item).title = m.path;
@@ -492,12 +497,48 @@ function renderMedia() {
     item.addEventListener('dblclick', () => appendMediaToTimeline(m));
     $('.add', item).addEventListener('click', (e) => { e.stopPropagation(); appendMediaToTimeline(m); });
     $('.remove', item).addEventListener('click', (e) => { e.stopPropagation(); removeMedia(m); });
-    item.addEventListener('click', () => { if (m.missing) relinkMedia(m); });
+    item.addEventListener('click', (e) => {
+      if (m.missing) return relinkMedia(m);
+      // click = pick it, Shift/Ctrl+click = pick several; then Delete / Backspace removes them
+      if (isMultiClick(e) || e.ctrlKey || e.shiftKey) { if (rt.mediaSel.has(m.id)) rt.mediaSel.delete(m.id); else rt.mediaSel.add(m.id); }
+      else { rt.mediaSel.clear(); rt.mediaSel.add(m.id); }
+      rt.libFocus = true;
+      $$('.media-item', grid).forEach((x) => x.classList.toggle('picked', rt.mediaSel.has(x.dataset.id)));
+    });
     grid.appendChild(item);
   }
   $('#mediaHint').style.display = P.media.length ? '' : 'none';
 }
 
+document.addEventListener('pointerdown', (e) => {
+  if (e.target.closest && e.target.closest('.media-item')) return;
+  rt.libFocus = false;
+  if (rt.mediaSel && rt.mediaSel.size && e.target.closest && e.target.closest('#mediaGrid, .tab-page[data-page=media]') && !e.target.closest('button')) {
+    rt.mediaSel.clear(); $$('.media-item.picked').forEach((x) => x.classList.remove('picked'));
+  }
+}, true);
+// Delete / Backspace while media in the library is picked
+function removePickedMedia() {
+  const list = P.media.filter((m) => rt.mediaSel && rt.mediaSel.has(m.id));
+  if (!list.length) return false;
+  const ids = new Set(list.map((m) => m.id));
+  const used = P.clips.filter((c) => ids.has(c.mediaId)).length;
+  const doIt = () => {
+    commit(() => { P.clips = P.clips.filter((c) => !ids.has(c.mediaId)); });
+    P.media = P.media.filter((x) => !ids.has(x.id));
+    rt.mediaSel.clear();
+    renderMedia(); updateEmptyState(); markDirty();
+    toast(`Removed ${list.length} item${list.length === 1 ? '' : 's'} from the library`);
+  };
+  if (!used) { doIt(); return true; }
+  const box = modal(`<h2>Remove ${list.length === 1 ? '“<span class="n"></span>”' : list.length + ' items'}?</h2>
+    <p class="sub">Used ${used} time(s) on your timeline. Those clips will be removed too.</p>
+    <div class="footer"><button class="btn ghost" data-a="no">Cancel</button><button class="btn danger" data-a="yes">Remove</button></div>`);
+  const n = $('.n', box); if (n) n.textContent = list[0].name;
+  $('[data-a=no]', box).onclick = closeModal;
+  $('[data-a=yes]', box).onclick = () => { closeModal(); doIt(); };
+  return true;
+}
 function removeMedia(m) {
   const used = P.clips.filter((c) => c.mediaId === m.id).length;
   const doIt = () => {
@@ -553,11 +594,24 @@ function makeMediaClip(m, trackId, start) {
 }
 function makeTextClip(start, textProps = {}) {
   return {
-    id: uid(), trackId: firstTrack('text').id, kind: 'text', start, in: 0, out: 4, speed: 1,
+    id: uid(), trackId: textTrackFor(start, 4).id, kind: 'text', start, in: 0, out: 4, speed: 1,
     fadeIn: 0, fadeOut: 0, opacity: 1, rotation: 0, scale: 1, text: Object.assign({}, DEFAULT_TEXT, textProps)
   };
 }
+// Text goes on the top-most Media track that's free at that time (a new one on top if none is)
+function textTrackFor(start, d, skipId) {
+  const free = (tr) => !tr.locked && !P.clips.some((o) => o.id !== skipId && o.trackId === tr.id && o.start < start + d - 1e-4 && endOf(o) > start + 1e-4);
+  const vids = P.tracks.filter((t) => t.type === 'video');
+  const tr = vids.find(free);
+  if (tr) return tr;
+  const nt = { id: 'v' + uid().slice(0, 4), type: 'video', name: '', auto: true, hidden: false, muted: false, locked: false };
+  const i = P.tracks.findIndex((t) => t.type === 'video');
+  P.tracks.splice(i < 0 ? 0 : i, 0, nt);
+  autoNameTracks();
+  return nt;
+}
 function firstTrack(type) {
+  if (type === 'text') type = 'video';
   if (type === 'video') return getTrack('v1') && getTrack('v1').type === 'video' ? getTrack('v1') : P.tracks.filter((t) => t.type === 'video').pop();
   return P.tracks.find((t) => t.type === type);
 }
@@ -623,9 +677,8 @@ function addMediaAt(m, trackId, start) {
 function addText(props) {
   let c;
   commit(() => {
-    const track = firstTrack('text');
-    c = makeTextClip(0, props);
-    c.trackId = track.id;
+    c = makeTextClip(state.time, props);
+    const track = getTrack(c.trackId);
     c.start = findFreeStart(track.id, state.time, dur(c), c.id);
     P.clips.push(c);
     state.selectedId = c.id;
@@ -731,16 +784,22 @@ function setSpeed(c, speed, _linked) {
 const OLD_AUTO_NAME = /^(Overlay( \d+)?|Main video|Video sound( \d+)?|Voiceover( \d+)?|Audio \d+|Music|Sound FX|Detached audio|Media \d+|Sound \d+|Text( \d+)?)$/;
 function autoNameTracks() {
   const vids = P.tracks.filter((t) => t.type === 'video'), auds = P.tracks.filter((t) => t.type === 'audio'), txt = P.tracks.filter((t) => t.type === 'text');
-  vids.forEach((t, i) => { if (t.auto) t.name = 'Media ' + (vids.length - i); });
+  const av = vids.filter((t) => t.auto);
+  av.forEach((t, i) => { t.name = 'Media ' + (av.length - i); });
   auds.forEach((t, i) => { if (t.auto) t.name = 'Sound ' + (i + 1); });
   let k = 0;
   txt.forEach((t) => { if (t.auto) { k++; t.name = k === 1 ? 'Text' : 'Text ' + k; } });
 }
 function migrateTrackNames() {
   for (const t of P.tracks) if (t.auto == null) t.auto = OLD_AUTO_NAME.test(t.name || '');
+  // text tracks became Media tracks (text sits on Media tracks now)
+  const fix = (tracks) => { for (const t of tracks) if (t.type === 'text') t.type = 'video'; };
+  fix(P.tracks);
+  for (const c of P.clips) if (c.kind === 'compound' && c.sub) fix(c.sub.tracks);
   autoNameTracks();
 }
 function addTrack(type, name) {
+  if (type === 'text') type = 'video';
   let tr;
   commit(() => {
     tr = { id: type[0] + uid().slice(0, 4), type, name: name || '', auto: !name, hidden: false, muted: false, locked: false };
@@ -766,7 +825,7 @@ function audioTrackFreeAt(start, d, preferName) {
 }
 function detachAudio(c = getClip(state.selectedId)) {
   if (!c || c.kind !== 'video') return toast('Select a video clip to detach its sound');
-  if (partners(c).length) return toast('This video\u2019s sound is already on its own track below it');
+  if (soundClipOf(c)) return toast('This video\u2019s sound is already on its own track below it');
   const m0 = getMedia(c.mediaId);
   commit(() => { linkSoundFor(c, m0, true); });
   return;
@@ -1054,10 +1113,13 @@ function getPlayer(c, m) {
   const media = document.createElement(c.kind === 'audio' ? 'audio' : 'video');
   media.preload = 'auto';
   media.playsInline = true;
-  media.src = mediaUrl(m);
-  media.addEventListener('seeked', requestDraw);
-  media.addEventListener('loadeddata', requestDraw);
+  media.crossOrigin = 'anonymous';
+  media.src = api && api.playUrl ? api.playUrl(m.path) : mediaUrl(m);
   p = { el: media, node: null, gain: null };
+  // grab the picture the moment a jump finishes, so dragging the playhead always shows the video (never black)
+  const grab = () => { if (c.kind === 'video' && media.videoWidth) { p.lastAt = 0; keepLastFrame(p, m); } requestDraw(); };
+  media.addEventListener('seeked', grab);
+  media.addEventListener('loadeddata', grab);
   rt.players.set(c.id, p);
   attachAudio(p);
   if (!p.node && typeof settings !== 'undefined' && settings.outputDevice && settings.outputDevice !== 'default' && media.setSinkId) media.setSinkId(settings.outputDevice).catch(() => {});
@@ -1194,7 +1256,7 @@ function syncMedia(L = rt.layout || computeLayout()) {
     const maxSrc = m.duration ? m.duration - 0.03 : Infinity;
     const src = clamp(c.in + (t - s) * c.speed, 0, maxSrc);
     // a video with its sound on a separate (linked) clip never plays its own sound - that would double it
-    const linkedSound = c.kind === 'video' && partners(c).some((x) => x.kind === 'audio');
+    const linkedSound = c.kind === 'video' && !!soundClipOf(c);
     const silent = (track && track.muted) || c.muted || linkedSound || c.disabled;
     let tg = 1; // sound crossfades along with picture transitions
     if (w.tin && t < w.tin.start + w.tin.dur) tg *= clamp((t - w.tin.start) / w.tin.dur, 0, 1);
@@ -1731,7 +1793,10 @@ function renderTrackHeaders() {
   autoNameTracks();
   for (const tr of P.tracks) {
     const h = el('div', 'track-header t-' + tr.type);
-    h.innerHTML = `<span class="t-icon" style="background:${KIND_COLOR[tr.type === 'video' ? 'video' : tr.type]}">${ICON[tr.type]}</span><span class="t-name"></span>`;
+    h.dataset.track = tr.id;
+    if (tr.h) h.style.height = tr.h + 'px';
+    h.innerHTML = `<span class="t-icon" style="background:${KIND_COLOR[tr.type === 'video' ? 'video' : tr.type]}">${ICON[tr.type]}</span><span class="t-name"></span><div class="tr-resize" data-tip="Drag to make this track taller or shorter (double-click to reset)"></div>`;
+    setupTrackResize($('.tr-resize', h), tr);
     $('.t-name', h).textContent = tr.name;
     $('.t-name', h).title = 'Double-click to rename';
     $('.t-name', h).addEventListener('dblclick', () => renameTrack(tr));
@@ -1754,7 +1819,6 @@ function renderTrackHeaders() {
         { label: 'Rename track', fn: () => renameTrack(tr) },
         { label: 'Add media track', fn: () => addTrack('video') },
         { label: 'Add sound track', fn: () => addTrack('audio') },
-        { label: 'Add text track', fn: () => addTrack('text') },
         { label: 'Remove this track', fn: () => removeTrack(tr), danger: true }
       ]);
     });
@@ -1767,12 +1831,36 @@ function renderTrackHeaders() {
     const r = e.currentTarget.getBoundingClientRect();
     contextMenu(r.left, r.bottom + 4, [
       { label: 'Media track (video, photos)', fn: () => addTrack('video') },
-      { label: 'Sound track', fn: () => addTrack('audio') },
-      { label: 'Text track', fn: () => addTrack('text') }
+      { label: 'Sound track', fn: () => addTrack('audio') }
     ]);
   };
   box.appendChild(add);
   box.scrollTop = tlScroll.scrollTop;
+}
+// Drag the bottom edge of a track's name box to make that track taller / shorter (like DaVinci)
+function setupTrackResize(grip, tr) {
+  grip.addEventListener('dblclick', (e) => { e.stopPropagation(); commit(() => { delete tr.h; }); });
+  grip.addEventListener('pointerdown', (e) => {
+    if (e.button !== 0) return;
+    e.preventDefault(); e.stopPropagation();
+    const head = grip.parentElement, lane = tlLanes.querySelector(`.lane[data-track="${tr.id}"]`);
+    const h0 = head.getBoundingClientRect().height, y0 = e.clientY, snap = snapshot();
+    grip.setPointerCapture(e.pointerId);
+    document.body.classList.add('resizing-track');
+    const mv = (ev) => {
+      const h = Math.round(clamp(h0 + ev.clientY - y0, 28, 260));
+      tr.h = h;
+      head.style.height = h + 'px';
+      if (lane) { lane.style.height = h + 'px'; lane.style.setProperty('--lane-h', h + 'px'); }
+    };
+    const up = () => {
+      grip.removeEventListener('pointermove', mv); grip.removeEventListener('pointerup', up);
+      document.body.classList.remove('resizing-track');
+      if (snapshot() !== snap) pushHistory(snap);
+      markDirty(); renderLanes();
+    };
+    grip.addEventListener('pointermove', mv); grip.addEventListener('pointerup', up);
+  });
 }
 function renameTrack(tr) {
   const box = modal(`<h2>Rename track</h2><div class="row" style="margin-top:14px"><input class="num-input" style="font-family:var(--font);font-size:13px;height:36px" maxlength="30"></div>
@@ -1925,6 +2013,7 @@ function renderLanes() {
   const z = state.zoom;
   for (const tr of P.tracks) {
     const lane = el('div', 'lane t-' + tr.type + (tr.hidden ? ' hidden-track' : '') + (tr.locked ? ' locked-track' : ''));
+    if (tr.h) { lane.style.height = tr.h + 'px'; lane.style.setProperty('--lane-h', tr.h + 'px'); }
     lane.dataset.track = tr.id;
     for (const c of P.clips.filter((x) => x.trackId === tr.id)) {
       const m = getMedia(c.mediaId);
@@ -2008,7 +2097,7 @@ function renderLanes() {
       ce.appendChild(label);
       const badges = [];
       if (c.speed !== 1) badges.push(c.speed + 'x');
-      if (c.muted && !(c.kind === 'video' && c.linkId)) badges.push('MUTED');
+      if (c.muted && !(c.kind === 'video' && (c.linkId || soundClipOf(c)))) badges.push('MUTED');
       if (c.filter && c.filter !== 'none') badges.push(filterById(c.filter).name.toUpperCase());
       if (badges.length && w > 60) {
         const b = el('div', 'badges');
@@ -2183,6 +2272,7 @@ function trySnap(values, excludeId) {
     h.addEventListener('pointerup', up);
   });
 
+  tlLanes.addEventListener('mousedown', (e) => { if (e.button === 1) e.preventDefault(); }); // no auto-scroll on middle click
   tlLanes.addEventListener('pointerdown', (e) => {
     if (e.button === 2) return;
     const vline = e.target.closest('.vol-line');
@@ -2224,11 +2314,20 @@ function trySnap(values, excludeId) {
     }
     const clipEl = e.target.closest('.clip');
     if (!clipEl) {
-      // empty space: drag to move the view around (the playhead only moves from the ruler or its handle)
-      select(null);
       tlLanes.setPointerCapture(e.pointerId);
-      drag = { mode: 'pan', x0: e.clientX, y0: e.clientY, sl: tlScroll.scrollLeft, st: tlScroll.scrollTop };
-      tlLanes.classList.add('panning');
+      if (e.button === 1) {
+        // middle mouse: drag to move the view around
+        e.preventDefault();
+        drag = { mode: 'pan', x0: e.clientX, y0: e.clientY, sl: tlScroll.scrollLeft, st: tlScroll.scrollTop };
+        tlLanes.classList.add('panning');
+        return;
+      }
+      // empty space: drag a box to select clips (hold Shift to add to the selection)
+      const add = isMultiClick(e);
+      if (!add) select(null);
+      const box = el('div', 'tl-marquee');
+      document.body.appendChild(box);
+      drag = { mode: 'box', x0: e.clientX, y0: e.clientY, box, add, base: add ? selectedClips().map((x) => x.id) : [], moved: false };
       return;
     }
     const c = getClip(clipEl.dataset.id);
@@ -2264,6 +2363,23 @@ function trySnap(values, excludeId) {
   tlLanes.addEventListener('pointermove', (e) => {
     if (!drag) return;
     if (drag.mode === 'scrub') { scrub(e); return; }
+    if (drag.mode === 'box') {
+      const x1 = Math.min(drag.x0, e.clientX), x2 = Math.max(drag.x0, e.clientX), y1 = Math.min(drag.y0, e.clientY), y2 = Math.max(drag.y0, e.clientY);
+      if (!drag.moved && x2 - x1 < 4 && y2 - y1 < 4) return;
+      drag.moved = true;
+      Object.assign(drag.box.style, { left: x1 + 'px', top: y1 + 'px', width: x2 - x1 + 'px', height: y2 - y1 + 'px' });
+      const hits = new Set(drag.base);
+      for (const ce of tlLanes.querySelectorAll('.clip')) {
+        const r = ce.getBoundingClientRect();
+        if (r.right > x1 && r.left < x2 && r.bottom > y1 && r.top < y2) hits.add(ce.dataset.id);
+      }
+      drag.hits = hits;
+      for (const ce of tlLanes.querySelectorAll('.clip')) ce.classList.toggle('box-hit', hits.has(ce.dataset.id));
+      // scroll when the box reaches the edge
+      const sr = tlScroll.getBoundingClientRect();
+      if (e.clientX > sr.right - 30) tlScroll.scrollLeft += 18; else if (e.clientX < sr.left + 30) tlScroll.scrollLeft -= 18;
+      return;
+    }
     if (drag.mode === 'pan') {
       tlScroll.scrollLeft = drag.sl - (e.clientX - drag.x0);
       tlScroll.scrollTop = drag.st - (e.clientY - drag.y0);
@@ -2377,6 +2493,17 @@ function trySnap(values, excludeId) {
     if (!drag) return;
     showSnap(null);
     if (drag.mode === 'pan') { tlLanes.classList.remove('panning'); drag = null; return; }
+    if (drag.mode === 'box') {
+      drag.box.remove();
+      const ids = [...(drag.hits || [])].filter((id) => getClip(id));
+      drag = null;
+      if (!ids.length) { renderLanes(); return; }
+      state.selectedId = ids[0];
+      state.multi = new Set(ids.slice(1));
+      renderLanes(); renderInspector();
+      if (ids.length > 1) toast(`${ids.length} clips selected - drag one to move them all, Delete to remove`, { duration: 1800 });
+      return;
+    }
     if (drag.mode === 'fadeIn' || drag.mode === 'fadeOut' || drag.mode === 'transDur') {
       if (drag.moved && snapshot() !== drag.snap) pushHistory(drag.snap);
       const c = drag.c, mode = drag.mode, key = drag.key, moved = drag.moved;
@@ -2457,8 +2584,9 @@ function trySnap(values, excludeId) {
       soundSource(c) ? { label: 'Bleep swear words…', pro: true, fn: () => openBleepDialog(c) } : null,
       soundSource(c) ? { label: 'Remove silences', pro: true, fn: () => removeSilences(c) } : null,
       hasAudio(c) ? { label: soundTarget(c).muted ? 'Unmute' : 'Mute', fn: () => commit(() => { const t = soundTarget(c); t.muted = !t.muted; }) } : null,
-      c.kind === 'video' && !partners(c).length ? { label: 'Separate sound', fn: () => detachAudio(c) } : null,
+      c.kind === 'video' && !soundClipOf(c) ? { label: 'Separate sound', fn: () => detachAudio(c) } : null,
       partners(c).length ? { label: 'Unlink video & sound', fn: () => commit(() => { for (const p of partners(c)) p.linkId = null; c.linkId = null; }) } : null,
+      !c.linkId && (soundClipOf(c) || (c.kind === 'audio' && c.videoId && getClip(c.videoId))) ? { label: 'Link video & sound', fn: () => commit(() => { const v = c.kind === 'video' ? c : getClip(c.videoId), a = c.kind === 'video' ? soundClipOf(c) : c; const l = uid(); v.linkId = l; a.linkId = l; }) } : null,
       isVisual(c) ? { label: 'Add keyframe here', fn: () => { seek(clamp(t, c.start, endOf(c))); addKeyframeAll(c); } } : null,
       c.kind === 'video' ? { label: 'Freeze frame here', fn: () => { seek(clamp(t, c.start, endOf(c) - 0.05)); freezeFrame(); } } : null,
       isVisual(c) ? { label: 'Add transition…', fn: () => openTransitionsFor(c) } : null,
@@ -2821,11 +2949,11 @@ function renderInspector() {
     chips(s, [0.25, 0.5, 1, 2, 4, 10].map((v) => ({ label: v + 'x', value: v })), c.speed, (v) => commit(() => setSpeed(c, v)));
     slider(s, 'Custom', { min: 0.1, max: 10, step: 0.05, get: () => c.speed, set: (v) => setSpeed(c, v), fmt: (v) => v.toFixed(2) + 'x', def: 1 });
 
-    if (c.kind === 'video' && partners(c).length) {
+    if (c.kind === 'video' && soundClipOf(c)) {
       const a0 = section(body, 'Sound');
       const b0 = el('button', 'btn', 'Edit the sound clip below ↓');
       b0.style.cssText = 'width:100%;justify-content:center';
-      b0.onclick = () => select(partners(c)[0].id);
+      b0.onclick = () => select(soundClipOf(c).id);
       a0.appendChild(b0);
     } else {
     const a = section(body, 'Sound', () => Object.assign(c, { volume: 1, muted: false }));
@@ -3010,11 +3138,11 @@ function renderProjectPanel(body) {
   for (const col of ['#000000', '#ffffff', '#16161f', '#2b1f5c', '#0f3d3a', '#5c1f2e']) {
     const b = el('button', 'swatch-btn' + (P.background === col ? ' active' : ''));
     b.style.background = col;
-    b.onclick = () => commit(() => { P.background = col; });
+    b.onclick = () => commit(() => { P.background = col; P.bgChosen = true; });
     row.appendChild(b);
   }
   const ci = el('input'); ci.type = 'color'; ci.value = P.background;
-  ci.addEventListener('input', () => { beginEdit(); P.background = ci.value; requestDraw(); });
+  ci.addEventListener('input', () => { beginEdit(); P.background = ci.value; P.bgChosen = true; requestDraw(); });
   ci.addEventListener('change', () => { endEdit(); renderInspector(); });
   row.appendChild(ci);
   bg.appendChild(row);
@@ -3166,7 +3294,7 @@ function renderTransitionGrid() {
 /* ============================ PROJECT DATA ============================ */
 function serializeProject() {
   return {
-    version: 2, id: P.id, name: P.name, aspect: P.aspect, background: P.background, tracks: P.tracks, clips: P.clips,
+    version: 2, id: P.id, name: P.name, aspect: P.aspect, background: P.background, bgChosen: P.bgChosen, tracks: P.tracks, clips: P.clips,
     markers: P.markers || [], output: P.output, createdAt: P.createdAt, updatedAt: P.updatedAt, duration: projectDuration(),
     media: P.media.map(({ id, path, name, kind, duration, width, height, credit, tag, hasAudio, words, wordsKey }) => ({ id, path, name, kind, duration, width, height, credit, tag, hasAudio, words, wordsKey }))
   };
@@ -3186,6 +3314,7 @@ async function loadProjectData(data) {
   P.media = Array.isArray(P.media) ? P.media : [];
   P.markers = Array.isArray(P.markers) ? P.markers : [];
   P.output = P.output || { res: 1080, fps: 30 };
+  if (!P.background || (P.background === '#16161f' && !P.bgChosen)) P.background = '#000000'; // black by default
   FPS = P.output.fps || 30;
   ensureSoundTrack();
   migrateTrackNames();

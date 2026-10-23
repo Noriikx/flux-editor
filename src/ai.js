@@ -89,7 +89,7 @@ const LANGS = [['auto', 'Detect automatically'], ['english', 'English'], ['roman
 const ASR_MODELS = [['tiny', 'Fast', '~40 MB · best for slow computers'], ['base', 'Balanced', '~80 MB'], ['small', 'Most accurate', '~250 MB · slower']];
 function soundSource(c) {
   if (!c) return null;
-  if (c.kind === 'video' && partners(c).length) return partners(c).find((p) => p.kind === 'audio') || c;
+  if (c.kind === 'video' && soundClipOf(c)) return soundClipOf(c);
   return hasAudio(c) ? c : null;
 }
 function pickSoundClip() {
@@ -148,8 +148,8 @@ let capOpts = { style: 'classic', font: '', size: 0, pos: 0.82, perLine: 5, uppe
 try { Object.assign(capOpts, JSON.parse(localStorage.getItem('flux.capOpts') || '{}')); } catch {}
 
 function captionTrack() {
-  let tr = P.tracks.find((t) => t.type === 'text' && t.name === 'Captions');
-  if (!tr) { tr = { id: 'cap' + uid().slice(0, 4), type: 'text', name: 'Captions', auto: false, hidden: false, muted: false }; P.tracks.unshift(tr); }
+  let tr = P.tracks.find((t) => t.type !== 'audio' && t.name === 'Captions');
+  if (!tr) { tr = { id: 'cap' + uid().slice(0, 4), type: 'video', name: 'Captions', auto: false, hidden: false, muted: false }; P.tracks.unshift(tr); }
   return tr;
 }
 function captionProps() {
@@ -664,10 +664,11 @@ async function runAiActions(actions) {
           const props = Object.assign({}, JSON.parse(JSON.stringify(pre.t)), { content: a.text || 'Title' });
           if (a.position) props.y = { top: 0.15, middle: 0.5, bottom: 0.85 }[a.position] || props.y;
           commit(() => {
-            const tc = makeTextClip(0, props);
-            tc.out = Math.max(0.5, +a.duration || 3);
-            tc.trackId = P.tracks.find((t) => t.type === 'text' && t.name !== 'Captions').id;
-            tc.start = findFreeStart(tc.trackId, Math.max(0, +a.start || 0), dur(tc), tc.id);
+            const st = Math.max(0, +a.start || 0), d = Math.max(0.5, +a.duration || 3);
+            const tc = makeTextClip(st, props);
+            tc.out = d;
+            tc.trackId = textTrackFor(st, d, tc.id).id;
+            tc.start = findFreeStart(tc.trackId, st, d, tc.id);
             P.clips.push(tc);
           });
           done.push(`Added text “${props.content}”`); break;

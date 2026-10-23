@@ -6,6 +6,7 @@
 const DEFAULT_SETTINGS = {
   keybinds: {},              // filled from ACTIONS defaults
   startFullscreen: true,
+  linkAV: false,             // keep a video and its sound linked (move/trim together)
   autoAspect: true,
   transitionDur: 0.6,
   inputDevice: 'default',
@@ -37,7 +38,7 @@ const ACTIONS = [
   { id: 'clearRange', label: 'Clear In / Out', group: 'Playback', keys: ['Alt+X'], run: () => clearRange() },
 
   { id: 'split', label: 'Split clip', group: 'Editing', keys: ['S', 'Ctrl+B'], run: () => splitAt() },
-  { id: 'delete', label: 'Delete clip', group: 'Editing', keys: ['Delete', 'Backspace'], run: () => deleteSelected() },
+  { id: 'delete', label: 'Delete clip (or picked library items)', group: 'Editing', keys: ['Delete', 'Backspace'], run: () => { if (rt.libFocus && removePickedMedia()) return; deleteSelected(); } },
   { id: 'rippleDelete', label: 'Delete & close gap', group: 'Editing', keys: ['Shift+Delete', 'Shift+Backspace'], run: () => deleteSelected(true) },
   { id: 'rippleTrimStart', label: 'Ripple trim start to playhead (cut the left part)', group: 'Editing', keys: ['Q'], run: () => trimToPlayhead('start', true) },
   { id: 'rippleTrimEnd', label: 'Ripple trim end to playhead (cut the right part)', group: 'Editing', keys: ['W'], run: () => trimToPlayhead('end', true) },
@@ -177,6 +178,8 @@ function settingsGeneral(body) {
     () => settings.startFullscreen, (v) => { settings.startFullscreen = v; });
   toggleRow(body, 'Match video shape automatically', 'When the first clip is vertical or square, switch the project to match.',
     () => settings.autoAspect, (v) => { settings.autoAspect = v; });
+  toggleRow(body, 'Keep video & sound linked', 'When on, a video and its sound move and trim together. Off: you can move them separately (right-click a clip to link).',
+    () => settings.linkAV, (v) => { settings.linkAV = v; });
   toggleRow(body, 'Show tips', 'Show the “How Flux works” guide when you open a new project.',
     () => settings.showTips, (v) => { settings.showTips = v; });
   const r = el('div', 'set-row');

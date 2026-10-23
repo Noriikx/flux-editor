@@ -18,9 +18,9 @@ const PREMIUM_FEATURES = [
   ['Karaoke & word-pop captions', 'Animated caption styles that highlight each word as it\u2019s said'],
   ['4K export', 'Export in Ultra HD (2160p)'],
   ['Green screen', 'Remove a green or blue background (chroma key)'],
-  ['Pro transitions', 'Glitch, pixelate, whip pan, flip, zoom blur, clock and blinds'],
+  ['Pro transitions', '35+ extra: glitch, whip pan, heart, hexagon, wave, spiral, TV switch and more'],
   ['Film effects', 'Film grain and old-film looks'],
-  ['Pro effects', 'Lens, directional, radial & zoom blur, Ultra sharpen, CCTV and Paper edge'],
+  ['Pro effects', 'Lens & zoom blur, Ultra sharpen, CCTV, VHS, tilt-shift, duotone, neon edges, kaleidoscope and more'],
   ['Pro audio', 'Fairlight EQ, De-esser and Noise reduction']
 ];
 function isPremium() {
@@ -65,6 +65,11 @@ function updatePremiumBadge() {
 function partners(c) {
   return c && c.linkId ? P.clips.filter((o) => o.linkId === c.linkId && o.id !== c.id) : [];
 }
+// The sound clip that came out of this video (linked or not)
+function soundClipOf(c) {
+  if (!c || c.kind !== 'video') return null;
+  return partners(c).find((x) => x.kind === 'audio') || (c.soundId ? P.clips.find((x) => x.id === c.soundId && x.kind === 'audio') : null) || null;
+}
 function ensureSoundTrack() {
   let tr = P.tracks.find((t) => t.type === 'audio' && (t.id === 'av' || t.name === 'Video sound'));
   if (tr) return tr;
@@ -96,6 +101,9 @@ function linkSoundFor(c, m, force) {
   };
   c.linkId = link;
   c.muted = true;
+  c.soundId = a.id; a.videoId = c.id;
+  // unlinked by default (move them separately); turn on "Keep video & sound linked" in Settings to link them
+  if (!(typeof settings !== 'undefined' && settings.linkAV)) { c.linkId = null; a.linkId = null; }
   P.clips.push(a);
   if (!rt.peaks.has(m.id)) loadPeaks(m);
   return a;

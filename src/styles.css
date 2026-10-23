@@ -176,7 +176,7 @@ select option { background: #15151e; }
 
 /* ---------- Viewer ---------- */
 #viewer { display: flex; flex-direction: column; background: #0a0a0f; }
-#stage { flex: 1; position: relative; display: grid; place-items: center; min-height: 0; padding: 16px; overflow: hidden; }
+#stage { background: #000; flex: 1; position: relative; display: grid; place-items: center; min-height: 0; padding: 16px; overflow: hidden; }
 #canvasWrap { position: relative; box-shadow: 0 10px 40px rgba(0,0,0,.6); background: #000; line-height: 0; }
 #previewCanvas { display: block; width: 100%; height: 100%; }
 #overlayCanvas { position: absolute; inset: 0; width: 100%; height: 100%; cursor: default; }
@@ -982,3 +982,19 @@ body.recording #playhead::before { background: #ff4d6d; box-shadow: 0 0 8px #ff4
 .cl-head small { color: var(--muted); }
 .cl-rel ul { margin: 0; padding-left: 18px; }
 .cl-rel li { font-size: 13px; line-height: 1.5; color: var(--text-2, #cfcfe0); margin: 2px 0; }
+/* box select on the timeline */
+.tl-marquee { position: fixed; z-index: 60; border: 1px solid var(--accent); background: rgba(141,125,255,.12); border-radius: 3px; pointer-events: none; }
+.clip.box-hit { outline: 2px solid var(--accent-2); outline-offset: -2px; }
+/* track height grip */
+.track-header { position: relative; }
+.tr-resize { position: absolute; left: 0; right: 0; bottom: -3px; height: 7px; cursor: ns-resize; z-index: 3; }
+.tr-resize:hover, .resizing-track .tr-resize { background: linear-gradient(transparent 2px, var(--accent) 2px, var(--accent) 4px, transparent 4px); }
+body.resizing-track, body.resizing-track * { cursor: ns-resize !important; }
+/* media pool: buttons sit inside the picture, picked items get an outline */
+.media-item .thumb { position: relative; }
+.media-item .remove, .media-item .add { bottom: auto; }
+.media-item .remove { left: 5px; top: 5px; width: 20px; height: 20px; }
+.media-item .add { right: 5px; bottom: 5px; top: auto; left: auto; width: 24px; height: 24px; }
+.media-item .dur { right: 5px; top: 5px; }
+.media-item.picked { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent) inset, 0 0 0 2px rgba(141,125,255,.25); }
+.media-item.picked .meta { background: rgba(141,125,255,.14); }
