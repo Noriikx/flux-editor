@@ -23,10 +23,10 @@ function clipTools(c) {
   const vis = c && isVisual(c), snd = c && soundSource(c);
   const inside = c && state.time >= c.start && state.time <= endOf(c);
   return [
-    { id: 'key', tip: 'Add keyframe at the playhead (animate size, position, rotation, opacity)', pro: true, on: vis && inside, fn: () => { addKeyframeAll(c); renderInspector(); } },
+    { id: 'key', tip: 'Add keyframe at the playhead (animate size, position, rotation, opacity)', on: vis && inside, fn: () => { addKeyframeAll(c); renderInspector(); } },
     { id: 'kprev', tip: 'Previous keyframe ([)', on: c && c.keys && Object.keys(c.keys).length, fn: () => jumpKeyframe(c, -1) },
     { id: 'knext', tip: 'Next keyframe (])', on: c && c.keys && Object.keys(c.keys).length, fn: () => jumpKeyframe(c, 1) },
-    { id: 'graph', tip: 'Graph editor - shape the animation curves (G)', pro: true, on: !!c, fn: () => toggleGraphEditor() },
+    { id: 'graph', tip: 'Graph editor - shape the animation curves (G)', on: !!c, fn: () => toggleGraphEditor() },
     { id: 'split', tip: 'Split at the playhead (S)', on: c && inside, fn: () => splitAt(state.time) },
     { id: 'speed', tip: 'Change speed (up to 10x)', on: c && (c.kind === 'video' || c.kind === 'audio'), fn: (b) => speedMenu(c, b) },
     { id: 'freeze', tip: 'Freeze this frame for 2 seconds', on: c && c.kind === 'video' && inside, fn: () => freezeFrame() },

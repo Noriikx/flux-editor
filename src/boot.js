@@ -20,6 +20,7 @@
   updatePremiumBadge();
   setupAccount();
   setupUpdates();
+  setupChangelog();
   if (api && api.setStartFullscreen) api.setStartFullscreen(!!settings.startFullscreen);
   if (api && api.isFullscreen) api.isFullscreen().then((fs) => document.body.classList.toggle('is-fullscreen', !!fs));
   goHome();

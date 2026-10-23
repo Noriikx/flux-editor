@@ -1,0 +1,51 @@
+/* Flux — changelog. Shown once after an update, and any time from Settings → About. */
+'use strict';
+const CHANGELOG = [
+  { v: '4.6.0', date: '2026-10-24', items: [
+    'Compound clips: select clips (Shift+click), right-click → Make compound clip (Alt+C). Decompose puts them back',
+    'Masks: rectangle, circle and pen - with soft edge and invert, drag them right on the video',
+    'New effects: Gaussian, Lens, Directional, Radial, Mosaic and Zoom blur, Ultra sharpen, CCTV, Paper edge and Drop shadow',
+    'Audio effects: Fairlight EQ, De-esser, Noise reduction, Delay, Limiter and Reverb',
+    'Fade handles: drag the little handle at the top corner of any clip to fade in / out (like DaVinci)',
+    'Transitions: drag their edges to make them longer or shorter, click × to delete, or right-click for more',
+    'Playhead snaps to cuts when it gets close (hold Alt to stop snapping)',
+    'Dragging the playhead plays the video along at the speed you move',
+    'Graph editor: drag the playhead inside it, Shift+click or box-select several keyframes, type exact values, zoom with the wheel',
+    'Shift+click to select several clips or keyframes - change the key in Settings → Keyboard',
+    'Keyframes and the graph editor are now free',
+    'Faster timeline with lots of clips'
+  ] },
+  { v: '4.5.1', date: '2026-10-23', items: [
+    'Update button shows up as soon as a new version is really ready',
+    'Opening Flux twice now just brings the open window to the front'
+  ] },
+  { v: '4.5.0', date: '2026-10-22', items: [
+    'Text transitions, graph editor, adjustment clips, In / Out range, ripple trims, track lock, clip colors',
+    'Keyboard map in Settings, 200+ fonts, hover previews, quick-mode AI editor that works offline'
+  ] }
+];
+function changelogHtml(list = CHANGELOG) {
+  return list.map((r) => `<div class="cl-rel"><div class="cl-head"><b>Flux ${r.v}</b><small>${new Date(r.date + 'T12:00:00').toLocaleDateString()}</small></div><ul>${r.items.map((i) => `<li>${i.replace(/&/g, '&amp;').replace(/</g, '&lt;')}</li>`).join('')}</ul></div>`).join('');
+}
+function openChangelog(onlyNew) {
+  const list = onlyNew ? CHANGELOG.slice(0, 1) : CHANGELOG;
+  const box = modal(`<h2>${onlyNew ? 'What’s new in Flux ' + CHANGELOG[0].v : 'Changelog'}</h2><div class="cl-list">${changelogHtml(list)}</div>
+    <div class="footer">${onlyNew ? '<button class="btn ghost" data-a="all">All versions</button>' : ''}<button class="btn primary" data-a="ok">Got it</button></div>`);
+  $('[data-a=ok]', box).onclick = closeModal;
+  const all = $('[data-a=all]', box);
+  if (all) all.onclick = () => { closeModal(); openChangelog(false); };
+}
+function setupChangelog() {
+  const cur = CHANGELOG[0].v, seen = settings.seenVersion;
+  if ((seen && seen !== cur) || (!seen && settings.account)) setTimeout(() => openChangelog(true), 900);
+  if (seen !== cur) { settings.seenVersion = cur; saveSettings(); }
+}
+{
+  const baseAbout = settingsAbout;
+  settingsAbout = function (body) {
+    baseAbout(body);
+    const h = el('h3', '', 'Changelog'); h.style.marginTop = '18px';
+    const list = el('div', 'cl-list small'); list.innerHTML = changelogHtml();
+    body.append(h, list);
+  };
+}

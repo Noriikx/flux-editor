@@ -17,11 +17,11 @@ const PREMIUM_FEATURES = [
   ['Remove silences', 'Cuts out pauses and dead air automatically'],
   ['Karaoke & word-pop captions', 'Animated caption styles that highlight each word as it\u2019s said'],
   ['4K export', 'Export in Ultra HD (2160p)'],
-  ['Keyframes', 'Animate size, position, rotation, opacity and volume over time'],
   ['Green screen', 'Remove a green or blue background (chroma key)'],
   ['Pro transitions', 'Glitch, pixelate, whip pan, flip, zoom blur, clock and blinds'],
   ['Film effects', 'Film grain and old-film looks'],
-  ['Equalizer', 'Bass, mid and treble controls for any sound']
+  ['Pro effects', 'Lens, directional, radial & zoom blur, Ultra sharpen, CCTV and Paper edge'],
+  ['Pro audio', 'Fairlight EQ, De-esser and Noise reduction']
 ];
 function isPremium() {
   if (OWNER_UNLOCKED) return true;
@@ -167,7 +167,6 @@ function setProp(c, prop, v) {
   } else c[prop] = v;
 }
 function toggleKeyframe(c, prop) {
-  if (!requirePremium('Keyframes')) return;
   if (state.time < c.start || state.time > endOf(c)) return toast('Move the playhead over this clip first');
   commit(() => {
     c.keys = c.keys || {};
@@ -186,7 +185,6 @@ function toggleKeyframe(c, prop) {
   if (c.keys && Object.values(c.keys).some((a) => a.length === 1)) toast('Keyframe added. Move the playhead and change the value to animate.');
 }
 function addKeyframeAll(c) {
-  if (!requirePremium('Keyframes')) return;
   if (state.time < c.start - 1e-4 || state.time > endOf(c) + 1e-4) return toast('Move the playhead over this clip first');
   commit(() => {
     c.keys = c.keys || {};

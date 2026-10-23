@@ -104,7 +104,7 @@ function newProject() {
 
 let P = newProject();
 const state = {
-  time: 0, playing: false, selectedId: null, zoom: 46, snap: true, ripple: false, loop: false,
+  time: 0, playing: false, selectedId: null, multi: new Set(), zoom: 46, snap: true, ripple: false, loop: false,
   dirty: false, exporting: false, recording: false, inEditor: false
 };
 const rt = {
@@ -126,7 +126,7 @@ const projectDuration = () => P.clips.reduce((m, c) => Math.max(m, endOf(c)), 0)
 const refSize = () => ASPECTS[P.aspect] || ASPECTS['16:9'];
 const mediaUrl = (m) => (api ? api.mediaUrl(m.path) : m.path);
 const trackTypeFor = (kind) => (kind === 'audio' ? 'audio' : kind === 'text' ? 'text' : 'video');
-const isVisual = (c) => c && (c.kind === 'video' || c.kind === 'image');
+const isVisual = (c) => c && (c.kind === 'video' || c.kind === 'image' || c.kind === 'compound');
 const hasAudio = (c) => c && (c.kind === 'video' || c.kind === 'audio');
 // The clip whose sound you hear: a video's linked sound clip, or the clip itself.
 function soundTarget(c) { return (c && c.kind === 'video' && typeof partners === 'function' && partners(c).find((x) => x.kind === 'audio')) || c; }
@@ -660,6 +660,21 @@ function splitAt(t = state.time) {
 function deleteSelected(ripple = state.ripple) {
   const c = getClip(state.selectedId);
   if (!c) return toast('Click a clip first to select it');
+  if (state.multi.size) {
+    const all = new Set();
+    for (const x of selectedClips()) if (!isLocked(x)) for (const y of [x, ...partners(x)]) if (!isLocked(y)) all.add(y);
+    const list = [...all].sort((a, b) => b.start - a.start);
+    commit(() => {
+      for (const x of list) {
+        const d = dur(x), e = endOf(x);
+        P.clips = P.clips.filter((y) => y.id !== x.id);
+        if (ripple) for (const o of P.clips) if (o.trackId === x.trackId && o.start >= e - 1e-4) o.start -= d;
+      }
+      state.selectedId = null; state.multi.clear();
+    });
+    toast(`Deleted ${list.length} clips`, { duration: 1200 });
+    return;
+  }
   if (isLocked(c)) return lockedToast();
   commit(() => {
     for (const x of [c, ...partners(c)]) {
@@ -859,11 +874,22 @@ function transDur(c) {
 // For every clip: when it's visible (transitions make clips overlap a little) and any transition in/out.
 function computeLayout() {
   const L = new Map();
-  for (const c of P.clips) L.set(c.id, { vs: c.start, ve: endOf(c), tin: null, tout: null });
+  // clips on one track never overlap, so after sorting the clip touching this one's start is the one just before it
+  const byTrack = new Map();
+  for (const c of P.clips) {
+    L.set(c.id, { vs: c.start, ve: endOf(c), tin: null, tout: null });
+    let a = byTrack.get(c.trackId); if (!a) byTrack.set(c.trackId, (a = [])); a.push(c);
+  }
+  const prevOf = new Map();
+  for (const a of byTrack.values()) {
+    if (a.length < 2) continue;
+    a.sort((x, y) => x.start - y.start);
+    for (let i = 1; i < a.length; i++) if (Math.abs(endOf(a[i - 1]) - a[i].start) < 0.05) prevOf.set(a[i].id, a[i - 1]);
+  }
   for (const c of P.clips) {
     const td = transDur(c);
     if (!td) continue;
-    const prev = adjPrev(c);
+    const prev = prevOf.get(c.id) || null;
     const start = prev ? c.start - td / 2 : c.start;
     const info = { start, dur: td, type: c.transition.type };
     const lc = L.get(c.id);
@@ -940,8 +966,38 @@ function transitionFx(type, p, role, W, H) {
   return fx;
 }
 
+// Several clips can be selected: state.selectedId is the main one, state.multi holds the others.
+function selectedClips() {
+  const out = [];
+  const c = getClip(state.selectedId);
+  if (c) out.push(c);
+  for (const id of state.multi) { const x = getClip(id); if (x && x !== c) out.push(x); }
+  return out;
+}
+const multiKey = () => (typeof settings !== 'undefined' && settings.multiKey) || 'shift';
+function isMultiClick(e) { const k = multiKey(); return k === 'ctrl' ? (e.ctrlKey || e.metaKey) : k === 'alt' ? e.altKey : e.shiftKey; }
+function toggleInSelection(id) {
+  if (state.selectedId === id) {
+    const next = [...state.multi].find((x) => getClip(x));
+    state.multi.delete(next);
+    state.selectedId = next || null;
+  } else if (state.multi.has(id)) state.multi.delete(id);
+  else { if (state.selectedId) state.multi.add(state.selectedId); state.selectedId = id; }
+  renderLanes(); renderInspector(); requestDraw();
+  const n = selectedClips().length;
+  if (n > 1) toast(`${n} clips selected`, { duration: 900 });
+}
+function selectAllClips() {
+  const all = P.clips.filter((c) => !isLocked(c));
+  if (!all.length) return;
+  state.selectedId = all[0].id;
+  state.multi = new Set(all.slice(1).map((c) => c.id));
+  renderLanes(); renderInspector();
+  toast(`${all.length} clips selected`, { duration: 900 });
+}
 function select(id) {
-  if (state.selectedId === id) return;
+  if (state.multi.size) state.multi.clear();
+  else if (state.selectedId === id) return;
   state.selectedId = id;
   renderLanes();
   renderInspector();
@@ -1015,6 +1071,7 @@ function destroyPlayer(id) {
   rt.players.delete(id);
 }
 function setGain(p, g) {
+  if (rt.compGain != null) g *= rt.compGain;
   if (p.gain) p.gain.gain.value = g;
   else p.el.volume = clamp(g, 0, 1);
 }
@@ -1028,6 +1085,24 @@ function fadeEnv(c, local) {
 }
 
 let playStartTime = 0, playStartWall = 0;
+// Scrubbing: how fast the playhead is being dragged (timeline seconds per real second)
+const scrubState = { t: 0, wall: 0, v: 0, active: false };
+function scrubMove(t) {
+  const now = performance.now();
+  if (scrubState.active && now - scrubState.wall > 4) {
+    const v = (t - scrubState.t) / ((now - scrubState.wall) / 1000);
+    scrubState.v = scrubState.v * 0.6 + v * 0.4;
+  }
+  scrubState.t = t; scrubState.wall = now;
+}
+function scrubStart() { scrubState.active = true; scrubState.v = 0; scrubState.wall = performance.now(); scrubState.t = state.time; ensureAudio(); }
+function scrubEnd() { scrubState.active = false; scrubState.v = 0; for (const p of rt.players.values()) if (!p.el.paused && !state.playing) p.el.pause(); requestDraw(); }
+// play-along speed while scrubbing forward at a normal-ish pace; 0 = just show the frame
+function scrubRate() {
+  if (!scrubState.active || state.playing || state.exporting) return 0;
+  if (performance.now() - scrubState.wall > 140) return 0; // mouse stopped
+  return scrubState.v > 0.25 && scrubState.v < 4 ? scrubState.v : 0;
+}
 // where playback stops: the end of the export range, the Out point while looping, or the end of the video
 function playEndTime() {
   if (state.exporting && exportJob && exportJob.end != null) return exportJob.end;
@@ -1155,12 +1230,19 @@ function syncMedia(L = rt.layout || computeLayout()) {
           el.currentTime = src;
         }
       }
+    } else if (scrubRate() > 0) {
+      // Dragging the playhead forward: play along at the speed of the mouse (smooth picture and sound)
+      const rate = clamp(scrubRate() * c.speed, 0.0625, 16);
+      if (Math.abs(el.playbackRate - rate) > 0.05) el.playbackRate = rate;
+      if (el.readyState >= 1 && (Math.abs(el.currentTime - src) > 0.25) && !el.seeking) el.currentTime = src;
+      if (el.paused && el.readyState >= 1) el.play().catch(() => {});
     } else {
       if (!el.paused) el.pause();
       if (Math.abs(el.currentTime - src) > 0.015 && !el.seeking && el.readyState >= 1) el.currentTime = src;
     }
   }
-  if (rt.beepGain) {
+  if (!rt.inCompound && typeof syncCompounds === 'function') syncCompounds(t);
+  if (rt.beepGain && !(rt.inCompound && !beepWant)) {
     if (beepWant && rt.beepOsc.frequency.value !== beepWant) rt.beepOsc.frequency.value = beepWant;
     const want = beepWant && (state.playing || state.exporting) ? 0.22 : 0;
     if (Math.abs(rt.beepGain.gain.value - want) > 0.001) rt.beepGain.gain.setTargetAtTime(want, actx.currentTime, 0.004);
@@ -1168,8 +1250,11 @@ function syncMedia(L = rt.layout || computeLayout()) {
   // free players for deleted clips, and (to save memory) ones that haven't been needed for a while
   const nowMs = performance.now();
   for (const id of alive) { const p = rt.players.get(id); if (p) p.used = nowMs; }
+  if (rt.inCompound) return;
+  const inner = typeof compoundInnerIds === 'function' ? compoundInnerIds() : null;
   for (const [id, p] of Array.from(rt.players.entries())) {
-    if (!getClip(id) || (!alive.has(id) && nowMs - (p.used || 0) > (lowEnd() ? 4000 : 12000) && p.el.paused)) destroyPlayer(id);
+    if (inner && inner.has(id) && !(nowMs - (p.used || 0) > (lowEnd() ? 4000 : 12000) && p.el.paused)) continue;
+    if ((!getClip(id) && !(inner && inner.has(id))) || (!alive.has(id) && nowMs - (p.used || 0) > (lowEnd() ? 4000 : 12000) && p.el.paused)) destroyPlayer(id);
   }
 }
 
@@ -1234,8 +1319,8 @@ function render(target = ctx, cw = canvas.width) {
   g.globalAlpha = 1;
   g.filter = 'none';
   g.globalCompositeOperation = 'source-over';
-  g.fillStyle = P.background || '#000';
-  g.fillRect(0, 0, g.canvas.width, g.canvas.height);
+  if (rt.inCompound) g.clearRect(0, 0, g.canvas.width, g.canvas.height);
+  else { g.fillStyle = P.background || '#000'; g.fillRect(0, 0, g.canvas.width, g.canvas.height); }
   g.setTransform(k, 0, 0, k, 0, 0);
   rt.hitBoxes = [];
   const t = state.time;
@@ -1287,9 +1372,13 @@ function motionAt(c, local) {
 
 function drawMedia(g, c, local, W, H, k, fx) {
   const m = getMedia(c.mediaId);
-  if (!m || m.missing || m.error) return;
+  if (c.kind !== 'compound' && (!m || m.missing || m.error)) return;
   let src, sw, sh;
-  if (c.kind === 'image') {
+  if (c.kind === 'compound') {
+    src = renderCompound(c, local, k);
+    if (!src) return;
+    sw = src.width; sh = src.height;
+  } else if (c.kind === 'image') {
     src = rt.images.get(m.id);
     if (!src) return;
     sw = src.naturalWidth; sh = src.naturalHeight;
@@ -1344,6 +1433,18 @@ function drawMedia(g, c, local, W, H, k, fx) {
   if (fx.blur > 0.05) filt = (filt === 'none' ? '' : filt + ' ') + `blur(${(fx.blur * k).toFixed(2)}px)`;
   g.filter = filt;
   if (fx.flipX != null) g.scale(Math.max(0.001, fx.flipX), 1);
+  if (typeof needsLayer === 'function' && needsLayer(c)) {
+    // effects / mask: draw the clip into its own layer first, then place it
+    g.filter = 'none';
+    const L = buildLayer(c, src, sx, sy, cw, ch, dw, dh, k, fx, local);
+    if (fx.blur > 0.05) g.filter = `blur(${(fx.blur * k).toFixed(2)}px)`;
+    applyShadow(g, L.shadow, k);
+    try { g.drawImage(L.canvas, -dw / 2, -dh / 2, dw, dh); } catch {}
+    g.filter = 'none';
+    g.restore();
+    rt.hitBoxes.push({ id: c.id, cx, cy, w: dw, h: dh, rot });
+    return;
+  }
   try {
     if (fx.pixel > 1) drawPixelated(g, src, sx, sy, cw, ch, dw, dh, fx.pixel);
     else if (fx.glitch > 0) drawGlitched(g, src, sx, sy, cw, ch, dw, dh, fx.glitch);
@@ -1506,9 +1607,10 @@ function drawOverlay() {
   octx.setTransform(1, 0, 0, 1, 0, 0);
   octx.clearRect(0, 0, overlay.width, overlay.height);
   if (state.exporting) return;
+  const k = overlay.width / W;
+  if (typeof drawMaskOverlay === 'function') { octx.save(); drawMaskOverlay(k); octx.restore(); octx.setTransform(1, 0, 0, 1, 0, 0); }
   const box = rt.hitBoxes.find((b) => b.id === state.selectedId);
   if (!box) return;
-  const k = overlay.width / W;
   octx.setTransform(k, 0, 0, k, 0, 0);
   octx.translate(box.cx, box.cy);
   octx.rotate(box.rot);
@@ -1813,6 +1915,7 @@ function cloneCanvas(src) {
 function clipLabel(c) {
   if (c.kind === 'text') return (c.text.content || 'Text').split('\n')[0];
   if (c.kind === 'adjust') return 'Adjustment';
+  if (c.kind === 'compound') return c.name || 'Compound clip';
   const m = getMedia(c.mediaId);
   return m ? m.name : 'Missing media';
 }
@@ -1827,7 +1930,7 @@ function renderLanes() {
       const m = getMedia(c.mediaId);
       const w = dur(c) * z;
       const sel = getClip(state.selectedId);
-      const ce = el('div', `clip kind-${c.kind}${c.id === state.selectedId ? ' selected' : ''}${sel && sel.linkId && c.linkId === sel.linkId && c.id !== sel.id ? ' linked' : ''}${c.kind !== 'text' && c.kind !== 'adjust' && (!m || m.missing || m.error) ? ' missing' : ''}${c.disabled ? ' disabled' : ''}${c.color ? ' colored' : ''}`);
+      const ce = el('div', `clip kind-${c.kind}${c.id === state.selectedId ? ' selected' : state.multi.has(c.id) ? ' selected multi' : ''}${sel && sel.linkId && c.linkId === sel.linkId && c.id !== sel.id ? ' linked' : ''}${c.kind !== 'text' && c.kind !== 'adjust' && c.kind !== 'compound' && (!m || m.missing || m.error) ? ' missing' : ''}${c.disabled ? ' disabled' : ''}${c.color ? ' colored' : ''}`);
       if (c.color) ce.style.setProperty('--clip-color', c.color);
       ce.dataset.id = c.id;
       ce.style.left = c.start * z + 'px';
@@ -1870,6 +1973,36 @@ function renderLanes() {
       }
       if (c.fadeIn > 0) { const f = el('div', 'fade in'); f.style.width = c.fadeIn * z + 'px'; ce.appendChild(f); }
       if (c.fadeOut > 0) { const f = el('div', 'fade out'); f.style.width = c.fadeOut * z + 'px'; ce.appendChild(f); }
+      // DaVinci-style fade handles: drag the little squares at the top corners
+      if (w > 24) {
+        const fi = c.fadeIn || 0, fo = c.fadeOut || 0;
+        if (fi > 0 || fo > 0) {
+          const H = 100, W = Math.max(1, w);
+          const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+          svg.setAttribute('class', 'fade-curve'); svg.setAttribute('viewBox', `0 0 ${W} ${H}`); svg.setAttribute('preserveAspectRatio', 'none');
+          let d = '';
+          if (fi > 0) d += `M0 ${H} Q ${fi * z * 0.5} ${H * 0.05} ${fi * z} 0 `;
+          if (fo > 0) d += `M${W - fo * z} 0 Q ${W - fo * z * 0.5} ${H * 0.05} ${W} ${H}`;
+          svg.innerHTML = `<path d="${d}"/>`;
+          ce.appendChild(svg);
+        }
+        const hl = el('div', 'fade-h l'); hl.style.left = fi * z + 'px'; hl.dataset.tip = 'Drag to fade in' + (fi ? ` (${fi.toFixed(1)}s)` : '');
+        const hr = el('div', 'fade-h r'); hr.style.right = fo * z + 'px'; hr.dataset.tip = 'Drag to fade out' + (fo ? ` (${fo.toFixed(1)}s)` : '');
+        ce.append(hl, hr);
+      }
+      // text: in / out transitions shown on the clip, with a × to remove
+      if (c.kind === 'text') {
+        for (const [key, side] of [['transition', 'in'], ['transitionOut', 'out']]) {
+          const tr0 = c[key];
+          if (!tr0 || tr0.type === 'none') continue;
+          const td = Math.min(tr0.duration || 0.5, dur(c) * 0.5);
+          const b = el('div', 'trans-band text-' + side);
+          b.style.width = Math.max(14, td * z) + 'px';
+          b.dataset.id = c.id; b.dataset.which = side;
+          b.innerHTML = `<span>${transById(tr0.type).name}</span><button class="tb-x" data-tip="Remove transition">×</button><i class="tb-h ${side === 'in' ? 'r' : 'l'}"></i>`;
+          ce.appendChild(b);
+        }
+      }
       const label = el('div', 'label');
       label.textContent = clipLabel(c);
       ce.appendChild(label);
@@ -1899,11 +2032,14 @@ function renderLanes() {
         const prev = adjPrev(c);
         const td = transDur(c);
         if (td) {
-          const span = el('div', 'trans-span');
+          const band = el('div', 'trans-band media');
           const st = prev ? c.start - td / 2 : c.start;
-          span.style.left = st * z + 'px';
-          span.style.width = Math.max(6, td * z) + 'px';
-          lane.appendChild(span);
+          band.style.left = st * z + 'px';
+          band.style.width = Math.max(14, td * z) + 'px';
+          band.dataset.id = c.id; band.dataset.which = 'in';
+          band.dataset.tip = `${transById(c.transition.type).name} · ${td.toFixed(1)}s · drag the edges to make it longer or shorter`;
+          band.innerHTML = `<i class="tb-h l"></i><span>${td * z > 70 ? transById(c.transition.type).name : ''}</span><button class="tb-x" data-tip="Remove transition">×</button><i class="tb-h r"></i>`;
+          lane.appendChild(band);
         }
         if (!prev && !td) continue;
         const j = el('button', 'junction' + (td ? ' has' : ''));
@@ -1997,13 +2133,27 @@ function trySnap(values, excludeId) {
 (function setupTimelineMouse() {
   let drag = null;
 
-  const scrub = (e) => { seek(timeAtClientX(e.clientX)); };
+  const scrub = (e) => {
+    let t = timeAtClientX(e.clientX);
+    if (state.snap && !e.altKey) {
+      const tol = 10 / state.zoom;
+      let best = null, bd = tol;
+      const pts = [0];
+      for (const c of P.clips) pts.push(c.start, endOf(c));
+      for (const mk of P.markers || []) pts.push(mk.t);
+      for (const p of pts) { const d = Math.abs(p - t); if (d < bd) { bd = d; best = p; } }
+      if (best != null) t = best;
+    }
+    scrubMove(t);
+    seek(t);
+  };
   tlRuler.addEventListener('pointerdown', (e) => {
     if (state.playing) pause();
     tlRuler.setPointerCapture(e.pointerId);
+    scrubStart();
     scrub(e);
     const mv = (ev) => scrub(ev);
-    const up = () => { tlRuler.removeEventListener('pointermove', mv); tlRuler.removeEventListener('pointerup', up); };
+    const up = () => { scrubEnd(); tlRuler.removeEventListener('pointermove', mv); tlRuler.removeEventListener('pointerup', up); };
     tlRuler.addEventListener('pointermove', mv);
     tlRuler.addEventListener('pointerup', up);
   });
@@ -2015,8 +2165,9 @@ function trySnap(values, excludeId) {
     e.stopPropagation();
     if (state.playing) pause();
     grab.setPointerCapture(e.pointerId);
+    scrubStart();
     const mv = (ev) => scrub(ev);
-    const up = () => { grab.removeEventListener('pointermove', mv); grab.removeEventListener('pointerup', up); };
+    const up = () => { scrubEnd(); grab.removeEventListener('pointermove', mv); grab.removeEventListener('pointerup', up); };
     grab.addEventListener('pointermove', mv);
     grab.addEventListener('pointerup', up);
   });
@@ -2025,8 +2176,9 @@ function trySnap(values, excludeId) {
     if (state.playing) pause();
     const h = e.currentTarget;
     h.setPointerCapture(e.pointerId);
+    scrubStart();
     const mv = (ev) => scrub(ev);
-    const up = () => { h.removeEventListener('pointermove', mv); h.removeEventListener('pointerup', up); };
+    const up = () => { scrubEnd(); h.removeEventListener('pointermove', mv); h.removeEventListener('pointerup', up); };
     h.addEventListener('pointermove', mv);
     h.addEventListener('pointerup', up);
   });
@@ -2047,6 +2199,29 @@ function trySnap(values, excludeId) {
     }
     const junc = e.target.closest('.junction');
     if (junc) { e.stopPropagation(); const c = getClip(junc.dataset.id); if (c) openTransitionsFor(c); return; }
+    const band = e.target.closest('.trans-band');
+    if (band) {
+      e.stopPropagation();
+      const c = getClip(band.dataset.id);
+      if (!c) return;
+      const key = band.dataset.which === 'out' ? 'transitionOut' : 'transition';
+      if (e.target.closest('.tb-x')) { commit(() => { c[key] = null; }); toast('Transition removed'); return; }
+      const h = e.target.closest('.tb-h');
+      if (!h) { select(c.id); if (c.kind !== 'text') showLibTab('transitions'); return; }
+      drag = { mode: 'transDur', c, key, side: h.classList.contains('l') ? 'l' : 'r', snap: snapshot(), moved: false, x0: e.clientX };
+      tlLanes.setPointerCapture(e.pointerId);
+      return;
+    }
+    const fh = e.target.closest('.fade-h');
+    if (fh) {
+      e.stopPropagation();
+      const c = getClip(fh.closest('.clip').dataset.id);
+      if (!c || isLocked(c)) return;
+      select(c.id);
+      drag = { mode: fh.classList.contains('l') ? 'fadeIn' : 'fadeOut', c, snap: snapshot(), moved: false, x0: e.clientX };
+      tlLanes.setPointerCapture(e.pointerId);
+      return;
+    }
     const clipEl = e.target.closest('.clip');
     if (!clipEl) {
       // empty space: drag to move the view around (the playhead only moves from the ruler or its handle)
@@ -2058,7 +2233,12 @@ function trySnap(values, excludeId) {
     }
     const c = getClip(clipEl.dataset.id);
     if (!c) return;
-    select(c.id);
+    if (isMultiClick(e)) { toggleInSelection(c.id); return; }
+    const group = state.multi.size && (state.multi.has(c.id) || state.selectedId === c.id);
+    if (group) {
+      // keep the whole selection, make this one the main clip
+      if (state.selectedId !== c.id) { state.multi.delete(c.id); if (state.selectedId) state.multi.add(state.selectedId); state.selectedId = c.id; renderLanes(); renderInspector(); }
+    } else select(c.id);
     if (isLocked(c)) return; // locked track: select only
     const handle = e.target.closest('.handle');
     const t0 = timeAtClientX(e.clientX);
@@ -2069,6 +2249,15 @@ function trySnap(values, excludeId) {
       grab: t0 - c.start,
       linked: (e.altKey ? [] : partners(c)).map((p) => ({ p, start: p.start, in: p.in, out: p.out }))
     };
+    // moving several selected clips together
+    if (!handle && group) {
+      const have = new Set([c.id, ...drag.linked.map((l) => l.p.id)]);
+      for (const x of selectedClips()) for (const y of [x, ...partners(x)]) {
+        if (have.has(y.id) || isLocked(y)) continue;
+        have.add(y.id);
+        drag.linked.push({ p: y, start: y.start, in: y.in, out: y.out, moveOnly: true });
+      }
+    }
     tlLanes.setPointerCapture(e.pointerId);
   });
 
@@ -2078,6 +2267,28 @@ function trySnap(values, excludeId) {
     if (drag.mode === 'pan') {
       tlScroll.scrollLeft = drag.sl - (e.clientX - drag.x0);
       tlScroll.scrollTop = drag.st - (e.clientY - drag.y0);
+      return;
+    }
+    if (drag.mode === 'fadeIn' || drag.mode === 'fadeOut') {
+      drag.moved = true;
+      const c = drag.c, d = dur(c), t = timeAtClientX(e.clientX);
+      let v = drag.mode === 'fadeIn' ? t - c.start : endOf(c) - t;
+      v = clamp(Math.round(v * 20) / 20, 0, Math.max(0, d - (drag.mode === 'fadeIn' ? c.fadeOut || 0 : c.fadeIn || 0)));
+      for (const x of [c, ...partners(c)]) x[drag.mode] = Math.min(v, dur(x));
+      renderLanes(); requestDraw();
+      return;
+    }
+    if (drag.mode === 'transDur') {
+      drag.moved = true;
+      const c = drag.c, tr0 = c[drag.key];
+      if (!tr0) return;
+      const t = timeAtClientX(e.clientX);
+      let nd;
+      if (c.kind === 'text') nd = drag.key === 'transition' ? t - c.start : endOf(c) - t;
+      else if (adjPrev(c)) nd = Math.abs(t - c.start) * 2;
+      else nd = t - c.start;
+      tr0.duration = clamp(Math.round(nd * 20) / 20, 0.1, c.kind === 'text' ? Math.max(0.1, dur(c) / 2) : 4);
+      renderLanes(); requestDraw();
       return;
     }
     if (drag.mode === 'vol') {
@@ -2147,6 +2358,7 @@ function trySnap(values, excludeId) {
     }
     // keep the linked sound (or video) in step
     for (const l of drag.linked) {
+      if (l.moveOnly) { l.p.start = Math.max(0, l.start + (c.start - o.start)); continue; }
       const pm = getMedia(l.p.mediaId);
       l.p.start = Math.max(0, l.start + (c.start - o.start));
       l.p.in = clamp(l.in + (c.in - o.in), 0, pm && pm.duration ? pm.duration : Infinity);
@@ -2165,6 +2377,15 @@ function trySnap(values, excludeId) {
     if (!drag) return;
     showSnap(null);
     if (drag.mode === 'pan') { tlLanes.classList.remove('panning'); drag = null; return; }
+    if (drag.mode === 'fadeIn' || drag.mode === 'fadeOut' || drag.mode === 'transDur') {
+      if (drag.moved && snapshot() !== drag.snap) pushHistory(drag.snap);
+      const c = drag.c, mode = drag.mode, key = drag.key, moved = drag.moved;
+      drag = null;
+      renderLanes(); renderInspector();
+      if (moved && mode === 'transDur' && c[key]) toast('Transition length: ' + c[key].duration.toFixed(1) + 's', { duration: 1200 });
+      if (moved && mode !== 'transDur') toast((mode === 'fadeIn' ? 'Fade in: ' : 'Fade out: ') + (c[mode] || 0).toFixed(1) + 's', { duration: 1200 });
+      return;
+    }
     if (drag.mode === 'vol') {
       drag.line.classList.remove('active');
       if (snapshot() !== drag.snap) pushHistory(drag.snap);
@@ -2198,6 +2419,19 @@ function trySnap(values, excludeId) {
 
   tlLanes.addEventListener('contextmenu', (e) => {
     e.preventDefault();
+    const tb = e.target.closest('.trans-band, .junction.has');
+    if (tb) {
+      const c = getClip(tb.dataset.id);
+      const key = tb.dataset.which === 'out' ? 'transitionOut' : 'transition';
+      if (c && c[key]) {
+        contextMenu(e.clientX, e.clientY, [
+          ...[0.3, 0.5, 1, 1.5, 2].map((v) => ({ label: (Math.abs((c[key].duration || 0.6) - v) < 0.01 ? '✓ ' : '') + 'Length ' + v + 's', fn: () => commit(() => { c[key].duration = v; }) })),
+          { label: 'Change transition…', fn: () => { select(c.id); showLibTab('transitions'); } },
+          { label: 'Remove transition', danger: true, fn: () => { commit(() => { c[key] = null; }); toast('Transition removed'); } }
+        ]);
+        return;
+      }
+    }
     const clipEl = e.target.closest('.clip');
     const t = timeAtClientX(e.clientX);
     if (!clipEl) {
@@ -2209,12 +2443,15 @@ function trySnap(values, excludeId) {
       return;
     }
     const c = getClip(clipEl.dataset.id);
-    select(c.id);
+    if (!(state.multi.size && (state.multi.has(c.id) || state.selectedId === c.id))) select(c.id);
+    const nSel = selectedClips().length;
     contextMenu(e.clientX, e.clientY, [
       { label: 'Split here', fn: () => { seek(t); splitAt(t); } },
       { label: 'Duplicate', fn: duplicateSelected },
       { label: 'Copy', fn: copySel },
-      { label: 'Quality & frame rate…', fn: () => openQualityDialog(c) },
+      { label: nSel > 1 ? `Make compound clip (${nSel} clips)` : 'Make compound clip', key: 'Alt+C', fn: makeCompound },
+      c.kind === 'compound' ? { label: 'Decompose (put clips back)', fn: () => decompose(c) } : null,
+      c.kind !== 'compound' ? { label: 'Quality & frame rate…', fn: () => openQualityDialog(c) } : null,
       hasAudio(c) && !(c.kind === 'video' && partners(c).length) ? { label: 'Balance sound…', fn: () => openBalanceDialog(c) } : null,
       soundSource(c) ? { label: 'Auto captions…', fn: () => openCaptionsDialog(c) } : null,
       soundSource(c) ? { label: 'Bleep swear words…', pro: true, fn: () => openBleepDialog(c) } : null,
@@ -2495,6 +2732,7 @@ function renderInspector() {
 
   if (c.kind === 'text') textInspector(body, c);
   if (c.kind === 'adjust') adjustInspector(body, c);
+  if (c.kind === 'compound' && typeof compoundInspector === 'function') compoundInspector(body, c);
 
   if (isVisual(c)) {
     const s = section(body, 'Position & size', () => Object.assign(c, { fit: 'contain', scale: 1, x: 0, y: 0, rotation: 0, opacity: 1 }));
@@ -2533,6 +2771,12 @@ function renderInspector() {
     tse.value = c.transition ? c.transition.type : 'none';
     tse.onchange = () => setTransition(c, tse.value);
     ts.appendChild(tsel);
+    if (c.transition) {
+      const rb = el('button', 'btn ghost small', 'Remove transition');
+      rb.style.cssText = 'width:100%;justify-content:center;margin:2px 0 8px';
+      rb.onclick = () => { commit(() => { c.transition = null; }); toast('Transition removed'); };
+      ts.appendChild(rb);
+    }
     if (c.transition && c.transition.type !== 'none') {
       slider(ts, 'Length', { min: 0.1, max: 3, step: 0.1, get: () => c.transition.duration, set: (v) => (c.transition.duration = v), fmt: (v) => v.toFixed(1) + 's', def: 0.6 });
     }
@@ -2600,6 +2844,7 @@ function renderInspector() {
     bal.innerHTML = '<button class="btn">Balance, EQ & ducking…</button>';
     $('button', bal).onclick = () => openBalanceDialog(c);
     a.appendChild(bal);
+    if (typeof audioFxInspector === 'function') audioFxInspector(body, c);
     }
   }
 
@@ -3325,7 +3570,7 @@ document.addEventListener('keydown', (e) => {
   const action = actionForCombo(combo);
   if (!action) return;
   // While typing, only allow shortcuts that use Ctrl (and never steal Ctrl+C/V/Z from text boxes)
-  if (typing && (!/Ctrl\+/.test(combo) || ['copy', 'paste', 'undo', 'redo'].includes(action.id))) return;
+  if (typing && (!/Ctrl\+/.test(combo) || ['copy', 'paste', 'undo', 'redo', 'selectAll'].includes(action.id))) return;
   if (modalOpen() && !action.global) return;
   if (!state.inEditor && !action.global) return;
   e.preventDefault();

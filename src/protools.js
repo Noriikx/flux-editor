@@ -57,7 +57,8 @@ function nudgeSelected(dir) {
   const c = getClip(state.selectedId);
   if (!c) return toast('Click a clip first');
   if (isLocked(c)) return lockedToast();
-  const d = dir / FPS, group = [c, ...partners(c)];
+  const d = dir / FPS, group = [];
+  for (const x of selectedClips()) for (const y of [x, ...partners(x)]) if (!group.includes(y) && !isLocked(y)) group.push(y);
   if (group.some((x) => x.start + d < -1e-6)) return;
   const clash = group.some((x) => P.clips.some((o) => o.trackId === x.trackId && !group.includes(o) && x.start + d < endOf(o) - 1e-4 && x.start + d + dur(x) > o.start + 1e-4));
   if (clash) return toast('There’s another clip in the way');
@@ -67,14 +68,16 @@ function nudgeSelected(dir) {
 /* ---------- enable / disable, colors, normalize ---------- */
 function toggleClipEnabled(c = getClip(state.selectedId)) {
   if (!c) return toast('Click a clip first');
-  const group = [c, ...partners(c)];
+  const group = [];
+  for (const x of (c.id === state.selectedId ? selectedClips() : [c])) for (const y of [x, ...partners(x)]) if (!group.includes(y)) group.push(y);
   const off = !c.disabled;
   commit(() => { for (const x of group) x.disabled = off; });
   toast(off ? 'Clip turned off (it won’t show or play) - press V to turn it back on' : 'Clip turned on');
 }
 const CLIP_COLORS = [['', 'Default'], ['#e5484d', 'Red'], ['#f76b15', 'Orange'], ['#ffc53d', 'Yellow'], ['#46a758', 'Green'], ['#12a594', 'Teal'], ['#0090ff', 'Blue'], ['#8e4ec6', 'Purple'], ['#d6409f', 'Pink']];
 function clipColorMenu(c, x, y) {
-  contextMenu(x, y, CLIP_COLORS.map(([col, name]) => ({ label: (c.color === col || (!c.color && !col) ? '✓ ' : '') + name, fn: () => commit(() => { c.color = col || null; }) })));
+  const targets = c.id === state.selectedId ? selectedClips() : [c];
+  contextMenu(x, y, CLIP_COLORS.map(([col, name]) => ({ label: (c.color === col || (!c.color && !col) ? '✓ ' : '') + name, fn: () => commit(() => { for (const t of targets) t.color = col || null; }) })));
 }
 function normalizeClip(c = getClip(state.selectedId)) {
   const src = soundSource(c);

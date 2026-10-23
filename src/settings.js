@@ -15,7 +15,8 @@ const DEFAULT_SETTINGS = {
   aiKey: '',
   aiModel: 'claude-sonnet-5-5',
   asrModel: '',
-  asrLang: 'auto'
+  asrLang: 'auto',
+  multiKey: 'shift'          // hold this + click to select several clips / keyframes
 };
 
 // Every action that can have a shortcut. `global` = also works on the home screen / inside dialogs.
@@ -46,11 +47,14 @@ const ACTIONS = [
   { id: 'toggleClip', label: 'Turn clip on / off', group: 'Editing', keys: ['V'], run: () => toggleClipEnabled() },
   { id: 'nudgeLeft', label: 'Nudge clip 1 frame left', group: 'Editing', keys: ['Alt+ArrowLeft'], run: () => nudgeSelected(-1) },
   { id: 'nudgeRight', label: 'Nudge clip 1 frame right', group: 'Editing', keys: ['Alt+ArrowRight'], run: () => nudgeSelected(1) },
+  { id: 'compound', label: 'Make compound clip', group: 'Editing', keys: ['Alt+C'], run: () => makeCompound() },
+  { id: 'decompose', label: 'Decompose compound clip', group: 'Editing', keys: ['Alt+Shift+C'], run: () => decompose() },
   { id: 'normalize', label: 'Normalize volume', group: 'Editing', keys: [], run: () => normalizeClip() },
   { id: 'addKeyframe', label: 'Add keyframe', group: 'Keyframes', keys: ['K'], run: () => { const c = getClip(state.selectedId); if (!c) return toast('Click a clip first'); if (c.kind === 'audio') toggleKeyframe(c, 'volume'); else addKeyframeAll(c); } },
   { id: 'prevKey', label: 'Previous keyframe', group: 'Keyframes', keys: ['['], run: () => jumpKeyframe(null, -1) },
   { id: 'nextKey', label: 'Next keyframe', group: 'Keyframes', keys: [']'], run: () => jumpKeyframe(null, 1) },
   { id: 'graphEditor', label: 'Graph editor', group: 'Keyframes', keys: ['G'], run: () => toggleGraphEditor() },
+  { id: 'selectAll', label: 'Select all clips', group: 'Editing', keys: ['Ctrl+A'], run: () => selectAllClips() },
   { id: 'duplicate', label: 'Duplicate', group: 'Editing', keys: ['Ctrl+D'], run: () => duplicateSelected() },
   { id: 'copy', label: 'Copy clip', group: 'Editing', keys: ['Ctrl+C'], run: () => copySel() },
   { id: 'paste', label: 'Paste clip', group: 'Editing', keys: ['Ctrl+V'], run: () => paste() },
@@ -188,6 +192,8 @@ function settingsKeys(body) {
   body.innerHTML = `<div class="keys-head"><h3>Keyboard shortcuts</h3>
     <input class="num-input keys-search" placeholder="Search…" style="font-family:var(--font)">
     <button class="btn ghost" data-a="reset">Reset all</button></div>
+    <div class="set-row"><div><b>Select several clips / keyframes</b><small>Hold this key and click</small></div>
+      <select class="dev-select" id="multiKeySel"><option value="shift">Shift + click</option><option value="ctrl">Ctrl + click</option><option value="alt">Alt + click</option></select></div>
     <div class="kb-map"></div>
     <p class="sub" style="margin:14px 0 12px">Or click a shortcut below, then press the keys you want. Each action can have two.</p>
     <div class="keys-list"></div>`;
@@ -223,6 +229,9 @@ function settingsKeys(body) {
     if (map) map.redraw();
   };
   map = keyboardMap($('.kb-map', body), () => draw());
+  const mk = $('#multiKeySel', body);
+  mk.value = settings.multiKey || 'shift';
+  mk.onchange = () => { settings.multiKey = mk.value; saveSettings(); toast('Select several with ' + mk.options[mk.selectedIndex].text); };
   $('.keys-search', body).oninput = draw;
   $('[data-a=reset]', body).onclick = () => {
     for (const a of ACTIONS) settings.keybinds[a.id] = a.keys.slice();

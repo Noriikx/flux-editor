@@ -939,3 +939,46 @@ body.recording #playhead::before { background: #ff4d6d; box-shadow: 0 0 8px #ff4
 .field > label { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .kf-nav { margin-right: 3px; }
 .kf-nav .kf-arrow { width: 11px; font-size: 14px; }
+/* ---------- fade handles & transition bars ---------- */
+.fade-h { position: absolute; top: 2px; width: 9px; height: 9px; margin-left: -4px; background: #fff; border: 1px solid rgba(0,0,0,.6); border-radius: 2px; cursor: ew-resize; z-index: 4; opacity: 0; transition: opacity .12s; }
+.fade-h.r { margin-left: 0; margin-right: -4px; }
+.clip:hover .fade-h, .clip.selected .fade-h { opacity: 1; }
+.fade-curve { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; z-index: 3; }
+.fade-curve path { fill: none; stroke: rgba(255,255,255,.9); stroke-width: 1.5; vector-effect: non-scaling-stroke; }
+.trans-band { position: absolute; top: 5px; bottom: 5px; border-radius: 7px; background: repeating-linear-gradient(135deg, rgba(141,125,255,.55) 0 6px, rgba(141,125,255,.3) 6px 12px); border: 1px solid #c3bfff; z-index: 6; display: flex; align-items: center; justify-content: center; cursor: pointer; overflow: visible; }
+.trans-band span { font-size: 10px; font-weight: 700; color: #fff; text-shadow: 0 1px 2px #000; white-space: nowrap; overflow: hidden; pointer-events: none; }
+.trans-band .tb-x { position: absolute; top: -8px; right: -8px; width: 17px; height: 17px; border-radius: 50%; border: 1px solid #0b0b11; background: #ff5c7a; color: #fff; font-size: 12px; line-height: 14px; padding: 0; cursor: pointer; opacity: 0; transition: opacity .12s; z-index: 2; }
+.trans-band:hover .tb-x, .lane .clip.selected .trans-band .tb-x { opacity: 1; }
+.trans-band .tb-h { position: absolute; top: 0; bottom: 0; width: 7px; cursor: ew-resize; }
+.trans-band .tb-h.l { left: -3px; }
+.trans-band .tb-h.r { right: -3px; }
+.trans-band .tb-h:hover { background: rgba(255,255,255,.35); }
+.trans-band.text-in { left: 0; top: 2px; bottom: 2px; }
+.trans-band.text-out { right: 0; top: 2px; bottom: 2px; }
+.ge-dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 6px; vertical-align: 0; }
+.ge-props .chip i.ge-n { font-style: normal; color: #ffd23f; margin-left: 3px; }
+.ge-edit { display: inline-flex; gap: 10px; align-items: center; font-size: 11.5px; color: var(--muted); }
+.ge-edit label { display: inline-flex; gap: 5px; align-items: center; }
+.ge-num { width: 72px; height: 26px; font-size: 12px; }
+.ge-body:focus { outline: none; }
+
+/* effect stack */
+.fx-add { width: 100%; justify-content: center; margin-bottom: 8px; }
+.fx-card { border: 1px solid var(--line-2); border-radius: 10px; padding: 8px 10px; margin-bottom: 8px; background: rgba(255,255,255,.02); }
+.fx-card.off { opacity: .55; }
+.fx-top { display: flex; align-items: center; gap: 6px; margin-bottom: 4px; font-size: 12.5px; }
+.fx-top .icon-btn.small { width: 22px; height: 22px; font-size: 13px; }
+.fx-grid-title { grid-column: 1 / -1; font-size: 11px; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); margin: 12px 2px 2px; }
+.feq-curve { width: 100%; height: 86px; display: block; margin: 4px 0 8px; border-radius: 8px; background: rgba(0,0,0,.25); }
+/* compound clips */
+.clip.kind-compound { background: linear-gradient(180deg, #7a4f22, #5a3815); border-color: #d08a3a; box-shadow: inset 0 0 0 1px rgba(255,255,255,.06), 3px -3px 0 -1px rgba(208,138,58,.45); }
+.comp-badge { position: absolute; right: 4px; top: 3px; display: flex; align-items: center; gap: 3px; font-size: 10.5px; font-weight: 600; color: #ffd9a8; background: rgba(0,0,0,.45); border-radius: 5px; padding: 1px 5px; pointer-events: auto; }
+.comp-badge svg { width: 11px; height: 11px; stroke: currentColor; fill: none; stroke-width: 2; }
+/* changelog */
+.cl-list { max-height: 52vh; overflow: auto; padding-right: 4px; }
+.cl-list.small { max-height: none; }
+.cl-rel { margin-bottom: 14px; }
+.cl-head { display: flex; align-items: baseline; gap: 10px; margin-bottom: 4px; }
+.cl-head small { color: var(--muted); }
+.cl-rel ul { margin: 0; padding-left: 18px; }
+.cl-rel li { font-size: 13px; line-height: 1.5; color: var(--text-2, #cfcfe0); margin: 2px 0; }

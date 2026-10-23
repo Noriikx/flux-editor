@@ -42,6 +42,24 @@ function applyAdjustment(g, c, local, W, H, k) {
   tg.setTransform(1, 0, 0, 1, 0, 0);
   tg.clearRect(0, 0, tmp.width, tmp.height);
   tg.drawImage(cv, 0, 0);
+  if (typeof needsLayer === 'function' && needsLayer(c)) {
+    // effects / mask on an adjustment clip: process a copy of the frame, cut it to the mask, put it back on top
+    const A = poolCanvas(0, cv.width, cv.height), ag = A.getContext('2d');
+    ag.filter = buildFilter(c, k); ag.drawImage(tmp, 0, 0); ag.filter = 'none';
+    ag.setTransform(k, 0, 0, k, 0, 0); ag.translate(W / 2, H / 2);
+    const f0 = filterById(c.filter);
+    if (f0.tint) { ag.globalCompositeOperation = 'soft-light'; ag.fillStyle = f0.tint; ag.fillRect(-W / 2, -H / 2, W, H); ag.globalCompositeOperation = 'source-over'; }
+    drawEffects(ag, c, W, H, local);
+    ag.setTransform(1, 0, 0, 1, 0, 0);
+    let out = runEffects(c, A, k, local);
+    if (maskOn(c)) out = applyMask(c, out, k);
+    g.save();
+    g.setTransform(1, 0, 0, 1, 0, 0);
+    g.globalAlpha = amount;
+    g.drawImage(out, 0, 0);
+    g.restore();
+    return;
+  }
   g.save();
   g.setTransform(1, 0, 0, 1, 0, 0);
   g.globalAlpha = amount;
