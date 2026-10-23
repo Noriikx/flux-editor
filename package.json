@@ -1,7 +1,7 @@
 {
   "name": "flux",
   "productName": "Flux",
-  "version": "4.1.0",
+  "version": "4.1.1",
   "description": "Flux - a simple, friendly video editor",
   "main": "main.js",
   "author": "Flux",
@@ -64,7 +64,7 @@
     },
     "mac": {
       "target": "dmg",
-      "icon": "build/icon.png",
+      "icon": "build/icon.icns",
       "category": "public.app-category.video",
       "artifactName": "Flux-mac-${arch}.${ext}",
       "hardenedRuntime": false,
