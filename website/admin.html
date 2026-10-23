@@ -1,0 +1,224 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex">
+<title>Flux Admin</title>
+<link rel="icon" href="logo.png">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,800&family=Figtree:wght@400;600;700&display=swap">
+<style>
+  :root { --ink: #09080f; --panel: #12111b; --panel2: #0c0b13; --line: #2a2738; --text: #eeedf7; --muted: #9a97b0; --lav: #c3bfff; --mint: #57d9a3; --gold: #ffd23f; --red: #ff8a9b; --grad: linear-gradient(120deg, #e8ebff, #a79eff 48%, #6c4bff); color-scheme: dark; }
+  * { box-sizing: border-box; }
+  body { margin: 0; min-height: 100vh; background: radial-gradient(ellipse 70% 50% at 50% 0%, rgba(108,75,255,.2), transparent 70%), var(--ink); color: var(--text); font: 15px/1.5 "Figtree", "Segoe UI", sans-serif; padding: 28px 16px; }
+  .wrap { max-width: 960px; margin: 0 auto; }
+  header { display: flex; align-items: center; gap: 12px; margin-bottom: 22px; }
+  header img { width: 40px; height: 40px; border-radius: 10px; }
+  h1 { font: 800 24px "Bricolage Grotesque", sans-serif; margin: 0; flex: 1; }
+  h2 { font-size: 16px; margin: 0 0 12px; }
+  .card { background: var(--panel); border: 1px solid var(--line); border-radius: 16px; padding: 20px; margin-bottom: 18px; }
+  .login { max-width: 380px; margin: 60px auto; }
+  label { display: grid; gap: 4px; font-size: 12.5px; color: var(--muted); }
+  input, select { height: 40px; border-radius: 10px; border: 1px solid var(--line); background: var(--panel2); color: var(--text); padding: 0 12px; font: inherit; outline: none; min-width: 0; }
+  input:focus, select:focus { border-color: #8d7dff; }
+  button { border: 1px solid var(--line); background: var(--panel2); color: var(--text); border-radius: 10px; height: 40px; padding: 0 16px; font: 600 14px "Figtree", sans-serif; cursor: pointer; white-space: nowrap; }
+  button:hover { border-color: #8d7dff; }
+  button.primary { background: var(--grad); color: #120d2c; border: 0; }
+  button.small { height: 30px; padding: 0 10px; font-size: 12.5px; }
+  button.danger:hover { border-color: var(--red); color: var(--red); }
+  .grid { display: grid; gap: 10px; }
+  .give { display: grid; grid-template-columns: 2fr 1fr auto; gap: 10px; align-items: end; }
+  .msg { min-height: 20px; font-size: 13.5px; margin-top: 8px; color: var(--mint); }
+  .msg.err { color: var(--red); }
+  .tools { display: flex; gap: 10px; align-items: center; margin-bottom: 12px; }
+  .tools input { flex: 1; }
+  table { width: 100%; border-collapse: collapse; font-size: 14px; }
+  th { text-align: left; color: var(--muted); font-weight: 600; font-size: 12px; padding: 8px; border-bottom: 1px solid var(--line); }
+  td { padding: 10px 8px; border-bottom: 1px solid #1d1b29; vertical-align: middle; }
+  td .acts { display: flex; gap: 6px; flex-wrap: wrap; justify-content: flex-end; }
+  .pill { display: inline-block; font-size: 12px; padding: 2px 9px; border-radius: 99px; background: #1e1c2b; color: var(--muted); }
+  .pill.pro { background: rgba(255,210,63,.14); color: var(--gold); }
+  .pill.sub { background: rgba(87,217,163,.14); color: var(--mint); }
+  .muted { color: var(--muted); font-size: 12.5px; }
+  .hide { display: none; }
+  @media (max-width: 700px) {
+    .give { grid-template-columns: 1fr; }
+    thead { display: none; }
+    tr { display: grid; padding: 10px 0; border-bottom: 1px solid var(--line); }
+    td { border: 0; padding: 3px 0; }
+    td .acts { justify-content: flex-start; }
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <!-- sign in -->
+  <section id="login" class="card login">
+    <header><img src="logo.png" alt=""><h1>Flux Admin</h1></header>
+    <form class="grid" id="loginForm">
+      <label>Email<input name="email" type="email" required autocomplete="email"></label>
+      <label>Password<input name="password" type="password" required autocomplete="current-password"></label>
+      <button class="primary" type="submit">Sign in</button>
+      <div class="msg err" id="loginMsg"></div>
+    </form>
+    <p class="muted">Use the same email and password as your Flux app account.</p>
+  </section>
+
+  <!-- panel -->
+  <section id="panel" class="hide">
+    <header><img src="logo.png" alt=""><h1>Flux Admin</h1><span class="muted" id="who"></span><button class="small" id="out">Sign out</button></header>
+
+    <div class="card">
+      <h2>Give Premium</h2>
+      <form class="give" id="giveForm">
+        <label>User's email<input name="email" type="email" required placeholder="friend@example.com"></label>
+        <label>For how long
+          <select name="days">
+            <option value="7">1 week</option>
+            <option value="30" selected>1 month</option>
+            <option value="90">3 months</option>
+            <option value="180">6 months</option>
+            <option value="365">1 year</option>
+            <option value="0">Forever</option>
+            <option value="custom">Custom days…</option>
+          </select>
+        </label>
+        <button class="primary" type="submit">Give Premium</button>
+        <label id="customWrap" class="hide">Number of days<input name="custom" type="number" min="1" value="14"></label>
+      </form>
+      <div class="msg" id="giveMsg"></div>
+      <p class="muted">It works even if they haven't made an account yet - it's waiting for them when they sign up with that email.</p>
+    </div>
+
+    <div class="card">
+      <div class="tools"><h2 style="margin:0;flex:none">Users <span class="muted" id="count"></span></h2><input id="search" placeholder="Search email…"><button class="small" id="reload">Refresh</button></div>
+      <table>
+        <thead><tr><th>Email</th><th>Premium</th><th>Joined</th><th>Last sign-in</th><th></th></tr></thead>
+        <tbody id="rows"><tr><td colspan="5" class="muted">Loading…</td></tr></tbody>
+      </table>
+    </div>
+  </section>
+</div>
+
+<script>
+const API = '/api/';
+let token = null, users = [];
+try { token = sessionStorage.getItem('fluxAdmin'); } catch {}
+const $ = (s) => document.querySelector(s);
+const esc = (s) => String(s || '').replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+const day = (t) => t ? new Date(t).toLocaleDateString() : '-';
+
+async function call(path, body) {
+  const r = await fetch(API + path, {
+    method: body ? 'POST' : 'GET',
+    headers: { 'content-type': 'application/json', ...(token ? { authorization: 'Bearer ' + token } : {}) },
+    body: body ? JSON.stringify(body) : undefined
+  }).catch(() => null);
+  if (!r) return { error: 'No connection.' };
+  const j = await r.json().catch(() => ({}));
+  if (r.status === 401 && token) { signOut(); }
+  return r.ok ? j : { error: j.error || 'Something went wrong.' };
+}
+
+function show(panel) {
+  $('#login').classList.toggle('hide', panel);
+  $('#panel').classList.toggle('hide', !panel);
+}
+function signOut() { token = null; try { sessionStorage.removeItem('fluxAdmin'); } catch {} show(false); }
+
+$('#loginForm').onsubmit = async (e) => {
+  e.preventDefault();
+  const f = e.target;
+  $('#loginMsg').textContent = 'Signing in…';
+  const r = await call('login', { email: f.email.value, password: f.password.value });
+  if (r.error) return ($('#loginMsg').textContent = r.error);
+  if (!r.account.admin) return ($('#loginMsg').textContent = 'This account is not the owner account.');
+  token = r.token;
+  try { sessionStorage.setItem('fluxAdmin', token); } catch {}
+  $('#loginMsg').textContent = '';
+  start();
+};
+$('#out').onclick = signOut;
+
+$('#giveForm').days.onchange = (e) => $('#customWrap').classList.toggle('hide', e.target.value !== 'custom');
+$('#giveForm').onsubmit = async (e) => {
+  e.preventDefault();
+  const f = e.target;
+  const days = f.days.value === 'custom' ? Math.max(1, +f.custom.value || 1) : +f.days.value;
+  const msg = $('#giveMsg');
+  msg.className = 'msg'; msg.textContent = 'Saving…';
+  const r = await call('admin/grant', { email: f.email.value, days });
+  if (r.error) { msg.className = 'msg err'; msg.textContent = r.error; return; }
+  msg.textContent = `✓ ${f.email.value} has Premium ${days === 0 ? 'forever' : 'until ' + day(r.grantUntil)}.`;
+  f.email.value = '';
+  load();
+};
+
+function premiumText(u) {
+  const now = Date.now(), out = [];
+  if (u.grantUntil === -1) out.push('<span class="pill pro">Gift · forever</span>');
+  else if (u.grantUntil > now) out.push(`<span class="pill pro">Gift · until ${day(u.grantUntil)}</span>`);
+  if (u.subscription && u.subscription.active) out.push(`<span class="pill sub">Paying${u.subscription.until ? ' · renews ' + day(u.subscription.until) : ''}</span>`);
+  return out.join(' ') || '<span class="pill">Free</span>';
+}
+
+function draw() {
+  const q = $('#search').value.trim().toLowerCase();
+  const list = users.filter((u) => !q || u.email.includes(q));
+  $('#count').textContent = `(${users.length})`;
+  $('#rows').innerHTML = list.length ? list.map((u) => `
+    <tr data-e="${esc(u.email)}">
+      <td><b>${esc(u.email)}</b>${u.hasPassword ? '' : '<br><span class="muted">no account yet</span>'}</td>
+      <td>${premiumText(u)}</td>
+      <td class="muted">${day(u.createdAt)}</td>
+      <td class="muted">${day(u.lastLogin)}</td>
+      <td><div class="acts">
+        <button class="small" data-a="give">Give…</button>
+        ${(u.grantUntil === -1 || u.grantUntil > Date.now()) ? '<button class="small danger" data-a="revoke">Remove gift</button>' : ''}
+        <button class="small" data-a="check">Check Stripe</button>
+        ${u.hasPassword ? '<button class="small" data-a="pw">New password</button>' : ''}
+        <button class="small danger" data-a="del">Delete</button>
+      </div></td>
+    </tr>`).join('') : '<tr><td colspan="5" class="muted">No users yet.</td></tr>';
+}
+
+$('#rows').onclick = async (e) => {
+  const b = e.target.closest('button[data-a]');
+  if (!b) return;
+  const email = b.closest('tr').dataset.e, a = b.dataset.a;
+  if (a === 'give') {
+    const f = $('#giveForm'); f.email.value = email; f.email.scrollIntoView({ behavior: 'smooth', block: 'center' }); f.days.focus(); return;
+  }
+  if (a === 'revoke' && !confirm(`Remove the Premium gift from ${email}?`)) return;
+  if (a === 'del' && !confirm(`Delete the account ${email}? This can't be undone.`)) return;
+  let body = { email };
+  if (a === 'pw') {
+    const pw = prompt(`New password for ${email} (at least 8 characters).\nTell them the new password yourself.`);
+    if (!pw) return;
+    body.password = pw;
+  }
+  b.disabled = true;
+  const r = await call('admin/' + ({ revoke: 'revoke', check: 'refresh', pw: 'password', del: 'delete' }[a]), body);
+  if (r.error) alert(r.error);
+  else if (a === 'pw') alert('Password changed.');
+  load();
+};
+
+$('#search').oninput = draw;
+$('#reload').onclick = load;
+
+async function load() {
+  const r = await call('admin/users');
+  if (r.error) { $('#rows').innerHTML = `<tr><td colspan="5" class="msg err">${esc(r.error)}</td></tr>`; return; }
+  users = r.users; draw();
+}
+async function start() {
+  const r = await call('me');
+  if (!r.account || !r.account.admin) return signOut();
+  $('#who').textContent = r.account.email;
+  show(true); load();
+}
+if (token) start(); else show(false);
+</script>
+</body>
+</html>

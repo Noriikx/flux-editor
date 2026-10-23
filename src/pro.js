@@ -8,11 +8,8 @@
 // You own this copy, so Premium is unlocked. Set this to false in builds you give to other people.
 const OWNER_UNLOCKED = false;
 const PREMIUM_PRICE = '€4.99';
-// Payments: create the product in Lemon Squeezy, then paste its checkout link and product id here.
-// Payments: your Stripe Payment Link. "Setup links.bat" fills this in.
+// Payments: your Stripe Payment Link (monthly subscription).
 const CHECKOUT_URL = 'https://buy.stripe.com/3cIaEX20u4o26rI4LUfMA00';
-// Public half of your licence signing key. "Make licence keys.bat" fills this in.
-const LICENSE_PUBLIC_KEY = 'MCowBQYDK2VwAyEA+whnXQXhV6JNG5EhGKfqoT/T6tXJeZBqz8kobGXToAk=';
 const PREMIUM_FEATURES = [
   ['AI Editor', 'Tell Flux what you want - it cuts, adds titles, music, transitions and more'],
   ['Time machine', 'Jump your whole edit back to any earlier point in a couple of clicks'],
@@ -26,25 +23,17 @@ const PREMIUM_FEATURES = [
   ['Film effects', 'Vignette and film grain'],
   ['Equalizer', 'Bass, mid and treble controls for any sound']
 ];
-function isPremium() { return OWNER_UNLOCKED || !!(settings.license && settings.license.valid); }
-async function activateLicense(key) {
-  key = key.trim();
-  if (!api || !api.licenseVerify) return { ok: false, msg: 'Licences work in the desktop app.' };
-  if (!LICENSE_PUBLIC_KEY) return { ok: false, msg: 'Licence keys aren\u2019t set up in this copy of Flux yet.' };
-  const r = await api.licenseVerify({ key, publicKey: LICENSE_PUBLIC_KEY });
-  if (!r.ok) return { ok: false, msg: 'That key doesn\u2019t look right. Copy it again from your purchase page.' };
-  settings.license = { key, valid: true, email: r.email, checkedAt: Date.now() };
-  saveSettings();
-  updatePremiumBadge();
-  return { ok: true };
+function isPremium() {
+  if (OWNER_UNLOCKED) return true;
+  const a = settings.account;
+  return !!(a && a.token && a.premium && (!a.until || a.until > Date.now()));
 }
-// Check the saved key again when Flux starts (works offline).
-async function recheckLicense() {
-  const l = settings.license;
-  if (!l || !l.key || !api || !api.licenseVerify || !LICENSE_PUBLIC_KEY) return;
-  const r = await api.licenseVerify({ key: l.key, publicKey: LICENSE_PUBLIC_KEY });
-  l.valid = !!r.ok;
-  saveSettings(); updatePremiumBadge();
+function openCheckout() {
+  const a = settings.account;
+  const url = CHECKOUT_URL + (a && a.email ? '?prefilled_email=' + encodeURIComponent(a.email) : '');
+  if (api && api.openExternal) api.openExternal(url); else window.open(url);
+  toast('Pay in your browser with the same email, then come back - Premium turns on by itself.', { duration: 7000 });
+  waitForPremium();
 }
 function openPremium(feature) {
   const unlocked = isPremium();
@@ -52,23 +41,15 @@ function openPremium(feature) {
     <div class="prem-head"><span class="crown">${CROWN}</span><div><h2>Flux Premium</h2>
       <p class="sub" style="margin:0">${feature ? `<b>${feature}</b> is a Premium feature.` : 'More tools for better videos.'}</p></div></div>
     <ul class="prem-list">${PREMIUM_FEATURES.map(([a, b]) => `<li><span>✓</span><div><b>${a}</b><small>${b}</small></div></li>`).join('')}</ul>
-    <div class="prem-price"><b>${PREMIUM_PRICE}</b><small>one-time payment</small></div>
-    ${unlocked ? '<div class="prem-ok">✓ Premium is unlocked on this computer</div>' : `
-    <div class="prem-key"><input class="num-input" placeholder="Already bought it? Paste your licence key"><button class="btn" data-a="act">Activate</button></div>
-    <p class="hint">Secure checkout by Stripe. Your key appears on the page right after you pay.</p>`}
-    <div class="footer"><button class="btn ghost" data-a="close">Close</button>${unlocked ? '' : `<button class="btn primary prem-buy" data-a="buy">Get Premium - ${PREMIUM_PRICE}</button>`}</div>`);
+    <div class="prem-price"><b>${PREMIUM_PRICE}</b><small>per month · cancel anytime</small></div>
+    ${unlocked ? `<div class="prem-ok">✓ Premium is active on your account${settings.account && settings.account.until ? ' until ' + new Date(settings.account.until).toLocaleDateString() : ''}</div>` : `
+    <p class="hint">Secure checkout by Stripe. Use the same email as your Flux account (${settings.account ? settings.account.email : ''}).<br>Already paid? <a href="#" data-a="refresh">Check again</a></p>`}
+    <div class="footer"><button class="btn ghost" data-a="close">Close</button>${unlocked ? '' : `<button class="btn primary prem-buy" data-a="buy">Get Premium - ${PREMIUM_PRICE}/month</button>`}</div>`);
   $('[data-a=close]', box).onclick = closeModal;
   const buy = $('[data-a=buy]', box);
-  if (buy) buy.onclick = () => { if (!CHECKOUT_URL) return toast('Checkout isn\u2019t set up yet'); if (api && api.openExternal) api.openExternal(CHECKOUT_URL); else window.open(CHECKOUT_URL); };
-  const act = $('[data-a=act]', box);
-  if (act) act.onclick = async () => {
-    const key = $('.prem-key input', box).value;
-    if (!key.trim()) return;
-    act.disabled = true; act.textContent = 'Checking…';
-    const r = await activateLicense(key);
-    if (r.ok) { closeModal(); toast('Premium unlocked - thank you!'); renderInspector(); }
-    else { act.disabled = false; act.textContent = 'Activate'; toast(r.msg, { error: true }); }
-  };
+  if (buy) buy.onclick = () => { closeModal(); openCheckout(); };
+  const ref = $('[data-a=refresh]', box);
+  if (ref) ref.onclick = async (e) => { e.preventDefault(); await refreshAccount(true); closeModal(); toast(isPremium() ? 'Premium is on - thank you!' : 'No subscription found for this email yet.', { error: !isPremium() }); };
 }
 function updatePremiumBadge() {
   const b = $('#btnPremium');

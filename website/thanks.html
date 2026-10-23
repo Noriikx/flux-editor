@@ -14,7 +14,7 @@
   img { width: 64px; height: 64px; border-radius: 16px; }
   h1 { font: 800 32px "Bricolage Grotesque", sans-serif; margin: 16px 0 6px; letter-spacing: -.02em; }
   p { color: var(--muted); margin: 0 0 18px; }
-  .key { font: 500 13px "JetBrains Mono", Consolas, monospace; word-break: break-all; background: #0c0b13; border: 1px dashed #4b4570; border-radius: 12px; padding: 14px; color: var(--lav); text-align: left; user-select: all; }
+  .x { font: 500 13px "JetBrains Mono", Consolas, monospace; word-break: break-all; background: #0c0b13; border: 1px dashed #4b4570; border-radius: 12px; padding: 14px; color: var(--lav); text-align: left; user-select: all; }
   button { margin-top: 14px; border: none; border-radius: 12px; padding: 13px 22px; font: 700 15px "Figtree", sans-serif; background: var(--grad); color: #120d2c; cursor: pointer; }
   ol { text-align: left; color: var(--muted); margin: 22px 0 0; padding-left: 20px; }
   ol b { color: var(--text); }
@@ -24,42 +24,14 @@
 <body>
   <main class="card">
     <img src="logo.png" alt="">
-    <h1 id="title">Getting your key…</h1>
-    <p id="msg">One moment while we confirm your payment.</p>
-    <div id="out" hidden>
-      <div class="key" id="key"></div>
-      <button id="copy">Copy key</button>
-      <ol>
-        <li>Open <b>Flux</b> and click <b>Premium</b> at the top.</li>
-        <li>Paste the key and click <b>Activate</b>.</li>
-        <li>Bookmark this page - you can come back to it if you need the key again.</li>
-      </ol>
-    </div>
+    <h1>You're Premium!</h1>
+    <p>Thank you for subscribing to Flux Premium.</p>
+    <ol>
+      <li>Go back to <b>Flux</b>. Premium turns on by itself within a minute.</li>
+      <li>Not yet? Click your <b>account circle</b> (top right) and press <b>Check Premium status</b>.</li>
+      <li>Make sure your Flux account uses <b>the same email</b> you just paid with.</li>
+    </ol>
+    <p style="margin-top:18px;font-size:14px">To cancel later, use the link in your Stripe receipt email.</p>
   </main>
-<script>
-  const id = new URLSearchParams(location.search).get('session_id');
-  const title = document.getElementById('title'), msg = document.getElementById('msg');
-  async function load() {
-    if (!id) { title.textContent = 'No purchase found'; msg.innerHTML = '<span class="err">This page needs the link from your Stripe checkout.</span>'; return; }
-    try {
-      const r = await fetch('/.netlify/functions/license?session_id=' + encodeURIComponent(id));
-      const j = await r.json();
-      if (!r.ok) throw new Error(j.error || 'Something went wrong.');
-      title.textContent = 'Thank you!';
-      msg.textContent = 'Here is your Flux Premium key' + (j.email ? ' for ' + j.email : '') + '.';
-      document.getElementById('key').textContent = j.key;
-      document.getElementById('out').hidden = false;
-    } catch (e) {
-      title.textContent = 'Almost there';
-      msg.innerHTML = '<span class="err"></span>';
-      msg.firstChild.textContent = e.message + ' If this keeps happening, contact us with your Stripe receipt.';
-    }
-  }
-  document.getElementById('copy').onclick = async (e) => {
-    const k = document.getElementById('key').textContent;
-    try { await navigator.clipboard.writeText(k); e.target.textContent = 'Copied!'; } catch { getSelection().selectAllChildren(document.getElementById('key')); }
-  };
-  load();
-</script>
 </body>
 </html>
