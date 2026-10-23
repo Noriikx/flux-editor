@@ -1,0 +1,289 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Flux</title>
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self' flux: data: blob:; img-src 'self' flux: data: blob:; media-src 'self' flux: blob: data: https:; style-src 'self' 'unsafe-inline'; script-src 'self'; connect-src 'self' flux: blob: data: https:">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body class="at-home">
+  <!-- ============ HOME / PROJECT MANAGER ============ -->
+  <section id="home">
+    <header class="home-top">
+      <button class="brand brand-btn" id="homeMenu" data-tip="Menu">
+        <img src="logo.png" alt="" class="brand-logo"><span class="brand-name">Flux</span>
+        <svg viewBox="0 0 24 24" class="brand-caret"><path d="m6 9 6 6 6-6"/></svg>
+      </button>
+      <div class="home-actions">
+        <button class="btn ghost" id="homeImport" data-tip="Open a .flux project file">Open file</button>
+        <button class="icon-btn" id="homeSettings" data-tip="Settings"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg></button>
+        <div class="win-ctrls">
+          <button class="icon-btn win-min" data-tip="Minimize"><svg viewBox="0 0 24 24"><path d="M5 12h14"/></svg></button>
+          <button class="icon-btn win-fs" data-tip="Full screen on / off (F11)"><svg viewBox="0 0 24 24" class="i-enter"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/></svg><svg viewBox="0 0 24 24" class="i-exit"><path d="M9 4v5H4M15 4v5h5M9 20v-5H4M15 20v-5h5"/></svg></button>
+          <button class="icon-btn win-close" data-tip="Exit Flux"><svg viewBox="0 0 24 24"><path d="M18 6 6 18M6 6l12 12"/></svg></button>
+        </div>
+      </div>
+    </header>
+    <div class="home-scroll">
+      <div class="home-inner">
+        <div class="home-hero">
+          <div>
+            <h1>Your projects</h1>
+            <p>Everything saves automatically. Pick up right where you left off.</p>
+          </div>
+        </div>
+        <div class="start-row">
+          <button class="new-card" id="homeNew">
+            <span class="new-plus"><svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg></span>
+            <b>New project</b><small>Name it and choose a shape</small>
+          </button>
+          <button class="quick-shape" data-k="16:9"><span class="shape-box"><i style="width:56px;height:32px"></i></span><b>Wide</b><small>16:9 · YouTube</small></button>
+          <button class="quick-shape" data-k="9:16"><span class="shape-box"><i style="width:24px;height:42px"></i></span><b>Vertical</b><small>9:16 · TikTok, Reels</small></button>
+          <button class="quick-shape" data-k="1:1"><span class="shape-box"><i style="width:38px;height:38px"></i></span><b>Square</b><small>1:1 · Posts</small></button>
+          <button class="quick-shape" data-k="4:5"><span class="shape-box"><i style="width:34px;height:42px"></i></span><b>Portrait</b><small>4:5 · Feed</small></button>
+        </div>
+        <div class="home-list-head">
+          <h2>Recent <span id="homeCount"></span></h2>
+          <div class="home-tools">
+            <input id="homeSearch" class="num-input" placeholder="Search projects…">
+            <label class="select-wrap"><select id="homeSort"><option value="recent">Last edited</option><option value="name">Name</option></select></label>
+          </div>
+        </div>
+        <div id="homeGrid" class="proj-grid"></div>
+        <div id="homeEmpty" class="home-empty">
+          <img src="logo.png" alt="">
+          <h3>No projects yet</h3>
+          <p>Start your first video - it only takes a click.</p>
+          <button class="btn primary" id="homeNew2">Create a project</button>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ TOP BAR ============ -->
+  <header id="topbar">
+    <button class="brand brand-btn" id="brandMenu" data-tip="Menu">
+      <img src="logo.png" alt="" class="brand-logo"><span class="brand-name">Flux</span>
+      <svg viewBox="0 0 24 24" class="brand-caret"><path d="m6 9 6 6 6-6"/></svg>
+    </button>
+    <button class="btn ghost" id="btnHome" data-tip="All projects (Ctrl+P)"><svg viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg>Projects</button>
+    <div class="project-name-wrap">
+      <input id="projectName" class="project-name" value="Untitled project" spellcheck="false" title="Rename your project">
+      <span id="saveStatus" class="save-status" data-state="saved"><i></i><span>Saved</span></span>
+    </div>
+    <div class="top-center">
+      <button class="icon-btn" id="btnUndo" data-tip="Undo (Ctrl+Z)"><svg viewBox="0 0 24 24"><path d="M9 14 4 9l5-5"/><path d="M4 9h10.5a5.5 5.5 0 0 1 0 11H11"/></svg></button>
+      <button class="icon-btn" id="btnRedo" data-tip="Redo (Ctrl+Y)"><svg viewBox="0 0 24 24"><path d="m15 14 5-5-5-5"/><path d="M20 9H9.5a5.5 5.5 0 0 0 0 11H13"/></svg></button>
+    </div>
+    <div class="top-right">
+      <label class="select-wrap" data-tip="Video shape">
+        <select id="aspectSelect">
+          <option value="16:9">16:9 · YouTube</option>
+          <option value="9:16">9:16 · TikTok / Reels</option>
+          <option value="1:1">1:1 · Square</option>
+          <option value="4:5">4:5 · Instagram post</option>
+        </select>
+      </label>
+      <button class="btn ghost ai-btn" id="btnAI" data-tip="AI Editor - tell Flux what to do"><svg viewBox="0 0 24 24"><path d="M12 3l1.8 4.7L18.5 9.5l-4.7 1.8L12 16l-1.8-4.7L5.5 9.5l4.7-1.8z"/><path d="M19 15l.8 2.2L22 18l-2.2.8L19 21l-.8-2.2L16 18l2.2-.8z"/></svg>AI Editor</button>
+      <button class="icon-btn" id="btnTimeMachine" data-tip="Time machine - go back to an earlier version"><svg viewBox="0 0 24 24"><path d="M3 12a9 9 0 1 0 3-6.7L3 8"/><path d="M3 3v5h5"/><path d="M12 7v5l3 2"/></svg></button>
+      <button class="btn premium-btn" id="btnPremium" data-tip="Flux Premium"><span class="crown-slot"></span><span>Premium</span></button>
+      <button class="icon-btn" id="btnHelp" data-tip="Help & shortcuts (F1)"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M9.5 9a2.5 2.5 0 1 1 3.5 2.3c-.6.3-1 .9-1 1.6V14M12 17h.01"/></svg></button>
+      <button class="icon-btn" id="btnSettings" data-tip="Settings & shortcuts (Ctrl+,)"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg></button>
+      <button class="btn primary" id="btnExport" data-tip="Export video (Ctrl+E)">
+        <svg viewBox="0 0 24 24"><path d="M12 3v12"/><path d="m7 10 5 5 5-5"/><path d="M5 21h14"/></svg>Export
+      </button>
+      <div class="win-ctrls">
+        <button class="icon-btn win-min" data-tip="Minimize"><svg viewBox="0 0 24 24"><path d="M5 12h14"/></svg></button>
+        <button class="icon-btn win-fs" data-tip="Full screen on / off (F11)"><svg viewBox="0 0 24 24" class="i-enter"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/></svg><svg viewBox="0 0 24 24" class="i-exit"><path d="M9 4v5H4M15 4v5h5M9 20v-5H4M15 20v-5h5"/></svg></button>
+        <button class="icon-btn win-close" data-tip="Exit Flux"><svg viewBox="0 0 24 24"><path d="M18 6 6 18M6 6l12 12"/></svg></button>
+      </div>
+    </div>
+  </header>
+
+  <main id="workspace">
+    <!-- ============ LEFT: LIBRARY ============ -->
+    <aside id="library" class="panel">
+      <nav class="tabs" id="libTabs">
+        <button class="tab active" data-tab="media"><svg viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="m10 9 5 3-5 3z"/></svg>Media</button>
+        <button class="tab" data-tab="music"><svg viewBox="0 0 24 24"><path d="M9 18V5l11-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="17" cy="16" r="3"/></svg>Music</button>
+        <button class="tab" data-tab="voice"><svg viewBox="0 0 24 24"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/></svg>Voice</button>
+        <button class="tab" data-tab="text"><svg viewBox="0 0 24 24"><path d="M5 6V4h14v2"/><path d="M12 4v16"/><path d="M9 20h6"/></svg>Text</button>
+        <button class="tab" data-tab="transitions"><svg viewBox="0 0 24 24"><rect x="2" y="6" width="9" height="12" rx="1.5"/><rect x="13" y="6" width="9" height="12" rx="1.5"/><path d="m10 12 4 0"/></svg>Transitions</button>
+        <button class="tab" data-tab="filters"><svg viewBox="0 0 24 24"><circle cx="9" cy="9" r="5"/><circle cx="15" cy="15" r="5"/></svg>Filters</button>
+      </nav>
+
+      <section class="tab-page active" data-page="media">
+        <button class="import-btn" id="btnImport">
+          <svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>
+          <span><b>Import media</b><small>Videos, photos & music · or drag files here</small></span>
+        </button>
+        <div id="mediaGrid" class="media-grid"></div>
+        <p class="hint" id="mediaHint">Tip: drag a file onto the timeline, or double‑click it to add it to the end.</p>
+      </section>
+
+      <section class="tab-page" data-page="music">
+        <div class="seg" id="musicSource">
+          <button data-src="km">Kevin MacLeod<small>Free with credit</small></button>
+          <button data-src="pd">Public domain<small>Internet Archive</small></button>
+        </div>
+        <input id="musicSearch" class="num-input search" placeholder="Search songs, moods, instruments…">
+        <div class="chips small" id="musicMoods"></div>
+        <div class="music-meta"><span id="musicCount"></span><button class="link-btn" id="musicCredits">Credits</button></div>
+        <div id="musicStatus" class="music-status"></div>
+        <div id="musicList" class="music-list"></div>
+        <p class="hint" id="musicNote"></p>
+      </section>
+
+      <section class="tab-page" data-page="voice">
+        <div class="rec-panel">
+          <button id="recBtn" class="rec-btn"><span class="rec-dot"></span></button>
+          <div class="rec-info">
+            <b id="recLabel">Record</b>
+            <span id="recTime" class="rec-time">00:00.00</span>
+          </div>
+        </div>
+        <p class="hint rec-hint" id="recHint"></p>
+        <div class="vu"><div id="vuBar"></div></div>
+        <div class="vu-row"><span id="micStatus" class="mic-status">Microphone off</span><span id="vuHint"></span></div>
+
+        <div class="v-field"><label>Microphone</label><select id="vIn" class="dev-select"></select></div>
+        <div class="v-field"><label>Listen through</label><select id="vOut" class="dev-select"></select></div>
+        <div class="v-btns"><button class="btn ghost" id="vRefresh">Refresh devices</button><button class="btn ghost" id="vTest">Test sound</button></div>
+        <div class="field" style="margin-top:12px"><label>Mic volume</label><input type="range" id="vGain" min="0" max="300" value="100"><span class="val" id="vGainVal">100%</span></div>
+
+        <div class="v-opts">
+          <label class="v-opt"><input type="checkbox" id="vCount"><span>3-2-1 countdown</span></label>
+          <label class="v-opt"><input type="checkbox" id="vPlay"><span>Play the video while I talk</span></label>
+          <label class="v-opt"><input type="checkbox" id="vMute"><span>Mute the video's sound while recording</span></label>
+          <label class="v-opt"><input type="checkbox" id="vNoise"><span>Reduce background noise</span></label>
+          <label class="v-opt"><input type="checkbox" id="vHear"><span>Hear myself (use headphones)</span></label>
+        </div>
+        <div class="help-title" id="takesTitle">Your takes</div>
+        <div id="takes" class="music-list"></div>
+      </section>
+
+      <section class="tab-page" data-page="text">
+        <button class="import-btn" id="btnCaptions">
+          <svg viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="M7 11h4M13 11h4M7 15h7"/></svg>
+          <span><b>Auto captions</b><small>Turn speech into subtitles · many styles</small></span>
+        </button>
+        <p class="page-intro" style="margin-top:12px">Click a style to add it at the playhead, or drag it onto the timeline or preview.</p>
+        <div class="text-presets" id="textPresets"></div>
+        <div class="help-title">Stickers</div>
+        <div class="emoji-grid" id="emojiGrid"></div>
+      </section>
+
+      <section class="tab-page" data-page="transitions">
+        <p class="page-intro">Click a clip (or the <b>＋</b> between two clips), then pick a transition. You can also drag one onto a cut.</p>
+        <div class="trans-grid" id="transitionGrid"></div>
+        <div class="field" style="margin-top:14px"><label>Default length</label><input type="range" id="transDefault" min="0.2" max="2" step="0.1"><span class="val" id="transDefaultVal"></span></div>
+        <div class="v-btns">
+          <button class="btn ghost" id="transAll">Crossfade every cut</button>
+          <button class="btn ghost" id="transNone">Remove all</button>
+        </div>
+      </section>
+
+      <section class="tab-page" data-page="filters">
+        <p class="page-intro">Click to apply to the selected clip, or drag onto any clip.</p>
+        <div class="filter-grid" id="filterGrid"></div>
+        <div class="help-title">Effects</div>
+        <div class="fx-grid" id="fxGrid"></div>
+      </section>
+    </aside>
+
+    <!-- ============ CENTER: PREVIEW ============ -->
+    <section id="viewer" class="panel">
+      <div id="stage">
+        <div id="canvasWrap">
+          <canvas id="previewCanvas"></canvas>
+          <canvas id="overlayCanvas"></canvas>
+        </div>
+        <div id="emptyState">
+          <img src="logo.png" alt="">
+          <h2>Let's make something</h2>
+          <p>Drop videos, photos or music anywhere in this window.</p>
+          <button class="btn primary" id="btnImport2">Import media</button>
+        </div>
+        <div id="countdown"></div>
+        <div id="recBadge"><i></i>REC</div>
+      </div>
+      <div id="transport">
+        <div class="time"><span id="timeNow">00:00.00</span><span class="sep">/</span><span id="timeTotal">00:00.00</span></div>
+        <div class="transport-buttons">
+          <button class="icon-btn" id="btnStart" data-tip="Go to start (Home)"><svg viewBox="0 0 24 24"><path d="M6 5v14"/><path d="M18 6 9 12l9 6z"/></svg></button>
+          <button class="icon-btn" id="btnPrevFrame" data-tip="Back 1 frame (←)"><svg viewBox="0 0 24 24"><path d="m15 6-6 6 6 6"/></svg></button>
+          <button class="play-btn" id="btnPlay" data-tip="Play / Pause (Space)">
+            <svg viewBox="0 0 24 24" class="i-play"><path d="M7 4.5v15l13-7.5z"/></svg>
+            <svg viewBox="0 0 24 24" class="i-pause"><rect x="6" y="4.5" width="4" height="15" rx="1"/><rect x="14" y="4.5" width="4" height="15" rx="1"/></svg>
+          </button>
+          <button class="icon-btn" id="btnNextFrame" data-tip="Forward 1 frame (→)"><svg viewBox="0 0 24 24"><path d="m9 6 6 6-6 6"/></svg></button>
+          <button class="icon-btn" id="btnEnd" data-tip="Go to end (End)"><svg viewBox="0 0 24 24"><path d="M18 5v14"/><path d="m6 6 9 6-9 6z"/></svg></button>
+        </div>
+        <div class="transport-right">
+          <button class="icon-btn" id="btnLoop" data-tip="Loop playback (L)"><svg viewBox="0 0 24 24"><path d="M17 2l4 4-4 4"/><path d="M3 11v-1a4 4 0 0 1 4-4h14"/><path d="m7 22-4-4 4-4"/><path d="M21 13v1a4 4 0 0 1-4 4H3"/></svg></button>
+          <button class="icon-btn" id="btnSnapshot" data-tip="Save this frame as a picture"><svg viewBox="0 0 24 24"><path d="M4 8h3l2-3h6l2 3h3v11H4z"/><circle cx="12" cy="13" r="3.5"/></svg></button>
+          <button class="icon-btn" id="btnFullscreen" data-tip="Full screen preview (F)"><svg viewBox="0 0 24 24"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/></svg></button>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============ RIGHT: INSPECTOR ============ -->
+    <aside id="inspector" class="panel">
+      <div id="inspectorBody"></div>
+    </aside>
+  </main>
+
+  <!-- ============ TIMELINE ============ -->
+  <section id="timelinePanel" class="panel">
+    <div id="tlToolbar">
+      <div class="tl-tools">
+        <button class="tool-btn" id="btnSplit" data-tip="Split at playhead (S)"><svg viewBox="0 0 24 24"><circle cx="6" cy="6" r="3"/><circle cx="6" cy="18" r="3"/><path d="M20 4 8.1 15.9M14.5 14.5 20 20M8.1 8.1 12 12"/></svg>Split</button>
+        <button class="tool-btn" id="btnDelete" data-tip="Delete (Del) · Shift+Del closes the gap"><svg viewBox="0 0 24 24"><path d="M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3"/></svg>Delete</button>
+        <button class="tool-btn" id="btnDuplicate" data-tip="Duplicate (Ctrl+D)"><svg viewBox="0 0 24 24"><rect x="8" y="8" width="12" height="12" rx="2"/><path d="M16 8V5a1 1 0 0 0-1-1H5a1 1 0 0 0-1 1v10a1 1 0 0 0 1 1h3"/></svg>Duplicate</button>
+        <span class="tl-divider"></span>
+        <button class="tool-btn" id="btnAddText" data-tip="Add text (T)"><svg viewBox="0 0 24 24"><path d="M5 6V4h14v2"/><path d="M12 4v16"/><path d="M9 20h6"/></svg>Text</button>
+        <button class="tool-btn" id="btnMarker" data-tip="Add marker (M)"><svg viewBox="0 0 24 24"><path d="M6 3h12v13l-6 5-6-5z"/></svg>Marker</button>
+        <button class="tool-btn" id="btnRecTl" data-tip="Record voiceover (R)"><svg viewBox="0 0 24 24"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/></svg>Voice</button>
+        <span class="tl-divider"></span>
+        <button class="tool-btn toggle on" id="btnSnap" data-tip="Snap clips to edges and the playhead (N)"><svg viewBox="0 0 24 24"><path d="M6 3v8a6 6 0 0 0 12 0V3"/><path d="M6 7h4M14 7h4"/></svg>Snap</button>
+        <button class="tool-btn toggle" id="btnRipple" data-tip="Close gaps automatically when deleting"><svg viewBox="0 0 24 24"><path d="M3 12h4M17 12h4"/><rect x="8" y="7" width="8" height="10" rx="1.5"/></svg>Auto-close gaps</button>
+      </div>
+      <div class="tl-zoom">
+        <button class="icon-btn small" id="btnZoomOut" data-tip="Zoom out (-)"><svg viewBox="0 0 24 24"><path d="M5 12h14"/></svg></button>
+        <input type="range" id="zoomSlider" min="0" max="100" value="45">
+        <button class="icon-btn small" id="btnZoomIn" data-tip="Zoom in (+)"><svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg></button>
+        <button class="tool-btn" id="btnFit" data-tip="Fit whole video in view (Shift+Z)">Fit</button>
+      </div>
+    </div>
+    <div id="timeline">
+      <div id="tlHeaders">
+        <div class="tl-corner"></div>
+        <div id="trackHeaders"></div>
+      </div>
+      <div id="tlScroll">
+        <div id="tlContent">
+          <div id="tlRuler"></div>
+          <div id="tlLanes"></div>
+          <div id="snapLine"></div>
+          <div id="playhead"><div class="ph-head"></div></div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ OVERLAYS ============ -->
+  <div id="dropOverlay"><div class="drop-card"><svg viewBox="0 0 24 24"><path d="M12 3v12"/><path d="m7 10 5 5 5-5"/><path d="M5 21h14"/></svg>Drop to import</div></div>
+  <div id="modalRoot"></div>
+  <div id="toasts"></div>
+  <div id="tooltip"></div>
+
+  <script src="app.js"></script>
+  <script src="settings.js"></script>
+  <script src="projects.js"></script>
+  <script src="music.js"></script>
+  <script src="voice.js"></script>
+  <script src="pro.js"></script>
+  <script src="ai.js"></script>
+  <script src="boot.js"></script>
+</body>
+</html>

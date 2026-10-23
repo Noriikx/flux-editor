@@ -1,0 +1,85 @@
+{
+  "name": "flux",
+  "productName": "Flux",
+  "version": "4.1.0",
+  "description": "Flux - a simple, friendly video editor",
+  "main": "main.js",
+  "author": "Flux",
+  "license": "MIT",
+  "scripts": {
+    "start": "electron .",
+    "dist": "electron-builder --win --publish never",
+    "dist:mac": "electron-builder --mac --publish never"
+  },
+  "dependencies": {
+    "ffmpeg-static": "^5.2.0",
+    "@huggingface/transformers": "^3.0.0"
+  },
+  "devDependencies": {
+    "electron": "^37.2.0",
+    "electron-builder": "^26.0.12"
+  },
+  "build": {
+    "appId": "com.flux.editor",
+    "productName": "Flux",
+    "icon": "build/icon.png",
+    "files": [
+      "main.js",
+      "preload.js",
+      "src/**/*",
+      "package.json"
+    ],
+    "asarUnpack": [
+      "node_modules/ffmpeg-static/**",
+      "node_modules/onnxruntime-node/**",
+      "node_modules/@huggingface/transformers/**",
+      "node_modules/sharp/**"
+    ],
+    "win": {
+      "target": "nsis",
+      "icon": "build/icon.ico",
+      "artifactName": "Flux-Setup.${ext}"
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "Flux",
+      "uninstallDisplayName": "Flux",
+      "installerIcon": "build/icon.ico",
+      "uninstallerIcon": "build/icon.ico",
+      "runAfterFinish": true
+    },
+    "fileAssociations": [
+      {
+        "ext": "flux",
+        "name": "Flux Project",
+        "icon": "build/icon.ico"
+      }
+    ],
+    "directories": {
+      "output": "dist"
+    },
+    "mac": {
+      "target": "dmg",
+      "icon": "build/icon.png",
+      "category": "public.app-category.video",
+      "artifactName": "Flux-mac-${arch}.${ext}",
+      "hardenedRuntime": false,
+      "extendInfo": {
+        "NSMicrophoneUsageDescription": "Flux uses your microphone to record voiceovers."
+      }
+    },
+    "dmg": {
+      "title": "Flux"
+    },
+    "publish": [
+      {
+        "provider": "github"
+      }
+    ]
+  },
+  "repository": "https://github.com/Noriikx/flux-editor"
+}
