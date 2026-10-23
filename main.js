@@ -586,15 +586,32 @@ function updateAsset(rel) {
   if (process.platform === 'darwin') return assets.find((a) => a.name === `Flux-mac-${process.arch}.dmg`) || assets.find((a) => /\.dmg$/i.test(a.name));
   return null;
 }
+// Pick the newest release that already has an installer for this computer
+// (a brand-new release needs ~10 minutes before its installer is uploaded).
+let pendingRelease = null;
+async function findUpdate() {
+  const res = await net.fetch(`https://api.github.com/repos/${REPO}/releases?per_page=15`, { headers: { Accept: 'application/vnd.github+json', 'User-Agent': 'Flux' } });
+  if (!res.ok) throw Object.assign(new Error('Could not check for updates (' + res.status + ')'), { status: res.status });
+  const list = (await res.json()).filter((r) => !r.draft && !r.prerelease)
+    .sort((a, b) => (newer(String(a.tag_name).replace(/^v/, ''), String(b.tag_name).replace(/^v/, '')) ? -1 : 1));
+  const newest = list[0];
+  const ready = list.find((r) => updateAsset(r));
+  return { newest, ready };
+}
 ipcMain.handle('update:check', async () => {
   try {
-    const res = await net.fetch(`https://api.github.com/repos/${REPO}/releases/latest`, { headers: { Accept: 'application/vnd.github+json', 'User-Agent': 'Flux' } });
-    if (!res.ok) return { error: 'Could not check for updates (' + res.status + ')' };
-    const rel = await res.json();
-    const latest = String(rel.tag_name || '').replace(/^v/, '');
-    const asset = updateAsset(rel);
-    return { current: app.getVersion(), latest, available: newer(latest, app.getVersion()) && !!asset, notes: rel.body || '', size: asset ? asset.size : 0 };
-  } catch (err) { return { error: 'No internet connection.' }; }
+    const { newest, ready } = await findUpdate();
+    const cur = app.getVersion();
+    const latest = ready ? String(ready.tag_name).replace(/^v/, '') : cur;
+    const newestV = newest ? String(newest.tag_name).replace(/^v/, '') : cur;
+    const asset = ready ? updateAsset(ready) : null;
+    const available = !!asset && newer(latest, cur);
+    pendingRelease = available ? ready : null;
+    return {
+      current: cur, latest, available, notes: ready ? ready.body || '' : '', size: asset ? asset.size : 0,
+      preparing: newer(newestV, cur) && newestV !== latest ? newestV : null
+    };
+  } catch (err) { return { error: err.status ? err.message : 'No internet connection.' }; }
 });
 let updating = false;
 ipcMain.handle('update:install', async (e) => {
@@ -602,9 +619,8 @@ ipcMain.handle('update:install', async (e) => {
   updating = true;
   const send = (v) => { try { e.sender.send('update:progress', v); } catch {} };
   try {
-    const res = await net.fetch(`https://api.github.com/repos/${REPO}/releases/latest`, { headers: { Accept: 'application/vnd.github+json', 'User-Agent': 'Flux' } });
-    const rel = await res.json();
-    const asset = updateAsset(rel);
+    const rel = pendingRelease || (await findUpdate()).ready;
+    const asset = rel && updateAsset(rel);
     if (!asset) throw new Error('No download for this computer yet. Try again later.');
     const file = path.join(os.tmpdir(), asset.name.replace(/(\.\w+)$/, '-' + String(rel.tag_name).replace(/[^\w.-]/g, '') + '$1'));
     const dl = await net.fetch(asset.browser_download_url);
@@ -654,7 +670,17 @@ ipcMain.handle('license:verify', (_e, { key, publicKey }) => {
 });
 
 app.commandLine.appendSwitch('disable-renderer-backgrounding');
+// Only one Flux at a time: opening it again brings the open window to the front
+const gotLock = app.requestSingleInstanceLock();
+if (!gotLock) app.quit();
+app.on('second-instance', () => {
+  if (!win) return;
+  if (win.isMinimized()) win.restore();
+  win.show();
+  win.focus();
+});
 app.whenReady().then(() => {
+  if (!gotLock) return;
   // Allow the microphone (for voiceovers) and choosing speakers/headphones
   const allowed = ['media', 'speaker-selection', 'clipboard-sanitized-write', 'fullscreen'];
   session.defaultSession.setPermissionRequestHandler((_wc, permission, cb) => cb(allowed.includes(permission)));

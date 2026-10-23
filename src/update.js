@@ -8,7 +8,10 @@ async function checkForUpdates(silent) {
   if (r.error) { if (!silent) toast(r.error, { error: true }); return null; }
   upd.info = r;
   showUpdatePill();
-  if (!silent && !r.available) toast(`You have the newest version (Flux ${r.current})`);
+  if (!silent && !r.available) {
+    if (r.preparing) toast(`Flux ${r.preparing} is almost ready - try again in a few minutes`, { duration: 6000 });
+    else toast(`You have the newest version (Flux ${r.current})`);
+  }
   if (r.available && silent && !upd.toasted) {
     upd.toasted = true;
     toast(`Flux ${r.latest} is ready to install`, { action: 'Update', onAction: openUpdateDialog, duration: 12000 });
