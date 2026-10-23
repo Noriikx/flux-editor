@@ -66,7 +66,7 @@ async function checkPassword(pw, u) {
 
 
 // ---------- email codes ----------
-const MAIL_FROM = process.env.GMAIL_USER || ADMIN_EMAIL;
+const MAIL_FROM = process.env.GMAIL_USER || 'flux.editing.app@gmail.com';
 const codeHash = (email, code) => crypto.createHash('sha256').update(email + ':' + code).digest('hex');
 async function sendCode(u, purpose) {
   if (!process.env.GMAIL_APP_PASSWORD) throw Object.assign(new Error('mail'), { userMsg: 'Email codes are not set up yet. Please try again later.' });
