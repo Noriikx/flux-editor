@@ -28,7 +28,7 @@ function clipTools(c) {
     { id: 'fit', tip: 'Fill the frame / show the whole picture', on: c && (c.kind === 'video' || c.kind === 'image'), fn: () => commit(() => { c.fit = c.fit === 'cover' ? 'contain' : 'cover'; }) },
     { id: 'quality', tip: 'Quality & frame rate', on: c && (c.kind === 'video' || c.kind === 'image'), fn: () => openQualityDialog(c) },
     { id: 'detach', tip: 'Separate the sound from the video', on: c && c.kind === 'video' && !partners(c).length, fn: () => detachAudio(c) },
-    { id: c && c.muted ? 'unmute' : 'mute', tip: c && c.muted ? 'Unmute' : 'Mute', on: c && hasAudio(c), fn: () => commit(() => { c.muted = !c.muted; }) },
+    { id: c && soundTarget(c).muted ? 'mute' : 'unmute', tip: c && soundTarget(c).muted ? 'Unmute' : 'Mute', on: c && hasAudio(c), fn: () => commit(() => { const t = soundTarget(c); t.muted = !t.muted; }) },
     { id: 'balance', tip: 'Balance, EQ & ducking', on: c && hasAudio(c) && !(c.kind === 'video' && partners(c).length), fn: () => openBalanceDialog(c) },
     { id: 'captions', tip: 'Auto captions', on: snd, fn: () => openCaptionsDialog(c) },
     { id: 'bleep', tip: 'Bleep swear words', pro: true, on: snd, fn: () => openBleepDialog(c) },
@@ -68,7 +68,7 @@ function setupClipTools() {
   lib.appendChild(box);
   // keep the buttons in step with the selected clip and the playhead
   const baseRender = renderInspector;
-  renderInspector = function () { const r = baseRender.apply(this, arguments); updateClipTools(); return r; };
+  renderInspector = function () { const r = baseRender.apply(this, arguments); updateClipTools(); if (rt.redrawTextFonts && $('[data-page="text"].active')) rt.redrawTextFonts(); return r; };
   let lastInside = null;
   setInterval(() => {
     const c = getClip(state.selectedId);

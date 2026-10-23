@@ -71,7 +71,17 @@ const TEXT_PRESETS = [
   { name: 'Meme', t: { content: 'WHEN THE EDIT HITS', font: 'Impact', size: 110, bold: false, outline: true, shadow: false, y: 0.14, anim: 'none' } },
   { name: 'Neon', t: { content: 'NEON', size: 160, bold: true, color: '#c9b8ff', glow: true, shadow: false, anim: 'pop' } },
   { name: 'Typewriter', t: { content: 'Once upon a time...', font: 'Courier New', size: 72, bold: true, anim: 'type' } },
-  { name: 'Highlight', t: { content: 'BIG NEWS', font: 'Arial Black', size: 100, bold: false, color: '#111111', bg: true, bgColor: '#ffd23f', bgOpacity: 1, shadow: false, anim: 'pop' } }
+  { name: 'Highlight', t: { content: 'BIG NEWS', font: 'Arial Black', size: 100, bold: false, color: '#111111', bg: true, bgColor: '#ffd23f', bgOpacity: 1, shadow: false, anim: 'pop' } },
+  { name: 'Headline', t: { content: 'HEADLINE', font: 'Bebas Neue', size: 170, bold: false, shadow: true, anim: 'pop' } },
+  { name: 'Handwritten', t: { content: 'my little vlog', font: 'Caveat', size: 120, bold: true, color: '#fff6d8', shadow: true, anim: 'fade' } },
+  { name: 'Script', t: { content: 'Summer Days', font: 'Pacifico', size: 110, bold: false, color: '#ffd1e8', shadow: true, anim: 'fade' } },
+  { name: 'Retro game', t: { content: 'LEVEL UP!', font: 'Press Start 2P', size: 70, bold: false, color: '#7dff9b', outline: true, shadow: false, anim: 'pop' } },
+  { name: 'Comic', t: { content: 'BOOM!', font: 'Bangers', size: 150, bold: false, color: '#ffd23f', outline: true, shadow: false, anim: 'pop' } },
+  { name: 'Cinematic', t: { content: 'THE JOURNEY', font: 'Cinzel', size: 110, bold: true, color: '#f3e7c9', shadow: true, anim: 'fade' } },
+  { name: 'Horror', t: { content: 'DON\'T LOOK', font: 'Creepster', size: 140, bold: false, color: '#ff3b3b', shadow: true, anim: 'pop' } },
+  { name: 'Gaming', t: { content: 'VICTORY', font: 'Orbitron', size: 120, bold: true, color: '#7ce7ff', glow: true, shadow: false, anim: 'pop' } },
+  { name: 'Elegant', t: { content: 'Forever', font: 'Great Vibes', size: 150, bold: false, color: '#ffffff', shadow: true, anim: 'fade' } },
+  { name: 'Graffiti', t: { content: 'NO RULES', font: 'Permanent Marker', size: 120, bold: false, color: '#ff5cf0', shadow: true, anim: 'pop' } }
 ];
 
 /* ============================ STATE ============================ */
@@ -118,6 +128,8 @@ const mediaUrl = (m) => (api ? api.mediaUrl(m.path) : m.path);
 const trackTypeFor = (kind) => (kind === 'audio' ? 'audio' : kind === 'text' ? 'text' : 'video');
 const isVisual = (c) => c && (c.kind === 'video' || c.kind === 'image');
 const hasAudio = (c) => c && (c.kind === 'video' || c.kind === 'audio');
+// The clip whose sound you hear: a video's linked sound clip, or the clip itself.
+function soundTarget(c) { return (c && c.kind === 'video' && typeof partners === 'function' && partners(c).find((x) => x.kind === 'audio')) || c; }
 
 function fmt(t, withFrames = true) {
   t = Math.max(0, t || 0);
@@ -1029,7 +1041,7 @@ function syncMedia(L = rt.layout || computeLayout()) {
     const s = c.start;
     const w = L.get(c.id) || { vs: s, ve: endOf(c) };
     const active = t >= w.vs && t < w.ve;
-    const soon = state.playing && t < w.vs && w.vs - t < 1.5;
+    const soon = t < w.vs && w.vs - t < (state.playing ? 2.5 : 0.6);
     const existing = rt.players.get(c.id);
     if (!active && !soon) {
       if (existing && !existing.el.paused) existing.el.pause();
@@ -1047,30 +1059,42 @@ function syncMedia(L = rt.layout || computeLayout()) {
     const track = getTrack(c.trackId);
     const maxSrc = m.duration ? m.duration - 0.03 : Infinity;
     const src = clamp(c.in + (t - s) * c.speed, 0, maxSrc);
-    const silent = (track && track.muted) || c.muted;
+    // a video with its sound on a separate (linked) clip never plays its own sound - that would double it
+    const linkedSound = c.kind === 'video' && partners(c).some((x) => x.kind === 'audio');
+    const silent = (track && track.muted) || c.muted || linkedSound;
     let tg = 1; // sound crossfades along with picture transitions
     if (w.tin && t < w.tin.start + w.tin.dur) tg *= clamp((t - w.tin.start) / w.tin.dur, 0, 1);
     if (w.tout && t >= w.tout.start) tg *= clamp(1 - (t - w.tout.start) / w.tout.dur, 0, 1);
     // ducking: music gets quieter while a voiceover plays
     let bleep = 1;
-    if (c.beeps && c.beeps.length && isPremium()) {
-      const b = c.beeps.find((x) => src >= x.s && src <= x.e);
-      if (b && !silent) {
+    if (c.beeps && c.beeps.length && isPremium() && !silent) {
+      // check against where the sound really is (the player can be a little ahead/behind the timeline)
+      const pos = state.playing && !el.paused && !el.seeking && Math.abs(el.currentTime - src) < 0.5 ? el.currentTime : src;
+      const look = 0.06 * Math.max(1, c.speed); // start the bleep a moment early so no sound slips through
+      const b = c.beeps.find((x) => pos >= x.s - look && pos <= x.e);
+      if (b) {
         bleep = c.beepSound === 'duck' ? 0.12 : 0;
         if (c.beepSound !== 'mute' && c.beepSound !== 'duck') beepWant = c.beepSound === 'low' ? 400 : 1000;
       }
     }
-    const duckTarget = (c.audio && c.audio.duck && voiceActive ? 0.25 : 1) * bleep;
+    const duckTarget = c.audio && c.audio.duck && voiceActive ? 0.25 : 1;
     p.duck = p.duck == null ? duckTarget : p.duck + (duckTarget - p.duck) * 0.12;
-    setGain(p, silent ? 0 : kv(c, 'volume', t - s) * fadeEnv(c, t - s) * tg * p.duck);
+    setGain(p, silent ? 0 : kv(c, 'volume', t - s) * fadeEnv(c, t - s) * tg * p.duck * bleep);
     applyAudioFx(p, c);
     if (state.playing) {
-      if (Math.abs(el.playbackRate - c.speed) > 0.001) el.playbackRate = c.speed;
-      if (el.paused) {
-        if (Math.abs(el.currentTime - src) > 0.08 && el.readyState >= 1) el.currentTime = src;
-        el.play().catch(() => {});
-      } else if (Math.abs(el.currentTime - src) > 0.3 && !el.seeking) {
-        el.currentTime = src;
+      if (c.kind === 'video' && c.speed > 3 && silent) {
+        // Very fast video: the computer can't decode every frame, so jump from frame to frame instead
+        if (!el.paused) el.pause();
+        if (!el.seeking && el.readyState >= 1 && Math.abs(el.currentTime - src) > 0.04) el.currentTime = src;
+      } else {
+        if (Math.abs(el.playbackRate - c.speed) > 0.001) el.playbackRate = clamp(c.speed, 0.0625, 16);
+        if (el.paused) {
+          if (el.readyState < 1) { el.preload = 'auto'; continue; } // still opening the file
+          if (Math.abs(el.currentTime - src) > 0.08) el.currentTime = src;
+          el.play().catch(() => {});
+        } else if (Math.abs(el.currentTime - src) > 0.3 + 0.12 * c.speed && !el.seeking) {
+          el.currentTime = src;
+        }
       }
     } else {
       if (!el.paused) el.pause();
@@ -1211,8 +1235,16 @@ function drawMedia(g, c, local, W, H, k, fx) {
     sw = src.naturalWidth; sh = src.naturalHeight;
   } else {
     const p = rt.players.get(c.id);
-    if (!p || p.el.readyState < 2) return;
-    src = p.el; sw = src.videoWidth; sh = src.videoHeight;
+    const ready = p && p.el.readyState >= 2 && !p.el.seeking && p.el.videoWidth;
+    if (ready) {
+      src = p.el; sw = src.videoWidth; sh = src.videoHeight;
+      if (!state.exporting) keepLastFrame(p, m);
+    } else {
+      if (state.exporting) return;
+      const fb = fallbackFrame(c, m, p);
+      if (!fb) return;
+      src = fb; sw = fb.width; sh = fb.height;
+    }
   }
   if (!sw || !sh) return;
   fx = fx || { alpha: 1, dx: 0, dy: 0, scale: 1, rot: 0, blur: 0, clip: null };
@@ -1269,6 +1301,35 @@ function drawMedia(g, c, local, W, H, k, fx) {
   rt.hitBoxes.push({ id: c.id, cx, cy, w: dw, h: dh, rot });
 }
 
+// Remember the last good frame of each video so the preview never flashes black while the next one loads.
+function keepLastFrame(p, m) {
+  const now = performance.now();
+  if (p.lastAt && now - p.lastAt < 90 && p.lastTime === p.el.currentTime) return;
+  p.lastAt = now; p.lastTime = p.el.currentTime;
+  const vw = p.el.videoWidth, vh = p.el.videoHeight;
+  const sc = Math.min(1, 960 / vw);
+  const cv = p.last || (p.last = document.createElement('canvas'));
+  const w = Math.max(2, Math.round(vw * sc)), h = Math.max(2, Math.round(vh * sc));
+  if (cv.width !== w || cv.height !== h) { cv.width = w; cv.height = h; }
+  try { cv.getContext('2d').drawImage(p.el, 0, 0, w, h); p.lastOk = true; rt.lastFrames.set(m.id, cv); } catch {}
+}
+function fallbackFrame(c, m, p) {
+  if (p && p.lastOk && p.last) return p.last;
+  // a frame from the timeline strip at about the right moment
+  const st = rt.strips && rt.strips.get(m.id);
+  if (st && st.img && st.img.complete && m.duration) {
+    const local = clamp(state.time - c.start, 0, dur(c));
+    const t = c.in + local * c.speed;
+    const idx = clamp(Math.floor((t / m.duration) * st.n), 0, st.n - 1);
+    const tw = st.img.naturalWidth / st.cols, th = st.img.naturalHeight / st.rows;
+    const cv = rt.stripFrame || (rt.stripFrame = document.createElement('canvas'));
+    if (cv.width !== Math.round(tw) || cv.height !== Math.round(th)) { cv.width = Math.round(tw); cv.height = Math.round(th); }
+    cv.getContext('2d').drawImage(st.img, (idx % st.cols) * tw, Math.floor(idx / st.cols) * th, tw, th, 0, 0, cv.width, cv.height);
+    return cv;
+  }
+  const lf = rt.lastFrames.get(m.id);
+  return lf || null;
+}
 const easeOutBack = (x) => 1 + 2.2 * Math.pow(x - 1, 3) + 1.2 * Math.pow(x - 1, 2);
 const easeOutCubic = (x) => 1 - Math.pow(1 - x, 3);
 
@@ -1631,6 +1692,7 @@ function waveCanvas(c, widthPx, volOverride) {
 
 // ---------- video frames on the timeline ----------
 rt.strips = rt.strips || new Map();
+rt.lastFrames = rt.lastFrames || new Map();
 const stripLoading = new Set();
 function loadStrip(m) {
   if (!m || !api || !api.mediaStrip || stripLoading.has(m.id) || rt.strips.has(m.id) || !m.duration) return;
@@ -1639,7 +1701,7 @@ function loadStrip(m) {
   api.mediaStrip({ file: m.path, duration: m.duration, count }).then((r) => {
     if (!r) return;
     const img = new Image();
-    img.onload = () => { rt.strips.set(m.id, { url: api.mediaUrl(r.file), n: r.n, cols: r.cols, rows: r.rows, ar: (img.naturalWidth / r.cols) / (img.naturalHeight / r.rows) }); fillFilmstrips(); };
+    img.onload = () => { rt.strips.set(m.id, { img, url: api.mediaUrl(r.file), n: r.n, cols: r.cols, rows: r.rows, ar: (img.naturalWidth / r.cols) / (img.naturalHeight / r.rows) }); fillFilmstrips(); };
     img.src = api.mediaUrl(r.file);
   }).finally(() => stripLoading.delete(m.id));
 }
@@ -1710,6 +1772,19 @@ function renderLanes() {
         else {
           const m0 = getMedia(c.mediaId);
           if (m0 && !m0.missing && !m0.error) { loadPeaks(m0); ce.appendChild(el('div', 'wave-loading', 'Reading sound…')); }
+        }
+        // bleeps: a red band where the word is covered, with a marker on top
+        if (c.beeps && c.beeps.length) {
+          for (const b of c.beeps) {
+            if (b.e <= c.in || b.s >= c.out) continue;
+            const x0 = ((Math.max(b.s, c.in) - c.in) / c.speed) * z, x1 = ((Math.min(b.e, c.out) - c.in) / c.speed) * z;
+            const band = el('div', 'bleep-band');
+            band.style.left = x0 + 'px'; band.style.width = Math.max(2, x1 - x0) + 'px';
+            const pin = el('div', 'bleep-pin', '<svg viewBox="0 0 24 24"><path d="M11 5 6 9H2v6h4l5 4z"/><path d="M16 9l5 6M21 9l-5 6"/></svg>');
+            pin.dataset.tip = 'Bleeped: ' + (b.w || 'word');
+            band.appendChild(pin);
+            ce.appendChild(band);
+          }
         }
         // level marks: 200% at the top, 100% in the middle
         const grid = el('div', 'vol-grid');
@@ -2041,7 +2116,7 @@ function trySnap(values, excludeId) {
       soundSource(c) ? { label: 'Auto captions…', fn: () => openCaptionsDialog(c) } : null,
       soundSource(c) ? { label: 'Bleep swear words…', pro: true, fn: () => openBleepDialog(c) } : null,
       soundSource(c) ? { label: 'Remove silences', pro: true, fn: () => removeSilences(c) } : null,
-      hasAudio(c) ? { label: c.muted ? 'Unmute' : 'Mute', fn: () => commit(() => { c.muted = !c.muted; }) } : null,
+      hasAudio(c) ? { label: soundTarget(c).muted ? 'Unmute' : 'Mute', fn: () => commit(() => { const t = soundTarget(c); t.muted = !t.muted; }) } : null,
       c.kind === 'video' && !partners(c).length ? { label: 'Separate sound', fn: () => detachAudio(c) } : null,
       partners(c).length ? { label: 'Unlink video & sound', fn: () => commit(() => { for (const p of partners(c)) p.linkId = null; c.linkId = null; }) } : null,
       isVisual(c) ? { label: 'Add keyframe here', fn: () => { seek(clamp(t, c.start, endOf(c))); addKeyframeAll(c); } } : null,
@@ -2586,7 +2661,14 @@ function renderTextPresets() {
       whiteSpace: 'nowrap', maxWidth: '92%', overflow: 'hidden', textOverflow: 'ellipsis'
     });
     b.appendChild(span);
-    b.onclick = () => addText(JSON.parse(JSON.stringify(p.t)));
+    const fi = typeof fontInfo === 'function' ? fontInfo(t.font) : null;
+    if (fi && fi.web) ensureFont(t.font);
+    if (fi && fi.pro) { b.classList.add('pro'); b.insertAdjacentHTML('beforeend', '<i class="tp-crown">' + CROWN + '</i>'); }
+    b.onclick = async () => {
+      if (fi && fi.pro && !requirePremium(`The “${p.name}” text style`)) return;
+      if (fi && fi.web) await ensureFont(t.font);
+      addText(JSON.parse(JSON.stringify(p.t)));
+    };
     b.draggable = true;
     b.addEventListener('dragstart', (e) => { e.dataTransfer.setData('text/flux-text', JSON.stringify(p.t)); e.dataTransfer.effectAllowed = 'copy'; });
     box.appendChild(b);

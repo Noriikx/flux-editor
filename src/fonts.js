@@ -132,3 +132,48 @@ function closeFontMenu() {
   document.removeEventListener('pointerdown', onFontOutside, true);
   $$('.font-menu').forEach((m) => { if (m._io) m._io.disconnect(); m.remove(); });
 }
+
+/* ---------- Fonts in the Text tab ---------- */
+function setupTextFonts() {
+  const box = $('#textFonts');
+  if (!box) return;
+  box.innerHTML = `<p class="page-intro" style="margin:0 0 8px">Click a font to use it on the selected text, or to add new text with it.</p>
+    <input class="num-input search tf-search" placeholder="Search ${ALL_FONTS.length} fonts…"><div class="chips small tf-cats"></div><div class="tf-grid"></div>`;
+  let cat = 'All';
+  const grid = $('.tf-grid', box), cats = $('.tf-cats', box), search = $('.tf-search', box);
+  for (const c of FONT_CATS) { const b = el('button', 'chip', c); b.onclick = () => { cat = c; draw(); }; cats.appendChild(b); }
+  const io = new IntersectionObserver((ents) => {
+    for (const en of ents) if (en.isIntersecting) { io.unobserve(en.target); ensureFont(en.target.dataset.font).then((ok) => { if (!ok) en.target.classList.add('fail'); }); }
+  });
+  const draw = () => {
+    $$('.chip', cats).forEach((b) => b.classList.toggle('active', b.textContent === cat));
+    const q = search.value.trim().toLowerCase();
+    const sel = getClip(state.selectedId);
+    const cur = sel && sel.kind === 'text' ? sel.text.font : null;
+    grid.innerHTML = '';
+    for (const f of ALL_FONTS.filter((x) => (cat === 'All' || x.cat === cat) && (!q || x.name.toLowerCase().includes(q))).sort((a, b) => a.pro - b.pro)) {
+      const b = el('button', 'tf-item' + (f.name === cur ? ' on' : '') + (f.pro && !isPremium() ? ' locked' : ''));
+      b.dataset.font = f.name;
+      b.dataset.tip = f.name + (f.pro ? ' (Premium)' : '');
+      b.innerHTML = `<span class="tf-aa">Aa</span><small></small>${f.pro ? '<i class="tf-crown">' + CROWN + '</i>' : ''}`;
+      b.firstChild.style.fontFamily = `"${f.name}", "Segoe UI"`;
+      b.children[1].textContent = f.name;
+      b.onclick = async () => {
+        if (f.pro && !isPremium()) return openPremium(`The “${f.name}” font`);
+        b.classList.add('busy');
+        const ok = await ensureFont(f.name);
+        b.classList.remove('busy');
+        if (!ok) return toast('Couldn’t download that font - check your internet connection', { error: true });
+        const c = getClip(state.selectedId);
+        if (c && c.kind === 'text') { commit(() => { c.text.font = f.name; }); toast('Font changed to ' + f.name); }
+        else addText({ content: 'Your text', font: f.name, size: 110, bold: false, shadow: true, anim: 'pop' });
+        draw();
+      };
+      grid.appendChild(b);
+      if (f.web) io.observe(b);
+    }
+  };
+  search.oninput = draw;
+  draw();
+  rt.redrawTextFonts = draw;
+}

@@ -7,6 +7,7 @@
   initEditor();
   setupSmartTools();
   setupClipTools();
+  setupTextFonts();
   $('#btnRecTl').onclick = () => toggleRecording();
   $('#transAll').onclick = () => applyTransitionToAll('fade');
   $('#transNone').onclick = () => applyTransitionToAll('none');

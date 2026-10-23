@@ -849,3 +849,23 @@ body.recording #playhead::before { background: #ff4d6d; box-shadow: 0 0 8px #ff4
 .ct-btn:first-child svg { fill: #ffd23f; stroke: #ffd23f; }
 .ct-btn:first-child:disabled svg { fill: none; }
 .media-item .add { bottom: 24px; right: 4px; }
+.bleep-band { position: absolute; top: 0; bottom: 0; background: rgba(255, 70, 90, .38); border-left: 1px solid rgba(255,90,110,.9); border-right: 1px solid rgba(255,90,110,.9); z-index: 2; pointer-events: none; }
+.bleep-pin { position: absolute; left: 50%; top: 2px; width: 18px; height: 18px; margin-left: -9px; border-radius: 50%; background: #ff4d63; display: grid; place-items: center; box-shadow: 0 1px 4px rgba(0,0,0,.6); pointer-events: auto; cursor: default; }
+.bleep-pin svg { width: 11px; height: 11px; fill: #fff; stroke: #fff; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+/* fonts in the Text tab */
+.tf-cats { margin: 8px 0; }
+.tf-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(84px, 1fr)); gap: 6px; margin-bottom: 14px; }
+.tf-item { position: relative; height: 66px; border-radius: 9px; border: 1px solid var(--line); background: var(--panel-2); color: var(--text); display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; padding: 4px; cursor: pointer; }
+.tf-item:hover { border-color: var(--accent); }
+.tf-item.on { border-color: var(--accent); background: var(--accent-soft); }
+.tf-item .tf-aa { font-size: 24px; line-height: 1.1; }
+.tf-item small { font-size: 9.5px; color: var(--muted); max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tf-item.locked .tf-aa { opacity: .7; }
+.tf-item.busy { opacity: .5; }
+.tf-item.fail .tf-aa { font-family: inherit !important; opacity: .4; }
+.tf-crown, .tp-crown { position: absolute; right: 3px; top: 2px; line-height: 0; }
+.tf-crown svg, .tp-crown svg { width: 12px; height: 12px; }
+.text-preset { position: relative; }
+.text-presets { display: grid !important; grid-template-columns: 1fr 1fr; gap: 6px; }
+.text-preset { height: 52px !important; min-height: 0 !important; margin: 0 !important; padding: 0 6px !important; }
+.text-preset span { font-size: 15px !important; }
