@@ -1,7 +1,7 @@
 /* =====================================================================
    Flux — Voiceover tab: record your voice on top of the video.
    Pick a microphone and where you hear sound, watch the level meter,
-   then press record. The take lands on a "Voiceover" track at the playhead.
+   then press record. The take lands on a free Sound track at the playhead.
    ===================================================================== */
 'use strict';
 
@@ -181,12 +181,13 @@ async function stopRecording() {
   const [m] = await importFiles([{ path, name, kind: 'audio', duration: elapsed, tag: 'voice' }]);
   if (!m) return toast("Couldn't load the recording", { error: true });
   const d = m.duration || elapsed;
-  // Put it on a free "Voiceover" track (make one if needed)
-  let tr = P.tracks.find((x) => x.type === 'audio' && /voice/i.test(x.name) && Math.abs(findFreeStart(x.id, voice.startAt, d) - voice.startAt) < 1e-6);
-  if (!tr) {
-    const n = P.tracks.filter((x) => /voiceover/i.test(x.name)).length;
-    tr = addTrack('audio', n ? 'Voiceover ' + (n + 1) : 'Voiceover');
-  }
+  // Put it on a free sound track (not the one under the video if possible), or add a new one
+  const freeAt = (x) => Math.abs(findFreeStart(x.id, voice.startAt, d) - voice.startAt) < 1e-6;
+  const auds = P.tracks.filter((x) => x.type === 'audio');
+  let tr = auds.find((x) => x.id !== 'av' && freeAt(x) && P.clips.some((c) => c.trackId === x.id && clipRole(c) === 'voice'))
+    || auds.find((x) => x.id !== 'av' && freeAt(x) && !P.clips.some((c) => c.trackId === x.id))
+    || auds.find((x) => x.id !== 'av' && freeAt(x));
+  if (!tr) tr = addTrack('audio');
   addMediaAt(m, tr.id, voice.startAt);
   seek(voice.startAt);
   renderVoice();
@@ -227,7 +228,7 @@ function renderVoice() {
       row.classList.add('playing');
       a.onended = () => row.classList.remove('playing');
     };
-    $('.madd', row).onclick = () => { const tr = audioTrackFreeAt(state.time, m.duration, 'Voiceover') || firstTrack('audio'); addMediaAt(m, tr.id, state.time); };
+    $('.madd', row).onclick = () => { const tr = audioTrackFreeAt(state.time, m.duration) || firstTrack('audio'); addMediaAt(m, tr.id, state.time); };
     takes.appendChild(row);
   }
 }

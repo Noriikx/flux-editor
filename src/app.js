@@ -87,12 +87,12 @@ const TEXT_PRESETS = [
 /* ============================ STATE ============================ */
 function defaultTracks() {
   return [
-    { id: 't1', type: 'text', name: 'Text', hidden: false, muted: false },
-    { id: 'v2', type: 'video', name: 'Overlay', hidden: false, muted: false },
-    { id: 'v1', type: 'video', name: 'Main video', hidden: false, muted: false },
-    { id: 'av', type: 'audio', name: 'Video sound', hidden: false, muted: false },
-    { id: 'a1', type: 'audio', name: 'Music', hidden: false, muted: false },
-    { id: 'a2', type: 'audio', name: 'Sound FX', hidden: false, muted: false }
+    { id: 't1', type: 'text', name: 'Text', auto: true, hidden: false, muted: false },
+    { id: 'v2', type: 'video', name: 'Media 2', auto: true, hidden: false, muted: false },
+    { id: 'v1', type: 'video', name: 'Media 1', auto: true, hidden: false, muted: false },
+    { id: 'av', type: 'audio', name: 'Sound 1', auto: true, hidden: false, muted: false },
+    { id: 'a1', type: 'audio', name: 'Sound 2', auto: true, hidden: false, muted: false },
+    { id: 'a2', type: 'audio', name: 'Sound 3', auto: true, hidden: false, muted: false }
   ];
 }
 function newProject() {
@@ -637,11 +637,11 @@ function addText(props) {
 function splitAt(t = state.time) {
   let targets = [];
   const sel = getClip(state.selectedId);
-  if (sel && t > sel.start + 0.02 && t < endOf(sel) - 0.02) targets = [sel];
-  else targets = P.clips.filter((c) => t > c.start + 0.02 && t < endOf(c) - 0.02);
+  if (sel && t > sel.start + 0.02 && t < endOf(sel) - 0.02 && !isLocked(sel)) targets = [sel];
+  else targets = P.clips.filter((c) => t > c.start + 0.02 && t < endOf(c) - 0.02 && !isLocked(c));
   if (!targets.length) return toast('Move the playhead over a clip to split it');
   // linked video+sound split together
-  for (const c of targets.slice()) for (const p of partners(c)) if (!targets.includes(p) && t > p.start + 0.02 && t < endOf(p) - 0.02) targets.push(p);
+  for (const c of targets.slice()) for (const p of partners(c)) if (!targets.includes(p) && !isLocked(p) && t > p.start + 0.02 && t < endOf(p) - 0.02) targets.push(p);
   const newLink = new Map();
   commit(() => {
     for (const c of targets) {
@@ -660,6 +660,7 @@ function splitAt(t = state.time) {
 function deleteSelected(ripple = state.ripple) {
   const c = getClip(state.selectedId);
   if (!c) return toast('Click a clip first to select it');
+  if (isLocked(c)) return lockedToast();
   commit(() => {
     for (const x of [c, ...partners(c)]) {
       const d = dur(x), e = endOf(x);
@@ -710,15 +711,28 @@ function setSpeed(c, speed, _linked) {
   for (const o of P.clips) if (o.id !== c.id && o.trackId === c.trackId && o.start >= oldEnd - 1e-4) o.start = Math.max(0, o.start + delta);
 }
 
+// Tracks are named automatically: Media 1, 2… (1 is the bottom one), Sound 1, 2…, Text, Text 2…
+// A track you rename yourself keeps your name.
+const OLD_AUTO_NAME = /^(Overlay( \d+)?|Main video|Video sound( \d+)?|Voiceover( \d+)?|Audio \d+|Music|Sound FX|Detached audio|Media \d+|Sound \d+|Text( \d+)?)$/;
+function autoNameTracks() {
+  const vids = P.tracks.filter((t) => t.type === 'video'), auds = P.tracks.filter((t) => t.type === 'audio'), txt = P.tracks.filter((t) => t.type === 'text');
+  vids.forEach((t, i) => { if (t.auto) t.name = 'Media ' + (vids.length - i); });
+  auds.forEach((t, i) => { if (t.auto) t.name = 'Sound ' + (i + 1); });
+  let k = 0;
+  txt.forEach((t) => { if (t.auto) { k++; t.name = k === 1 ? 'Text' : 'Text ' + k; } });
+}
+function migrateTrackNames() {
+  for (const t of P.tracks) if (t.auto == null) t.auto = OLD_AUTO_NAME.test(t.name || '');
+  autoNameTracks();
+}
 function addTrack(type, name) {
   let tr;
   commit(() => {
-    const n = P.tracks.filter((t) => t.type === type).length + 1;
-    const names = { video: 'Overlay ' + n, audio: 'Audio ' + n, text: 'Text ' + n };
-    tr = { id: type[0] + uid().slice(0, 4), type, name: name || names[type], hidden: false, muted: false };
+    tr = { id: type[0] + uid().slice(0, 4), type, name: name || '', auto: !name, hidden: false, muted: false, locked: false };
     if (type === 'audio') P.tracks.push(tr);
-    else if (type === 'text') P.tracks.unshift(tr);
-    else { const i = P.tracks.findIndex((t) => t.type === 'video'); P.tracks.splice(Math.max(0, i), 0, tr); }
+    else if (type === 'text') P.tracks.splice(P.tracks.filter((t) => t.type === 'text').length, 0, tr);
+    else { const i = P.tracks.findIndex((t) => t.type === 'video'); P.tracks.splice(i < 0 ? P.tracks.length : i, 0, tr); }
+    autoNameTracks();
   });
   return tr;
 }
@@ -743,7 +757,7 @@ function detachAudio(c = getClip(state.selectedId)) {
   return;
   const m = getMedia(c.mediaId);
   let tr = audioTrackFreeAt(c.start, dur(c));
-  if (!tr) tr = addTrack('audio', 'Detached audio');
+  if (!tr) tr = addTrack('audio');
   commit(() => {
     const a = {
       id: uid(), trackId: tr.id, mediaId: c.mediaId, kind: 'audio', start: c.start, in: c.in, out: c.out, speed: c.speed,
@@ -864,7 +878,8 @@ function computeLayout() {
   return L;
 }
 function setTransition(c, type, duration) {
-  if (!c || !isVisual(c)) return toast('Pick a video or photo clip for the transition');
+  if (c && c.kind === 'text') return setTextTransition(c, 'in', type, duration);
+  if (!c || !isVisual(c)) return toast('Pick a video, photo or text clip for the transition');
   commit(() => {
     if (type === 'none') c.transition = null;
     else c.transition = { type, duration: duration || (c.transition && c.transition.duration) || (typeof settings !== 'undefined' ? settings.transitionDur : 0.6) || 0.6 };
@@ -880,6 +895,23 @@ function applyTransitionToAll(type) {
     }
   });
   toast(n ? `${type === 'none' ? 'Removed transitions from' : 'Added “' + transById(type).name + '” to'} ${n} cut(s)` : 'No cuts found - put clips right next to each other first');
+}
+// Text clips: their own "in" and "out" transition (they don't need a clip next to them).
+function setTextTransition(c, which, type, duration) {
+  const key = which === 'out' ? 'transitionOut' : 'transition';
+  commit(() => {
+    if (!type || type === 'none') c[key] = null;
+    else c[key] = { type, duration: duration || (c[key] && c[key].duration) || 0.5 };
+  });
+}
+function textTransFx(c, local, W, H) {
+  const d = dur(c);
+  const tin = c.transition && c.transition.type !== 'none' ? c.transition : null;
+  const tout = c.transitionOut && c.transitionOut.type !== 'none' ? c.transitionOut : null;
+  if (tin) { const td = Math.min(tin.duration || 0.5, d * 0.5); if (local < td) return transitionFx(tin.type, local / td, 'in', W, H); }
+  // the way out is the way in, played backwards
+  if (tout) { const td = Math.min(tout.duration || 0.5, d * 0.5); if (local > d - td) return transitionFx(tout.type, (d - local) / td, 'in', W, H); }
+  return null;
 }
 const easeInOut = (x) => (x < 0.5 ? 4 * x * x * x : 1 - Math.pow(-2 * x + 2, 3) / 2);
 // How each side of a transition is drawn. role "in" = the clip that's coming in, "out" = the one leaving.
@@ -996,11 +1028,18 @@ function fadeEnv(c, local) {
 }
 
 let playStartTime = 0, playStartWall = 0;
+// where playback stops: the end of the export range, the Out point while looping, or the end of the video
+function playEndTime() {
+  if (state.exporting && exportJob && exportJob.end != null) return exportJob.end;
+  if (state.loop && !state.exporting && typeof rangeOK === 'function' && rangeOK()) return P.range.out;
+  return projectDuration();
+}
 function play() {
   const total = projectDuration();
   if (!total) return toast('Add some media to the timeline first');
   ensureAudio();
-  if (state.time >= total - 0.04) state.time = 0;
+  const endT = playEndTime();
+  if (state.time >= endT - 0.04) state.time = state.loop && rangeOK() ? P.range.in : 0;
   state.playing = true;
   playStartTime = state.time;
   playStartWall = performance.now();
@@ -1020,9 +1059,29 @@ function seek(t) {
   updatePlayhead();
   const sc = getClip(state.selectedId);
   if (!state.playing && sc && sc.keys && Object.keys(sc.keys).length) scheduleInspector();
+  if (rt.graphRedraw) rt.graphRedraw();
 }
 let inspTimer = null;
-function scheduleInspector() { clearTimeout(inspTimer); inspTimer = setTimeout(renderInspector, 80); }
+function scheduleInspector() {
+  clearTimeout(inspTimer);
+  inspTimer = setTimeout(() => {
+    if (rt.inspClip === state.selectedId && rt.inspRefresh && rt.inspRefresh.length) { for (const f of rt.inspRefresh) f(); }
+    else renderInspector();
+  }, 30);
+}
+// Jump the playhead to the keyframe before/after it (of one property, or any property)
+function jumpKeyframe(c, dir, prop) {
+  c = c || getClip(state.selectedId);
+  if (!c || !c.keys) return toast('This clip has no keyframes');
+  const l = localNow(c);
+  const times = [];
+  for (const pr of prop ? [prop] : Object.keys(c.keys)) for (const k of keysInClip(c, pr)) times.push(k.t);
+  const cand = dir < 0 ? times.filter((t) => t < l - 0.5 / FPS).sort((a, b) => b - a) : times.filter((t) => t > l + 0.5 / FPS).sort((a, b) => a - b);
+  if (!cand.length) return toast(dir < 0 ? 'No keyframe before this' : 'No keyframe after this');
+  if (state.playing) pause();
+  seek(c.start + cand[0]);
+  scheduleInspector();
+}
 function stepFrames(n) { if (state.playing) pause(); seek(Math.round(state.time * FPS + n) / FPS); }
 
 function syncMedia(L = rt.layout || computeLayout()) {
@@ -1061,7 +1120,7 @@ function syncMedia(L = rt.layout || computeLayout()) {
     const src = clamp(c.in + (t - s) * c.speed, 0, maxSrc);
     // a video with its sound on a separate (linked) clip never plays its own sound - that would double it
     const linkedSound = c.kind === 'video' && partners(c).some((x) => x.kind === 'audio');
-    const silent = (track && track.muted) || c.muted || linkedSound;
+    const silent = (track && track.muted) || c.muted || linkedSound || c.disabled;
     let tg = 1; // sound crossfades along with picture transitions
     if (w.tin && t < w.tin.start + w.tin.dur) tg *= clamp((t - w.tin.start) / w.tin.dur, 0, 1);
     if (w.tout && t >= w.tout.start) tg *= clamp(1 - (t - w.tout.start) / w.tout.dur, 0, 1);
@@ -1186,7 +1245,7 @@ function render(target = ctx, cw = canvas.width) {
     const tr = P.tracks[i];
     if (tr.hidden || tr.type === 'audio') continue;
     const clips = P.clips.filter((c) => {
-      if (c.trackId !== tr.id) return false;
+      if (c.trackId !== tr.id || c.disabled) return false;
       const w = L.get(c.id);
       return w ? t >= w.vs && t < w.ve : t >= c.start && t < endOf(c);
     }).sort((a, b) => a.start - b.start);
@@ -1194,6 +1253,7 @@ function render(target = ctx, cw = canvas.width) {
     for (const c of clips) {
       const local = t - c.start;
       if (c.kind === 'text') { drawText(g, c, local, W, H, k); continue; }
+      if (c.kind === 'adjust') { applyAdjustment(g, c, local, W, H, k); continue; }
       const w = L.get(c.id);
       let fx = null;
       if (w && w.tin && t < w.tin.start + w.tin.dur) fx = transitionFx(w.tin.type, (t - w.tin.start) / w.tin.dur, 'in', W, H);
@@ -1378,6 +1438,12 @@ function drawText(g, c, local, W, H, k) {
   const lines = content.split('\n');
   const lineH = size * 1.18;
   g.save();
+  const tfx = editing && !rt.previewTrans ? null : textTransFx(c, local, W, H);
+  if (tfx) {
+    alpha *= tfx.alpha;
+    if (tfx.clip) { g.beginPath(); tfx.clip(g); g.clip(); }
+    if (tfx.blur > 0.05) g.filter = `blur(${(tfx.blur * k).toFixed(2)}px)`;
+  }
   g.font = `${t.italic ? 'italic ' : ''}${t.bold ? '700' : '500'} ${size}px "${t.font}", "Segoe UI", Arial, sans-serif`;
   g.textBaseline = 'middle';
   const widths = lines.map((l) => g.measureText(l).width);
@@ -1387,9 +1453,9 @@ function drawText(g, c, local, W, H, k) {
   const blockH = fullLines.length * lineH;
   const ax = t.x * W, ay = t.y * H;
   const left = t.align === 'left' ? 0 : t.align === 'right' ? -blockW : -blockW / 2;
-  g.translate(ax, ay + dy);
-  g.rotate(((kv(c, 'rotation', local) || 0) * Math.PI) / 180);
-  g.scale(sc, sc);
+  g.translate(ax + (tfx ? tfx.dx : 0), ay + dy + (tfx ? tfx.dy : 0));
+  g.rotate(((kv(c, 'rotation', local) || 0) * Math.PI) / 180 + (tfx ? tfx.rot : 0));
+  g.scale(sc * (tfx ? tfx.scale * (tfx.flipX != null ? Math.max(0.001, tfx.flipX) : 1) : 1), sc * (tfx ? tfx.scale : 1));
   g.globalAlpha = clamp(alpha, 0, 1);
 
   const padX = size * 0.38, padY = size * 0.2;
@@ -1560,6 +1626,7 @@ function renderTimeline() {
 function renderTrackHeaders() {
   const box = $('#trackHeaders');
   box.innerHTML = '';
+  autoNameTracks();
   for (const tr of P.tracks) {
     const h = el('div', 'track-header t-' + tr.type);
     h.innerHTML = `<span class="t-icon" style="background:${KIND_COLOR[tr.type === 'video' ? 'video' : tr.type]}">${ICON[tr.type]}</span><span class="t-name"></span>`;
@@ -1572,6 +1639,7 @@ function renderTrackHeaders() {
       b.onclick = () => commit(() => { tr.hidden = !tr.hidden; });
       h.appendChild(b);
     }
+    h.appendChild(lockButton(tr));
     if (tr.type !== 'text') {
       const b = el('button', 'icon-btn' + (tr.muted ? ' off' : ''), tr.muted ? ICON.volOff : ICON.vol);
       b.dataset.tip = tr.muted ? 'Unmute track' : 'Mute track';
@@ -1582,8 +1650,8 @@ function renderTrackHeaders() {
       e.preventDefault();
       contextMenu(e.clientX, e.clientY, [
         { label: 'Rename track', fn: () => renameTrack(tr) },
-        { label: 'Add video track', fn: () => addTrack('video') },
-        { label: 'Add audio track', fn: () => addTrack('audio') },
+        { label: 'Add media track', fn: () => addTrack('video') },
+        { label: 'Add sound track', fn: () => addTrack('audio') },
         { label: 'Add text track', fn: () => addTrack('text') },
         { label: 'Remove this track', fn: () => removeTrack(tr), danger: true }
       ]);
@@ -1596,8 +1664,8 @@ function renderTrackHeaders() {
   $('button', add).onclick = (e) => {
     const r = e.currentTarget.getBoundingClientRect();
     contextMenu(r.left, r.bottom + 4, [
-      { label: 'Video / overlay track', fn: () => addTrack('video') },
-      { label: 'Audio track', fn: () => addTrack('audio') },
+      { label: 'Media track (video, photos)', fn: () => addTrack('video') },
+      { label: 'Sound track', fn: () => addTrack('audio') },
       { label: 'Text track', fn: () => addTrack('text') }
     ]);
   };
@@ -1610,7 +1678,7 @@ function renameTrack(tr) {
   const inp = $('input', box);
   inp.value = tr.name;
   setTimeout(() => { inp.focus(); inp.select(); }, 30);
-  const ok = () => { const v = inp.value.trim(); closeModal(); if (v) commit(() => { tr.name = v; }); };
+  const ok = () => { const v = inp.value.trim(); closeModal(); if (v) commit(() => { tr.name = v; tr.auto = false; }); };
   inp.onkeydown = (e) => { if (e.key === 'Enter') ok(); if (e.key === 'Escape') closeModal(); };
   $('[data-a=ok]', box).onclick = ok;
   $('[data-a=no]', box).onclick = closeModal;
@@ -1642,6 +1710,7 @@ function renderRuler() {
     frag.appendChild(d);
   }
   tlRuler.appendChild(frag);
+  if (typeof drawRange === 'function') drawRange();
 }
 
 const waveCache = new Map();
@@ -1743,6 +1812,7 @@ function cloneCanvas(src) {
 
 function clipLabel(c) {
   if (c.kind === 'text') return (c.text.content || 'Text').split('\n')[0];
+  if (c.kind === 'adjust') return 'Adjustment';
   const m = getMedia(c.mediaId);
   return m ? m.name : 'Missing media';
 }
@@ -1751,13 +1821,14 @@ function renderLanes() {
   tlLanes.innerHTML = '';
   const z = state.zoom;
   for (const tr of P.tracks) {
-    const lane = el('div', 'lane t-' + tr.type + (tr.hidden ? ' hidden-track' : ''));
+    const lane = el('div', 'lane t-' + tr.type + (tr.hidden ? ' hidden-track' : '') + (tr.locked ? ' locked-track' : ''));
     lane.dataset.track = tr.id;
     for (const c of P.clips.filter((x) => x.trackId === tr.id)) {
       const m = getMedia(c.mediaId);
       const w = dur(c) * z;
       const sel = getClip(state.selectedId);
-      const ce = el('div', `clip kind-${c.kind}${c.id === state.selectedId ? ' selected' : ''}${sel && sel.linkId && c.linkId === sel.linkId && c.id !== sel.id ? ' linked' : ''}${c.kind !== 'text' && (!m || m.missing || m.error) ? ' missing' : ''}`);
+      const ce = el('div', `clip kind-${c.kind}${c.id === state.selectedId ? ' selected' : ''}${sel && sel.linkId && c.linkId === sel.linkId && c.id !== sel.id ? ' linked' : ''}${c.kind !== 'text' && c.kind !== 'adjust' && (!m || m.missing || m.error) ? ' missing' : ''}${c.disabled ? ' disabled' : ''}${c.color ? ' colored' : ''}`);
+      if (c.color) ce.style.setProperty('--clip-color', c.color);
       ce.dataset.id = c.id;
       ce.style.left = c.start * z + 'px';
       ce.style.width = Math.max(4, w) + 'px';
@@ -1814,7 +1885,8 @@ function renderLanes() {
       if (c.linkId) { const li = el('span', 'link-ico', '🔗'); ce.appendChild(li); }
       if (c.keys) {
         const times = new Set();
-        for (const arr of Object.values(c.keys)) for (const kf of arr || []) times.add(kf.t.toFixed(3));
+        const dd = dur(c);
+        for (const arr of Object.values(c.keys)) for (const kf of arr || []) if (kf.t >= -1e-4 && kf.t <= dd + 1e-4) times.add(kf.t.toFixed(3));
         for (const tt of times) { const d = el('div', 'kf'); d.style.left = (+tt) * z + 'px'; ce.appendChild(d); }
       }
       ce.appendChild(el('div', 'handle l'));
@@ -1911,7 +1983,7 @@ function showSnap(t) {
 }
 function trySnap(values, excludeId) {
   if (!state.snap) return null;
-  const tol = 9 / state.zoom;
+  const tol = 12 / state.zoom;
   let best = null;
   for (const p of snapPoints(excludeId)) {
     values.forEach((v, i) => {
@@ -1934,6 +2006,19 @@ function trySnap(values, excludeId) {
     const up = () => { tlRuler.removeEventListener('pointermove', mv); tlRuler.removeEventListener('pointerup', up); };
     tlRuler.addEventListener('pointermove', mv);
     tlRuler.addEventListener('pointerup', up);
+  });
+  const grab = el('div', 'ph-grab');
+  grab.dataset.tip = 'Drag to move the playhead';
+  $('#playhead').appendChild(grab);
+  grab.addEventListener('pointerdown', (e) => {
+    if (e.button !== 0) return;
+    e.stopPropagation();
+    if (state.playing) pause();
+    grab.setPointerCapture(e.pointerId);
+    const mv = (ev) => scrub(ev);
+    const up = () => { grab.removeEventListener('pointermove', mv); grab.removeEventListener('pointerup', up); };
+    grab.addEventListener('pointermove', mv);
+    grab.addEventListener('pointerup', up);
   });
   $('.ph-head').addEventListener('pointerdown', (e) => {
     e.stopPropagation();
@@ -1964,23 +2049,23 @@ function trySnap(values, excludeId) {
     if (junc) { e.stopPropagation(); const c = getClip(junc.dataset.id); if (c) openTransitionsFor(c); return; }
     const clipEl = e.target.closest('.clip');
     if (!clipEl) {
-      // click on empty space: move playhead there
+      // empty space: drag to move the view around (the playhead only moves from the ruler or its handle)
       select(null);
-      if (state.playing) pause();
-      scrub(e);
       tlLanes.setPointerCapture(e.pointerId);
-      drag = { mode: 'scrub' };
+      drag = { mode: 'pan', x0: e.clientX, y0: e.clientY, sl: tlScroll.scrollLeft, st: tlScroll.scrollTop };
+      tlLanes.classList.add('panning');
       return;
     }
     const c = getClip(clipEl.dataset.id);
     if (!c) return;
     select(c.id);
+    if (isLocked(c)) return; // locked track: select only
     const handle = e.target.closest('.handle');
     const t0 = timeAtClientX(e.clientX);
     drag = {
       mode: handle ? (handle.classList.contains('l') ? 'trimL' : 'trimR') : 'move',
       c, snap: snapshot(), t0, x0: e.clientX, moved: false,
-      orig: { start: c.start, in: c.in, out: c.out, trackId: c.trackId },
+      orig: { start: c.start, in: c.in, out: c.out, trackId: c.trackId, keys: c.keys ? JSON.parse(JSON.stringify(c.keys)) : null },
       grab: t0 - c.start,
       linked: (e.altKey ? [] : partners(c)).map((p) => ({ p, start: p.start, in: p.in, out: p.out }))
     };
@@ -1990,6 +2075,11 @@ function trySnap(values, excludeId) {
   tlLanes.addEventListener('pointermove', (e) => {
     if (!drag) return;
     if (drag.mode === 'scrub') { scrub(e); return; }
+    if (drag.mode === 'pan') {
+      tlScroll.scrollLeft = drag.sl - (e.clientX - drag.x0);
+      tlScroll.scrollTop = drag.st - (e.clientY - drag.y0);
+      return;
+    }
     if (drag.mode === 'vol') {
       drag.moved = true;
       let v = clamp(drag.v0 - ((e.clientY - drag.y0) / Math.max(20, drag.h - 10)) * 2, 0, 2);
@@ -2005,7 +2095,7 @@ function trySnap(values, excludeId) {
     drag.moved = true;
     const c = drag.c, o = drag.orig;
     const t = timeAtClientX(e.clientX);
-    const unbounded = c.kind === 'image' || c.kind === 'text';
+    const unbounded = c.kind === 'image' || c.kind === 'text' || c.kind === 'adjust';
     const m = getMedia(c.mediaId);
     const siblings = P.clips.filter((x) => x.trackId === c.trackId && x.id !== c.id);
 
@@ -2014,9 +2104,18 @@ function trySnap(values, excludeId) {
       const d = dur(c);
       const s = trySnap([ns, ns + d], c.id);
       if (s) { ns += s.delta; showSnap(s.point); } else showSnap(null);
-      c.start = Math.max(0, ns);
       const tr = laneAtClientY(e.clientY);
       if (tr && tr.type === trackTypeFor(c.kind)) c.trackId = tr.id;
+      // magnet: close to the edges of a gap on this track? jump right against them (like CapCut / DaVinci)
+      if (state.snap) {
+        const mag = 28 / state.zoom, mine = new Set([c.id, ...drag.linked.map((l) => l.p.id)]);
+        const sib = P.clips.filter((x) => x.trackId === c.trackId && !mine.has(x.id));
+        const prevEnd = sib.filter((x) => endOf(x) <= ns + d / 2).reduce((mx, x) => Math.max(mx, endOf(x)), sib.length ? 0 : -1);
+        const nextStart = sib.filter((x) => x.start >= ns + d / 2).reduce((mn, x) => Math.min(mn, x.start), Infinity);
+        if (prevEnd >= 0 && Math.abs(ns - prevEnd) < mag) { ns = prevEnd; showSnap(prevEnd); }
+        else if (isFinite(nextStart) && Math.abs(ns + d - nextStart) < mag && nextStart - d >= 0) { ns = nextStart - d; showSnap(nextStart); }
+      }
+      c.start = Math.max(0, ns);
     } else if (drag.mode === 'trimL') {
       const prevEnd = siblings.filter((x) => endOf(x) <= o.start + 1e-4).reduce((mx, x) => Math.max(mx, endOf(x)), 0);
       let ns = t;
@@ -2034,6 +2133,8 @@ function trySnap(values, excludeId) {
         c.in = nIn;
         c.start = o.start + (nIn - o.in) / c.speed;
       }
+      // keep keyframes on the same moments of the video
+      if (o.keys) { const sh = c.start - o.start; c.keys = {}; for (const [pr, arr] of Object.entries(o.keys)) c.keys[pr] = arr.map((kk) => Object.assign({}, kk, { t: kk.t - sh })); }
     } else if (drag.mode === 'trimR') {
       const nextStart = siblings.filter((x) => x.start >= o.start + (o.out - o.in) / c.speed - 1e-4).reduce((mn, x) => Math.min(mn, x.start), Infinity);
       let ne = t;
@@ -2063,6 +2164,7 @@ function trySnap(values, excludeId) {
   const end = () => {
     if (!drag) return;
     showSnap(null);
+    if (drag.mode === 'pan') { tlLanes.classList.remove('panning'); drag = null; return; }
     if (drag.mode === 'vol') {
       drag.line.classList.remove('active');
       if (snapshot() !== drag.snap) pushHistory(drag.snap);
@@ -2101,6 +2203,7 @@ function trySnap(values, excludeId) {
     if (!clipEl) {
       contextMenu(e.clientX, e.clientY, [
         { label: 'Add text here', fn: () => { seek(t); addText(); } },
+        { label: 'Add adjustment clip here', fn: () => { seek(t); addAdjustmentClip(t); } },
         { label: 'Paste', fn: paste, disabled: !clipboard }
       ]);
       return;
@@ -2122,6 +2225,11 @@ function trySnap(values, excludeId) {
       isVisual(c) ? { label: 'Add keyframe here', fn: () => { seek(clamp(t, c.start, endOf(c))); addKeyframeAll(c); } } : null,
       c.kind === 'video' ? { label: 'Freeze frame here', fn: () => { seek(clamp(t, c.start, endOf(c) - 0.05)); freezeFrame(); } } : null,
       isVisual(c) ? { label: 'Add transition…', fn: () => openTransitionsFor(c) } : null,
+      hasAudio(c) ? { label: 'Normalize volume', fn: () => normalizeClip(c) } : null,
+      { label: c.disabled ? 'Turn clip on' : 'Turn clip off', key: 'V', fn: () => toggleClipEnabled(c) },
+      { label: 'Clip color…', fn: () => clipColorMenu(c, e.clientX, e.clientY) },
+      { label: 'Trim start to playhead', key: 'Q', fn: () => { seek(clamp(t, c.start, endOf(c))); trimToPlayhead('start', true); } },
+      { label: 'Trim end to playhead', key: 'W', fn: () => { seek(clamp(t, c.start, endOf(c))); trimToPlayhead('end', true); } },
       { label: 'Delete', fn: () => deleteSelected(false), danger: true },
       { label: 'Delete & close gap', fn: () => deleteSelected(true), danger: true }
     ].filter(Boolean));
@@ -2165,6 +2273,10 @@ function trySnap(values, excludeId) {
     if (s) t += s.delta;
     const trType = e.dataTransfer.getData('text/flux-transition');
     if (trType) {
+      // dropped right on a text clip: it becomes that text's "in" transition
+      const onEl = e.target.closest && e.target.closest('.clip');
+      const onClip = onEl ? getClip(onEl.dataset.id) : null;
+      if (onClip && onClip.kind === 'text') { setTransition(onClip, trType); select(onClip.id); return; }
       // find the cut closest to where it was dropped
       const t0 = timeAtClientX(e.clientX);
       const onTrack = P.clips.filter((c) => isVisual(c) && (!track || c.trackId === track.id));
@@ -2270,13 +2382,26 @@ function slider(parent, label, { min, max, step = 1, get, set, fmt: f = (v) => v
   row.innerHTML = `<label></label><input type="range"><input class="val">`;
   const lab = $('label', row), r = $('input[type=range]', row), val = $('.val', row);
   lab.textContent = label;
+  let kfUpdate = null;
   if (kf) {
     const [kc, prop] = kf;
-    const on = hasKeyAt(kc, prop);
-    const b = el('button', 'kf-btn' + (on ? ' on' : '') + (kc.keys && kc.keys[prop] && kc.keys[prop].length ? ' has' : ''), '◆');
-    b.dataset.tip = on ? 'Remove keyframe here' : 'Add keyframe here (animate this)';
+    const nav = el('span', 'kf-nav');
+    const prev = el('button', 'kf-arrow', '‹'), b = el('button', 'kf-btn', '◆'), next = el('button', 'kf-arrow', '›');
+    prev.dataset.tip = 'Go to the previous keyframe'; next.dataset.tip = 'Go to the next keyframe';
+    prev.onclick = (e) => { e.preventDefault(); jumpKeyframe(kc, -1, prop); };
+    next.onclick = (e) => { e.preventDefault(); jumpKeyframe(kc, 1, prop); };
     b.onclick = (e) => { e.preventDefault(); toggleKeyframe(kc, prop); };
-    lab.prepend(b);
+    nav.append(prev, b, next);
+    lab.prepend(nav);
+    kfUpdate = () => {
+      const on = hasKeyAt(kc, prop), list = keysInClip(kc, prop), l = localNow(kc);
+      b.className = 'kf-btn' + (on ? ' on' : '') + (list.length ? ' has' : '');
+      b.dataset.tip = on ? 'Remove keyframe here' : 'Add keyframe here (animate this)';
+      prev.disabled = !list.some((k) => k.t < l - 0.5 / FPS);
+      next.disabled = !list.some((k) => k.t > l + 0.5 / FPS);
+      nav.classList.toggle('active', list.length > 0);
+    };
+    kfUpdate();
   }
   if (def != null) { lab.title = 'Double-click to reset'; lab.style.cursor = 'pointer'; }
   r.min = min; r.max = max; r.step = step; r.value = get();
@@ -2307,6 +2432,12 @@ function slider(parent, label, { min, max, step = 1, get, set, fmt: f = (v) => v
     r.value = get(); val.value = f(get()); setRangeFill(r); requestDraw();
   });
   parent.appendChild(row);
+  // when the playhead moves, just update this row (much faster than rebuilding the panel)
+  if (kf && rt.inspRefresh) rt.inspRefresh.push(() => {
+    if (document.activeElement === val || document.activeElement === r) return;
+    r.value = get(); val.value = f(get()); setRangeFill(r);
+    if (kfUpdate) kfUpdate();
+  });
   return row;
 }
 
@@ -2344,13 +2475,15 @@ function renderInspector() {
   const body = $('#inspectorBody');
   const scroll = $('#inspector').scrollTop;
   body.innerHTML = '';
+  rt.inspRefresh = [];
+  rt.inspClip = state.selectedId;
   const c = getClip(state.selectedId);
   if (!c) { renderProjectPanel(body); return; }
   const m = getMedia(c.mediaId);
   const head = el('div', 'insp-head');
   head.innerHTML = `<span class="badge" style="background:${KIND_COLOR[c.kind]}">${ICON[c.kind]}</span><div><h3></h3><small></small></div>`;
   $('h3', head).textContent = clipLabel(c);
-  $('small', head).textContent = `${c.kind[0].toUpperCase() + c.kind.slice(1)} · starts ${fmt(c.start)} · ${fmtShort(dur(c))}`;
+  $('small', head).textContent = `${c.kind === 'adjust' ? 'Adjustment' : c.kind[0].toUpperCase() + c.kind.slice(1)} · starts ${fmt(c.start)} · ${fmtShort(dur(c))}`;
   body.appendChild(head);
 
   const actions = el('div', 'insp-actions');
@@ -2361,14 +2494,15 @@ function renderInspector() {
   body.appendChild(actions);
 
   if (c.kind === 'text') textInspector(body, c);
+  if (c.kind === 'adjust') adjustInspector(body, c);
 
   if (isVisual(c)) {
     const s = section(body, 'Position & size', () => Object.assign(c, { fit: 'contain', scale: 1, x: 0, y: 0, rotation: 0, opacity: 1 }));
     chips(s, [{ label: 'Fit', value: 'contain', tip: 'Show the whole picture' }, { label: 'Fill', value: 'cover', tip: 'Fill the frame (crops edges)' }], c.fit,
       (v) => commit(() => { c.fit = v; }), 'toggle-row');
     slider(s, 'Size', { min: 10, max: 400, get: () => Math.round(kvNow(c, 'scale') * 100), set: (v) => setProp(c, 'scale', v / 100), fmt: (v) => v + '%', def: 100, live: false, kf: [c, 'scale'] });
-    slider(s, 'Left / right', { min: -100, max: 100, get: () => Math.round(kvNow(c, 'x') * 100), set: (v) => setProp(c, 'x', v / 100), fmt: (v) => v, def: 0, live: false, kf: [c, 'x'] });
-    slider(s, 'Up / down', { min: -100, max: 100, get: () => Math.round(kvNow(c, 'y') * 100), set: (v) => setProp(c, 'y', v / 100), fmt: (v) => v, def: 0, live: false, kf: [c, 'y'] });
+    slider(s, 'Position X', { min: -100, max: 100, get: () => Math.round(kvNow(c, 'x') * 100), set: (v) => setProp(c, 'x', v / 100), fmt: (v) => v, def: 0, live: false, kf: [c, 'x'] });
+    slider(s, 'Position Y', { min: -100, max: 100, get: () => Math.round(kvNow(c, 'y') * 100), set: (v) => setProp(c, 'y', v / 100), fmt: (v) => v, def: 0, live: false, kf: [c, 'y'] });
     slider(s, 'Rotate', { min: -180, max: 180, get: () => Math.round(kvNow(c, 'rotation')), set: (v) => setProp(c, 'rotation', v), fmt: (v) => v + '°', def: 0, live: false, kf: [c, 'rotation'] });
     slider(s, 'Opacity', { min: 0, max: 100, get: () => Math.round(kvNow(c, 'opacity') * 100), set: (v) => setProp(c, 'opacity', v / 100), fmt: (v) => v + '%', def: 100, live: false, kf: [c, 'opacity'] });
     const tg = el('div', 'chips');
@@ -2432,6 +2566,7 @@ function renderInspector() {
     slider(col, 'Saturation', { min: 0, max: 200, get: () => c.saturation, set: (v) => (c.saturation = v), fmt: (v) => v, def: 100, live: false });
     slider(col, 'Blur', { min: 0, max: 30, get: () => c.blur, set: (v) => (c.blur = v), fmt: (v) => v, def: 0, live: false });
     slider(col, 'Warmth', { min: -100, max: 100, get: () => c.temp || 0, set: (v) => (c.temp = v), fmt: (v) => v, def: 0, live: false });
+    slider(col, 'Tint', { min: -100, max: 100, get: () => c.tint || 0, set: (v) => (c.tint = v), fmt: (v) => v, def: 0, live: false });
     slider(col, 'Hue', { min: -180, max: 180, get: () => c.hue || 0, set: (v) => (c.hue = v), fmt: (v) => v + '°', def: 0, live: false });
     effectsInspector(body, c);
   }
@@ -2571,16 +2706,36 @@ function textInspector(body, c) {
   chips(st, [{ label: 'Left', value: 'left' }, { label: 'Center', value: 'center' }, { label: 'Right', value: 'right' }], t.align, (v) => commit(() => { t.align = v; }), 'toggle-row');
 
   const an = section(body, 'Animation');
-  chips(an, [
+  const ANIMS = [
     { label: 'None', value: 'none' }, { label: 'Fade', value: 'fade' }, { label: 'Pop', value: 'pop' },
     { label: 'Slide up', value: 'slide' }, { label: 'Typewriter', value: 'type' }
-  ], t.anim, (v) => { commit(() => { t.anim = v; }); seek(c.start); play(); });
+  ];
+  const anBox = chips(an, ANIMS, t.anim, (v) => { commit(() => { t.anim = v; }); seek(c.start); play(); });
+  if (typeof hoverPreview === 'function') $$('.chip', anBox).forEach((b, i) => hoverPreview(b, () => animPreviewOpts(c, ANIMS[i].value)));
+
+  const trs = section(body, 'Transitions', () => { c.transition = null; c.transitionOut = null; });
+  for (const [which, label] of [['in', 'In'], ['out', 'Out']]) {
+    const key = which === 'out' ? 'transitionOut' : 'transition';
+    const f = el('div', 'field wide');
+    f.innerHTML = `<label>${label}</label><select></select>`;
+    const se = $('select', f);
+    for (const tr of TRANSITIONS) { const o = el('option'); o.value = tr.id; o.textContent = tr.name + (tr.pro ? ' 👑' : ''); se.appendChild(o); }
+    se.value = c[key] ? c[key].type : 'none';
+    se.onchange = () => {
+      const tr = transById(se.value);
+      if (tr.pro && !requirePremium(tr.name + ' transition')) { se.value = c[key] ? c[key].type : 'none'; return; }
+      setTextTransition(c, which, se.value);
+      seek(which === 'out' ? Math.max(c.start, endOf(c) - 1.2) : c.start); play();
+    };
+    trs.appendChild(f);
+    if (c[key]) slider(trs, label + ' length', { min: 0.1, max: 2, step: 0.1, get: () => c[key].duration, set: (v) => (c[key].duration = v), fmt: (v) => v.toFixed(1) + 's', def: 0.5 });
+  }
 
   const pos = section(body, 'Position', () => { t.x = 0.5; t.y = 0.5; c.rotation = 0; c.scale = 1; });
   chips(pos, [{ label: 'Top', value: 0.15 }, { label: 'Middle', value: 0.5 }, { label: 'Bottom', value: 0.85 }],
     [0.15, 0.5, 0.85].find((v) => Math.abs(v - t.y) < 0.01), (v) => commit(() => { t.y = v; }), 'toggle-row');
-  slider(pos, 'Left / right', { min: 0, max: 100, get: () => Math.round(t.x * 100), set: (v) => (t.x = v / 100), fmt: (v) => v, def: 50, live: false });
-  slider(pos, 'Up / down', { min: 0, max: 100, get: () => Math.round(t.y * 100), set: (v) => (t.y = v / 100), fmt: (v) => v, def: 50, live: false });
+  slider(pos, 'Position X', { min: 0, max: 100, get: () => Math.round(t.x * 100), set: (v) => (t.x = v / 100), fmt: (v) => v, def: 50, live: false });
+  slider(pos, 'Position Y', { min: 0, max: 100, get: () => Math.round(t.y * 100), set: (v) => (t.y = v / 100), fmt: (v) => v, def: 50, live: false });
   slider(pos, 'Size', { min: 10, max: 400, get: () => Math.round(kvNow(c, 'scale') * 100), set: (v) => setProp(c, 'scale', v / 100), fmt: (v) => v + '%', def: 100, live: false, kf: [c, 'scale'] });
   slider(pos, 'Rotate', { min: -180, max: 180, get: () => Math.round(kvNow(c, 'rotation') || 0), set: (v) => setProp(c, 'rotation', v), fmt: (v) => v + '°', def: 0, live: false, kf: [c, 'rotation'] });
   slider(pos, 'Opacity', { min: 0, max: 100, get: () => Math.round(kvNow(c, 'opacity') * 100), set: (v) => setProp(c, 'opacity', v / 100), fmt: (v) => v + '%', def: 100, live: false, kf: [c, 'opacity'] });
@@ -2737,7 +2892,7 @@ function renderTransitionGrid() {
   if (!box) return;
   box.innerHTML = '';
   const c = getClip(state.selectedId);
-  const cur = c && isVisual(c) && c.transition ? c.transition.type : null;
+  const cur = c && (isVisual(c) || c.kind === 'text') && c.transition ? c.transition.type : null;
   for (const t of TRANSITIONS.slice(1)) {
     const b = el('button', 'trans-chip' + (cur === t.id ? ' active' : '') + (t.pro ? ' pro' : ''));
     b.draggable = true;
@@ -2747,10 +2902,10 @@ function renderTransitionGrid() {
     b.addEventListener('dragstart', (e) => { e.dataTransfer.setData('text/flux-transition', t.id); e.dataTransfer.effectAllowed = 'copy'; });
     b.onclick = () => {
       const cc = getClip(state.selectedId);
-      if (!cc || !isVisual(cc)) return toast('Click a video/photo clip (or a ＋ between clips) first, or drag this onto a cut');
+      if (!cc || !(isVisual(cc) || cc.kind === 'text')) return toast('Click a video, photo or text clip (or a ＋ between clips) first, or drag this onto a cut');
       setTransition(cc, t.id);
       renderTransitionGrid();
-      seek(Math.max(0, cc.start - 1));
+      seek(cc.kind === 'text' ? cc.start : Math.max(0, cc.start - 1));
       play();
     };
     box.appendChild(b);
@@ -2788,6 +2943,7 @@ async function loadProjectData(data) {
   P.output = P.output || { res: 1080, fps: 30 };
   FPS = P.output.fps || 30;
   ensureSoundTrack();
+  migrateTrackNames();
   if (typeof ensureProjectFonts === 'function') ensureProjectFonts();
   state.selectedId = null;
   state.time = 0;
@@ -2830,13 +2986,16 @@ function openExportDialog() {
       <button data-v="mp4">MP4<small>Works everywhere</small></button><button data-v="webm">WebM<small>For the web</small></button></div></div>
     <div class="row"><label>Quality</label><div class="seg" data-k="quality">
       <button data-v="small">Small file</button><button data-v="standard">Standard</button><button data-v="high">Best</button></div></div>
+    ${rangeOK() ? `<div class="row"><label>Part</label><div class="seg" data-k="range"><button data-v="0">Whole video</button><button data-v="1">In → Out only (${fmt(P.range.out - P.range.in, false)})</button></div></div>` : ''}
     <div class="size-est"><span>Estimated file size</span><b id="sizeEst"></b><small id="sizeDims"></small></div>
     <div class="footer"><button class="btn ghost" data-a="cancel">Cancel</button><button class="btn primary" data-a="go">Export</button></div>`);
+  opts.range = 0;
   const sync = () => {
     $$('.seg', box).forEach((s) => $$('button', s).forEach((b) => b.classList.toggle('active', String(opts[s.dataset.k]) === b.dataset.v)));
-    const e = estimateExport(opts, total);
+    const len = opts.range && rangeOK() ? P.range.out - P.range.in : total;
+    const e = estimateExport(opts, len);
     $('#sizeEst', box).textContent = '≈ ' + formatBytes(e.bytes);
-    $('#sizeDims', box).textContent = `${e.w} × ${e.h} · ${opts.fps} fps · ${fmt(total, false)}`;
+    $('#sizeDims', box).textContent = `${e.w} × ${e.h} · ${opts.fps} fps · ${fmt(len, false)}`;
   };
   $$('.seg', box).forEach((s) => $$('button', s).forEach((b) => (b.onclick = () => {
     if (b.dataset.pro && !requirePremium(b.textContent.replace('👑', '').trim() + ' export')) return;
@@ -2872,7 +3031,9 @@ function pickMime() {
 }
 
 async function runExport(opts) {
-  const total = projectDuration();
+  const useRange = opts.range && rangeOK();
+  const r0 = useRange ? P.range.in : 0, r1 = useRange ? P.range.out : projectDuration();
+  const total = r1 - r0;
   const target = api ? await api.exportChoose({ format: opts.format, name: P.name }) : 'browser-test.' + opts.format;
   if (!target) return;
   if (typeof ensureProjectFonts === 'function') await ensureProjectFonts();
@@ -2896,7 +3057,7 @@ async function runExport(opts) {
   if (monitorGain) monitorGain.gain.value = 0;
   canvas.width = outW; canvas.height = outH;
   state.selectedId = state.selectedId; // keep
-  seek(0);
+  seek(r0);
   syncMedia();
   // Wait (up to 3s) for the first frames to be ready
   const t0 = performance.now();
@@ -2927,7 +3088,7 @@ async function runExport(opts) {
     });
   };
   if (api) await api.exportBegin();
-  exportJob = { rec, opts, target, total, chain: () => chain, chunks, box, pv, cancelled: false, start: performance.now() };
+  exportJob = { rec, opts, target, total, r0, end: r1, chain: () => chain, chunks, box, pv, cancelled: false, start: performance.now() };
   $('#exCancel', box).onclick = cancelExport;
   rec.start(1000);
   play();
@@ -2935,10 +3096,10 @@ async function runExport(opts) {
 
 function exportTick() {
   if (!exportJob) return;
-  const p = clamp(state.time / exportJob.total, 0, 1);
+  const p = clamp((state.time - (exportJob.r0 || 0)) / exportJob.total, 0, 1);
   const bar = $('#exBar'); if (bar) bar.style.width = (p * 90).toFixed(1) + '%';
   const lab = $('#exLabel'); if (lab) lab.textContent = Math.round(p * 90) + '%';
-  const tt = $('#exTime'); if (tt) tt.textContent = `${fmt(state.time, false)} / ${fmt(exportJob.total, false)}`;
+  const tt = $('#exTime'); if (tt) tt.textContent = `${fmt(state.time - (exportJob.r0 || 0), false)} / ${fmt(exportJob.total, false)}`;
   const pv = exportJob.pv;
   if (pv && pv.isConnected) { const g = pv.getContext('2d'); try { g.drawImage(canvas, 0, 0, pv.width, pv.height); } catch {} }
 }
@@ -3180,10 +3341,10 @@ window.addEventListener('beforeunload', () => { if (state.inEditor && state.dirt
 let lastTimelineFollow = 0;
 function frame(now) {
   if (state.playing) {
-    const total = projectDuration();
+    const total = playEndTime();
     let t = playStartTime + ((now - playStartWall) / 1000);
     if (t >= total) {
-      if (state.loop && !state.exporting) { t = 0; playStartTime = 0; playStartWall = now; }
+      if (state.loop && !state.exporting) { const st = rangeOK() ? P.range.in : 0; t = st; playStartTime = st; playStartWall = now; }
       else {
         state.time = total;
         pause();

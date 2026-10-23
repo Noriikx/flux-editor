@@ -20,7 +20,7 @@ const PREMIUM_FEATURES = [
   ['Keyframes', 'Animate size, position, rotation, opacity and volume over time'],
   ['Green screen', 'Remove a green or blue background (chroma key)'],
   ['Pro transitions', 'Glitch, pixelate, whip pan, flip, zoom blur, clock and blinds'],
-  ['Film effects', 'Vignette and film grain'],
+  ['Film effects', 'Film grain and old-film looks'],
   ['Equalizer', 'Bass, mid and treble controls for any sound']
 ];
 function isPremium() {
@@ -68,7 +68,7 @@ function partners(c) {
 function ensureSoundTrack() {
   let tr = P.tracks.find((t) => t.type === 'audio' && (t.id === 'av' || t.name === 'Video sound'));
   if (tr) return tr;
-  tr = { id: P.tracks.some((t) => t.id === 'av') ? 'av' + uid().slice(0, 3) : 'av', type: 'audio', name: 'Video sound', hidden: false, muted: false };
+  tr = { id: P.tracks.some((t) => t.id === 'av') ? 'av' + uid().slice(0, 3) : 'av', type: 'audio', name: 'Sound', auto: true, hidden: false, muted: false };
   let i = -1;
   P.tracks.forEach((t, j) => { if (t.type === 'video') i = j; });
   P.tracks.splice(i + 1, 0, tr);
@@ -81,12 +81,13 @@ function linkSoundFor(c, m, force) {
   const d = dur(c);
   const free = (tr) => Math.abs(findFreeStart(tr.id, c.start, d) - c.start) < 1e-6;
   let tr = ensureSoundTrack();
-  if (!free(tr)) tr = P.tracks.find((t) => t.type === 'audio' && /video sound/i.test(t.name) && free(t)) || P.tracks.find((t) => t.type === 'audio' && free(t));
+  if (!free(tr)) tr = P.tracks.find((t) => t.type === 'audio' && free(t));
   if (!tr) {
-    tr = { id: 'a' + uid().slice(0, 4), type: 'audio', name: 'Video sound ' + (P.tracks.filter((t) => /video sound/i.test(t.name)).length + 1), hidden: false, muted: false };
+    tr = { id: 'a' + uid().slice(0, 4), type: 'audio', name: 'Sound', auto: true, hidden: false, muted: false };
     const i = P.tracks.indexOf(ensureSoundTrack());
     P.tracks.splice(i + 1, 0, tr);
   }
+  if (typeof autoNameTracks === 'function') autoNameTracks();
   const link = uid();
   const a = {
     id: uid(), trackId: tr.id, mediaId: c.mediaId, kind: 'audio', start: c.start, in: c.in, out: c.out, speed: c.speed,
@@ -104,17 +105,49 @@ function linkSoundFor(c, m, force) {
 const KF_DEFAULTS = { scale: 1, x: 0, y: 0, rotation: 0, opacity: 1, volume: 1 };
 const easeKF = (x) => (x < 0.5 ? 2 * x * x : 1 - Math.pow(-2 * x + 2, 2) / 2);
 function baseVal(c, prop) { return c[prop] != null ? c[prop] : KF_DEFAULTS[prop]; }
+// cubic-bezier(x1, y1, x2, y2) like CSS: returns y for a given x
+function bezierY(x, x1, y1, x2, y2) {
+  const cx = 3 * x1, bx = 3 * (x2 - x1) - cx, ax = 1 - cx - bx;
+  const cy = 3 * y1, by = 3 * (y2 - y1) - cy, ay = 1 - cy - by;
+  let t = x;
+  for (let i = 0; i < 8; i++) { // Newton steps
+    const xt = ((ax * t + bx) * t + cx) * t - x, d = (3 * ax * t + 2 * bx) * t + cx;
+    if (Math.abs(xt) < 1e-5) break;
+    if (Math.abs(d) < 1e-6) break;
+    t -= xt / d;
+  }
+  t = clamp(t, 0, 1);
+  return ((ay * t + by) * t + cy) * t;
+}
+// How the value travels from a keyframe to the next one
+const KF_EASES = {
+  smooth: easeKF,
+  linear: (x) => x,
+  in: (x) => x * x * x,
+  out: (x) => 1 - Math.pow(1 - x, 3),
+  hold: () => 0
+};
+function keyEase(k, x) {
+  if (k.ease === 'bezier' && k.h) return bezierY(x, k.h[0], k.h[1], k.h[2], k.h[3]);
+  return (KF_EASES[k.ease] || easeKF)(x);
+}
 function kv(c, prop, local) {
   const arr = c.keys && c.keys[prop];
   if (!arr || !arr.length) return baseVal(c, prop);
   if (local <= arr[0].t) return arr[0].v;
-  const last = arr[arr.length - 1];
-  if (local >= last.t) return last.v;
-  for (let i = 0; i < arr.length - 1; i++) {
-    const a = arr[i], b = arr[i + 1];
-    if (local >= a.t && local <= b.t) return a.v + (b.v - a.v) * easeKF((local - a.t) / Math.max(1e-6, b.t - a.t));
-  }
-  return last.v;
+  const n = arr.length - 1;
+  if (local >= arr[n].t) return arr[n].v;
+  let lo = 0, hi = n; // binary search: fast even with many keyframes
+  while (hi - lo > 1) { const mid = (lo + hi) >> 1; if (arr[mid].t <= local) lo = mid; else hi = mid; }
+  const a = arr[lo], b = arr[hi];
+  return a.v + (b.v - a.v) * keyEase(a, (local - a.t) / Math.max(1e-6, b.t - a.t));
+}
+// keyframes that are inside the clip (a split keeps the others so the motion stays the same)
+function keysInClip(c, prop) {
+  const arr = c.keys && c.keys[prop];
+  if (!arr) return [];
+  const d = dur(c);
+  return arr.filter((k) => k.t >= -1e-4 && k.t <= d + 1e-4);
 }
 const localNow = (c) => clamp(state.time - c.start, 0, dur(c));
 function kvNow(c, prop) { return kv(c, prop, localNow(c)); }
@@ -154,6 +187,7 @@ function toggleKeyframe(c, prop) {
 }
 function addKeyframeAll(c) {
   if (!requirePremium('Keyframes')) return;
+  if (state.time < c.start - 1e-4 || state.time > endOf(c) + 1e-4) return toast('Move the playhead over this clip first');
   commit(() => {
     c.keys = c.keys || {};
     const l = localNow(c);
@@ -164,14 +198,11 @@ function addKeyframeAll(c) {
   });
   toast('Keyframe added for size, position, rotation and opacity');
 }
+// Splitting doesn't add keyframes: both halves keep the same curve (keys outside a half are just hidden).
 function splitKeys(c, b, cut) {
   if (!c.keys) return;
   b.keys = {};
-  for (const [prop, arr] of Object.entries(c.keys)) {
-    const vAt = kv(c, prop, cut);
-    b.keys[prop] = [{ t: 0, v: vAt }, ...arr.filter((k) => k.t > cut + 1e-4).map((k) => ({ t: k.t - cut, v: k.v }))];
-    c.keys[prop] = [...arr.filter((k) => k.t < cut - 1e-4), { t: cut, v: vAt }];
-  }
+  for (const [prop, arr] of Object.entries(c.keys)) b.keys[prop] = arr.map((k) => Object.assign({}, k, { t: k.t - cut }));
 }
 
 /* ============================ SOUND: BALANCE / EQ / DUCKING ============================ */
@@ -348,8 +379,12 @@ function drawEffects(g, c, dw, dh) {
     g.fillStyle = c.temp > 0 ? `rgba(255,140,40,${(c.temp / 100) * 0.6})` : `rgba(40,120,255,${(-c.temp / 100) * 0.6})`;
     g.fillRect(-dw / 2, -dh / 2, dw, dh);
   }
-  if (!isPremium()) return;
-  if (c.vignette > 0) {
+  if (c.tint) { // + magenta, - green
+    g.globalCompositeOperation = 'soft-light';
+    g.fillStyle = c.tint > 0 ? `rgba(255,60,200,${(c.tint / 100) * 0.55})` : `rgba(60,220,90,${(-c.tint / 100) * 0.55})`;
+    g.fillRect(-dw / 2, -dh / 2, dw, dh);
+  }
+  if (c.vignette > 0) { // free for everyone
     g.globalCompositeOperation = 'source-over';
     const gr = g.createRadialGradient(0, 0, Math.min(dw, dh) * 0.28, 0, 0, Math.hypot(dw, dh) / 2);
     gr.addColorStop(0, 'rgba(0,0,0,0)');
@@ -357,6 +392,7 @@ function drawEffects(g, c, dw, dh) {
     g.fillStyle = gr;
     g.fillRect(-dw / 2, -dh / 2, dw, dh);
   }
+  if (!isPremium()) return;
   if (c.grain > 0) {
     g.save();
     g.globalCompositeOperation = 'overlay';
@@ -392,17 +428,18 @@ function drawGlitched(g, src, sx, sy, cw, ch, dw, dh, amt) {
   }
 }
 function effectsInspector(body, c) {
-  const s = section(body, 'Effects 👑', () => { c.vignette = 0; c.grain = 0; if (c.chroma) c.chroma.on = false; });
+  const s = section(body, 'Effects', () => { c.vignette = 0; c.grain = 0; if (c.chroma) c.chroma.on = false; });
+  slider(s, 'Vignette', { min: 0, max: 100, get: () => c.vignette || 0, set: (v) => (c.vignette = v), fmt: (v) => v, def: 0, live: false });
   if (!isPremium()) {
-    const u = el('button', 'btn', CROWN + ' Unlock green screen, vignette & grain');
+    const u = el('button', 'btn', CROWN + (c.kind === 'adjust' ? ' Unlock film grain' : ' Unlock green screen & film grain'));
     u.style.cssText = 'width:100%;justify-content:center';
     u.onclick = () => openPremium('Effects');
     s.appendChild(u);
     return;
   }
   c.chroma = c.chroma || { on: false, color: '#00ff00', similarity: 0.4, smooth: 0.1 };
-  chips(s, [{ label: c.chroma.on ? 'Green screen: ON' : 'Remove green screen', value: 'on' }], c.chroma.on ? 'on' : null, () => commit(() => { c.chroma.on = !c.chroma.on; }), 'toggle-row');
-  if (c.chroma.on) {
+  if (c.kind !== 'adjust') chips(s, [{ label: c.chroma.on ? 'Green screen: ON' : 'Remove green screen', value: 'on' }], c.chroma.on ? 'on' : null, () => commit(() => { c.chroma.on = !c.chroma.on; }), 'toggle-row');
+  if (c.chroma.on && c.kind !== 'adjust') {
     const row = el('div', 'field');
     row.innerHTML = `<label>Key color</label><div class="chips" style="margin:0"><button class="chip" data-c="#00ff00">Green</button><button class="chip" data-c="#0040ff">Blue</button></div><input type="color">`;
     const ci = $('input', row);
@@ -414,7 +451,6 @@ function effectsInspector(body, c) {
     slider(s, 'Strength', { min: 0, max: 100, get: () => Math.round(c.chroma.similarity * 100), set: (v) => (c.chroma.similarity = v / 100), fmt: (v) => v, def: 40, live: false });
     slider(s, 'Edge softness', { min: 0, max: 100, get: () => Math.round(c.chroma.smooth * 100), set: (v) => (c.chroma.smooth = v / 100), fmt: (v) => v, def: 10, live: false });
   }
-  slider(s, 'Vignette', { min: 0, max: 100, get: () => c.vignette || 0, set: (v) => (c.vignette = v), fmt: (v) => v, def: 0, live: false });
   slider(s, 'Film grain', { min: 0, max: 100, get: () => c.grain || 0, set: (v) => (c.grain = v), fmt: (v) => v, def: 0, live: false });
 }
 

@@ -7,7 +7,9 @@
   initEditor();
   setupSmartTools();
   setupClipTools();
+  setupPreviews();
   setupTextFonts();
+  $('#btnAdjust').onclick = () => { if (!state.inEditor) return; addAdjustmentClip(); };
   $('#btnRecTl').onclick = () => toggleRecording();
   $('#transAll').onclick = () => applyTransitionToAll('fade');
   $('#transNone').onclick = () => applyTransitionToAll('none');

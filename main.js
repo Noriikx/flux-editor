@@ -252,19 +252,21 @@ ipcMain.handle('music:catalog', async () => {
     throw e;
   }
 });
+// Public domain MUSIC only: music collections, no audiobooks, radio shows, talks or podcasts.
+const PD_MUSIC_FILTER = 'mediatype:audio AND licenseurl:*publicdomain* AND collection:(musopen OR georgeblood OR 78rpm OR audio_music OR netlabels)' +
+  ' AND -collection:(librivoxaudio OR audio_bookspoetry OR oldtimeradio OR podcasts OR radioprograms OR audio_religion)' +
+  ' AND -subject:(audiobook OR librivox OR podcast OR poetry OR speech OR lecture OR radio OR story)' +
+  ' AND -title:(chapter OR audiobook OR librivox OR episode)';
 ipcMain.handle('music:archiveSearch', async (_e, { q, page }) => {
   const fields = ['identifier', 'title', 'creator', 'licenseurl'].map((f) => 'fl[]=' + f).join('&');
-  const run = async (lic) => {
-    const query = `(${q}) AND mediatype:audio AND ${lic}`;
-    const url = `https://archive.org/advancedsearch.php?q=${encodeURIComponent(query)}&${fields}&sort[]=downloads+desc&rows=30&page=${page || 1}&output=json`;
-    const j = await getJSON(url);
-    return {
-      total: j.response.numFound,
-      items: j.response.docs.map((d) => ({ id: d.identifier, title: Array.isArray(d.title) ? d.title[0] : d.title, creator: Array.isArray(d.creator) ? d.creator.join(', ') : d.creator, license: d.licenseurl }))
-    };
+  const query = `(${q}) AND ${PD_MUSIC_FILTER}`;
+  const url = `https://archive.org/advancedsearch.php?q=${encodeURIComponent(query)}&${fields}&sort[]=downloads+desc&rows=30&page=${page || 1}&output=json`;
+  const j = await getJSON(url);
+  if (!j.response) throw new Error('search failed');
+  return {
+    total: j.response.numFound,
+    items: j.response.docs.map((d) => ({ id: d.identifier, title: Array.isArray(d.title) ? d.title[0] : d.title, creator: Array.isArray(d.creator) ? d.creator.join(', ') : d.creator, license: d.licenseurl }))
   };
-  try { return await run('(licenseurl:*publicdomain* OR licenseurl:*licenses/by/*)'); }
-  catch { return await run('licenseurl:*publicdomain*'); }
 });
 ipcMain.handle('music:archiveTracks', async (_e, id) => {
   const j = await getJSON('https://archive.org/metadata/' + encodeURIComponent(id));

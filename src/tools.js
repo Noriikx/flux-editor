@@ -14,13 +14,19 @@ const TOOL_ICONS = {
   bleep: '<path d="M4 6h16M4 12h10M4 18h7"/><path d="M17 14l4 4M21 14l-4 4"/>',
   silence: '<path d="M3 12h3l2-5 3 10 2-5h2"/><path d="M17 9l4 6M21 9l-4 6"/>',
   trans: '<rect x="2" y="6" width="9" height="12" rx="1.5"/><rect x="13" y="6" width="9" height="12" rx="1.5"/><path d="M10 12h4"/>',
-  fit: '<path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/>'
+  fit: '<path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/>',
+  graph: '<path d="M3 3v18h18"/><path d="M6 16c3 0 4-9 7-9s3 6 7 6"/>',
+  kprev: '<path d="M15 6l-6 6 6 6"/><path d="M19 12h-1"/>',
+  knext: '<path d="M9 6l6 6-6 6"/><path d="M5 12h1"/>'
 };
 function clipTools(c) {
   const vis = c && isVisual(c), snd = c && soundSource(c);
   const inside = c && state.time >= c.start && state.time <= endOf(c);
   return [
     { id: 'key', tip: 'Add keyframe at the playhead (animate size, position, rotation, opacity)', pro: true, on: vis && inside, fn: () => { addKeyframeAll(c); renderInspector(); } },
+    { id: 'kprev', tip: 'Previous keyframe ([)', on: c && c.keys && Object.keys(c.keys).length, fn: () => jumpKeyframe(c, -1) },
+    { id: 'knext', tip: 'Next keyframe (])', on: c && c.keys && Object.keys(c.keys).length, fn: () => jumpKeyframe(c, 1) },
+    { id: 'graph', tip: 'Graph editor - shape the animation curves (G)', pro: true, on: !!c, fn: () => toggleGraphEditor() },
     { id: 'split', tip: 'Split at the playhead (S)', on: c && inside, fn: () => splitAt(state.time) },
     { id: 'speed', tip: 'Change speed (up to 10x)', on: c && (c.kind === 'video' || c.kind === 'audio'), fn: (b) => speedMenu(c, b) },
     { id: 'freeze', tip: 'Freeze this frame for 2 seconds', on: c && c.kind === 'video' && inside, fn: () => freezeFrame() },
@@ -68,7 +74,7 @@ function setupClipTools() {
   lib.appendChild(box);
   // keep the buttons in step with the selected clip and the playhead
   const baseRender = renderInspector;
-  renderInspector = function () { const r = baseRender.apply(this, arguments); updateClipTools(); if (rt.redrawTextFonts && $('[data-page="text"].active')) rt.redrawTextFonts(); return r; };
+  renderInspector = function () { const r = baseRender.apply(this, arguments); updateClipTools(); if (typeof graph !== 'undefined' && graph.open) { const gc = getClip(state.selectedId); if (gc && !graphPropsFor(gc).some((p) => p[0] === graph.prop)) graph.prop = graphPropsFor(gc)[0][0]; renderGraphHead(); drawGraph(); } if (rt.redrawTextFonts && $('[data-page="text"].active')) rt.redrawTextFonts(); return r; };
   let lastInside = null;
   setInterval(() => {
     const c = getClip(state.selectedId);

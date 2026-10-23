@@ -80,7 +80,7 @@ function showAuth(note) {
       <div class="auth-card">
         <img src="logo.png" alt="" class="auth-logo">
         <h1>${h}</h1>
-        <p class="sub">${sub || 'We sent a 6-digit code to <b>' + email.replace(/</g, '&lt;') + '</b>'}</p>
+        <p class="sub">${sub || 'We sent a 6-digit code to <b>' + email.replace(/</g, '&lt;') + '</b>'}</p>${mode === 'code' || mode === 'reset' ? '<div class="spam-note">📩 Can\u2019t see the email? <b>Check your spam folder</b> (and Promotions).</div>' : ''}
         ${mode === 'login' || mode === 'signup' ? `<div class="auth-tabs"><button data-m="login" class="${mode === 'login' ? 'on' : ''}">Sign in</button><button data-m="signup" class="${mode === 'signup' ? 'on' : ''}">Create account</button></div>` : '<div style="height:14px"></div>'}
         <form autocomplete="on">${body}
           <div class="auth-msg ${err ? 'err' : ''}"></div>
@@ -90,7 +90,6 @@ function showAuth(note) {
           ${mode === 'login' ? '<a href="#" data-go="forgot">Forgot password?</a>' : ''}
           ${mode === 'code' ? '<a href="#" data-go="resend">Send the code again</a><a href="#" data-go="login">Back</a>' : ''}
           ${mode === 'forgot' || mode === 'reset' ? '<a href="#" data-go="login">Back to sign in</a>' : ''}
-          ${mode === 'code' || mode === 'reset' ? '<span>Can’t find it? Check Spam.</span>' : ''}
         </div>
         <button class="auth-quit" data-a="quit">Exit Flux</button>
       </div>`;

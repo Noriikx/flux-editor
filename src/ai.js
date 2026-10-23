@@ -15,14 +15,14 @@ const EFFECTS = [
   { id: 'bgBlur', name: 'Blurred background', look: { bgBlur: true } },
   { id: 'soft', name: 'Soft blur', look: { blur: 4 } },
   { id: 'mirror', name: 'Mirror', look: { flipH: true } },
-  { id: 'vignette', name: 'Vignette', look: { vignette: 60 }, pro: true },
+  { id: 'vignette', name: 'Vignette', look: { vignette: 60 } },
   { id: 'grain', name: 'Film grain', look: { grain: 50 }, pro: true },
   { id: 'oldFilm', name: 'Old film', look: { grain: 60, vignette: 50, filter: 'vintage' }, pro: true },
   { id: 'clear', name: 'Remove effects', look: { motion: 'none', bgBlur: false, blur: 0, flipH: false, vignette: 0, grain: 0 } }
 ];
 function applyLook(c, look) {
   if (!c || !isVisual(c)) return toast('Pick a video or photo clip');
-  if ((look.vignette || look.grain) && !requirePremium('Film effects')) return;
+  if (look.grain && !requirePremium('Film effects')) return;
   commit(() => Object.assign(c, JSON.parse(JSON.stringify(look))));
   select(c.id);
   toast('Applied to ' + clipLabel(c));
@@ -149,7 +149,7 @@ try { Object.assign(capOpts, JSON.parse(localStorage.getItem('flux.capOpts') || 
 
 function captionTrack() {
   let tr = P.tracks.find((t) => t.type === 'text' && t.name === 'Captions');
-  if (!tr) { tr = { id: 'cap' + uid().slice(0, 4), type: 'text', name: 'Captions', hidden: false, muted: false }; P.tracks.unshift(tr); }
+  if (!tr) { tr = { id: 'cap' + uid().slice(0, 4), type: 'text', name: 'Captions', auto: false, hidden: false, muted: false }; P.tracks.unshift(tr); }
   return tr;
 }
 function captionProps() {
@@ -631,12 +631,16 @@ async function sendAi() {
     if (settings.aiKey && api && api.aiChat) r = await api.aiChat({ key: settings.aiKey, model: settings.aiModel || 'claude-sonnet-5-5', system: AI_SYSTEM, messages: history });
     else {
       const a = settings.account;
-      if (!a || !a.token) throw new Error('Please sign in first.');
-      r = await apiCall('ai', { system: AI_SYSTEM, messages: history }, a.token);
+      r = a && a.token ? await apiCall('ai', { system: AI_SYSTEM, messages: history }, a.token) : { error: 'offline', status: 0 };
     }
-    if (r.error) throw new Error(r.error);
     let plan;
-    try { plan = JSON.parse(r.text.slice(r.text.indexOf('{'), r.text.lastIndexOf('}') + 1)); } catch { plan = { reply: r.text, actions: [] }; }
+    if (r.error) {
+      // online AI not available (no key on the server, offline, busy…) - use quick mode on this computer
+      if (r.status === 429 || r.status === 402) throw new Error(r.error);
+      plan = localPlan(text);
+    } else {
+      try { plan = JSON.parse(r.text.slice(r.text.indexOf('{'), r.text.lastIndexOf('}') + 1)); } catch { plan = { reply: r.text, actions: [] }; }
+    }
     const before = hist.undo.length;
     ai.busy = false;
     const done = await runAiActions(plan.actions || []);

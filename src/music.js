@@ -76,7 +76,7 @@ async function searchPD(reset = true) {
     let r;
     if (api && api.musicArchiveSearch) r = await api.musicArchiveSearch({ q, page: music.pdPage });
     else {
-      const query = `(${q}) AND mediatype:audio AND (licenseurl:*publicdomain* OR licenseurl:*licenses/by/*)`;
+      const query = `(${q}) AND mediatype:audio AND licenseurl:*publicdomain* AND collection:(musopen OR georgeblood OR 78rpm OR audio_music OR netlabels) AND -collection:(librivoxaudio OR audio_bookspoetry OR oldtimeradio OR podcasts OR radioprograms OR audio_religion) AND -subject:(audiobook OR librivox OR podcast OR poetry OR speech OR lecture OR radio OR story) AND -title:(chapter OR audiobook OR librivox OR episode)`;
       const url = `https://archive.org/advancedsearch.php?q=${encodeURIComponent(query)}&fl[]=identifier&fl[]=title&fl[]=creator&fl[]=licenseurl&sort[]=downloads+desc&rows=30&page=${music.pdPage}&output=json`;
       const j = await (await fetch(url)).json();
       r = { total: j.response.numFound, items: j.response.docs.map((d) => ({ id: d.identifier, title: d.title, creator: Array.isArray(d.creator) ? d.creator.join(', ') : d.creator, license: d.licenseurl })) };
@@ -228,7 +228,7 @@ function renderMusic() {
     list.appendChild(frag);
     $('#musicCount').textContent = `${items.length} of ${music.catalog.length} songs`;
   } else {
-    $('#musicNote').textContent = 'Recordings marked public domain or CC BY by their uploaders. Always check the license on the item page.';
+    $('#musicNote').textContent = 'Music only: classical, old jazz & 78rpm records and netlabel music marked public domain. Always check the license on the item page.';
     if (!music.pdItems.length) {
       if (music.loading) status.textContent = 'Searching the Internet Archive…';
       else if (!music.error) status.textContent = 'Search for a style or instrument, or pick one above.';
