@@ -1039,3 +1039,8 @@ body.fusion-open #timeline, body.fusion-open #tlToolbar .tl-tools > :not(.page-s
 .fx-text { width: 100%; resize: vertical; background: var(--panel-2); color: var(--text); border: 1px solid var(--line-2); border-radius: 6px; padding: 6px; font: 13px var(--font); }
 .vol-grid i.zero { border-top-color: rgba(255,255,255,.45); }
 .vol-grid i:nth-child(3) { border-top-color: rgba(255,255,255,.22); }
+.vol-line.tag-below .vol-tag { top: 12px; }
+.vol-tag { z-index: 6; white-space: nowrap; }
+.vol-line.active .vol-tag { background: var(--accent); color: #fff; }
+.px-badge { position: absolute; left: 4px; bottom: 4px; font: 600 9.5px var(--font); background: rgba(0,0,0,.72); color: #ffd23f; padding: 1px 5px; border-radius: 4px; pointer-events: auto; }
+.px-badge.done { color: #4fd6a0; }

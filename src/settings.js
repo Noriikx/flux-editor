@@ -13,6 +13,7 @@ const DEFAULT_SETTINGS = {
   outputDevice: 'default',
   showTips: true,
   previewQuality: 'auto',
+  proxies: true,             // make light copies of long / .mkv videos for smooth editing
   aiKey: '',
   aiModel: 'claude-sonnet-5-5',
   asrModel: '',
@@ -326,10 +327,22 @@ function settingsPerf(body) {
   body.innerHTML = `<h3>Performance</h3>
     <div class="set-row col"><b>Preview quality</b><small>Lower quality makes playback smooth on older laptops. Exported videos always use full quality.</small>
       <div class="seg tall" id="pq"><button data-v="auto">Auto<small>${auto ? 'Low-end detected' : 'Recommended'}</small></button><button data-v="low">Low<small>Fastest</small></button><button data-v="medium">Medium</button><button data-v="high">High<small>Sharpest</small></button></div></div>
-    <p class="hint">This computer: ${navigator.hardwareConcurrency || '?'} CPU threads${navigator.deviceMemory ? ', ' + navigator.deviceMemory + ' GB memory' : ''}.</p>`;
+    <p class="hint">This computer: ${navigator.hardwareConcurrency || '?'} CPU threads${navigator.deviceMemory ? ', ' + navigator.deviceMemory + ' GB memory' : ''}.</p>
+    <div class="set-row"><div><b>Smooth editing copies</b><small>For long videos and .mkv recordings Flux makes a light copy so playing and dragging the playhead is smooth. Exports always use your original files.</small></div><span class="switch"><input type="checkbox" id="pxOn"><i></i></span></div>
+    <div class="set-row"><div><b>Space used by the copies</b><small id="pxSize">…</small></div><button class="btn ghost" id="pxClear">Delete copies</button></div>`;
   const sync = () => $$('#pq button', body).forEach((b) => b.classList.toggle('active', b.dataset.v === (settings.previewQuality || 'auto')));
   $$('#pq button', body).forEach((b) => (b.onclick = () => { settings.previewQuality = b.dataset.v; saveSettings(); sync(); layoutStage(); }));
   sync();
+  const on = $('#pxOn', body); on.checked = settings.proxies !== false;
+  on.onchange = () => { settings.proxies = on.checked; saveSettings(); for (const m of P.media) if (m.kind === 'video') { reloadPlayersFor(m); if (on.checked) ensureProxy(m); } if (typeof renderMediaBadges === 'function') renderMediaBadges(); };
+  const sz = () => api && api.proxySize && api.proxySize().then((n) => { const e = $('#pxSize', body); if (e) e.textContent = formatBytes(n || 0) + ' on this computer'; });
+  sz();
+  $('#pxClear', body).onclick = async () => {
+    if (!api || !api.proxyClear) return;
+    for (const m of P.media) { delete m.proxy; delete m.full; reloadPlayersFor(m); }
+    await api.proxyClear(); sz(); toast('Copies deleted - they’ll be made again when needed');
+    if (typeof renderMediaBadges === 'function') renderMediaBadges();
+  };
 }
 function settingsAi(body) {
   body.innerHTML = `<h3>AI Editor</h3>

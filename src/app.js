@@ -396,7 +396,7 @@ function probeMedia(m) {
       };
       v.onerror = () => finish(false);
       v.crossOrigin = 'anonymous';
-      v.src = api && api.playUrl ? api.playUrl(m.path) : url;
+      v.src = api && api.playUrl ? api.playUrl(m.full || m.path) : url;
     } else {
       const a = document.createElement('audio');
       a.preload = 'metadata';
@@ -1123,7 +1123,7 @@ function getPlayer(c, m) {
   media.preload = 'auto';
   media.playsInline = true;
   media.crossOrigin = 'anonymous';
-  media.src = api && api.playUrl ? api.playUrl(m.path) : mediaUrl(m);
+  media.src = api && api.playUrl ? api.playUrl(typeof playPathOf === 'function' ? playPathOf(m) : m.path) : mediaUrl(m);
   p = { el: media, node: null, gain: null };
   // grab the picture the moment a jump finishes, so dragging the playhead always shows the video (never black)
   const grab = () => { if (c.kind === 'video' && media.videoWidth) { p.lastAt = 0; keepLastFrame(p, m); } requestDraw(); };
@@ -1290,7 +1290,14 @@ function syncMedia(L = rt.layout || computeLayout()) {
     if (rt.exp2) { setGain(p, 0); exp2SyncPlayer(p, c, src); continue; }
     if (state.playing) {
       // waiting for the picture? hold the clock a moment instead of stuttering (see frame())
-      if (c.kind === 'video' && !state.exporting && (el.seeking || el.readyState < 3) && t >= w.vs + 0.02) rt.stallNow = true;
+      const waiting = c.kind === 'video' && !state.exporting && (el.seeking || el.readyState < 3) && t >= w.vs + 0.02;
+      if (waiting) rt.stallNow = true;
+      // while a video catches up, everything waits together (so sound never runs ahead and has to jump back)
+      if (rt.stall && (rt.stallMs || 0) < 450 && !state.exporting) {
+        if (!el.paused) el.pause();
+        if (el.readyState >= 1 && !el.seeking && Math.abs(el.currentTime - src) > 0.08) el.currentTime = src;
+        continue;
+      }
       {
         if (Math.abs(el.playbackRate - c.speed) > 0.001) el.playbackRate = clamp(c.speed, 0.0625, 16);
         if (el.paused) {
@@ -2160,6 +2167,16 @@ function renderLanes() {
   fillFilmstrips();
 }
 // +20 dB at the top of the clip, silent at the bottom, 0 dB a quarter of the way down
+// keep the dB label next to the mouse (long clips go off screen) and below the line when it is near the top
+function placeVolTag(line, clientX) {
+  const tag = line.firstChild, ce = line.closest('.clip');
+  if (!tag || !ce) return;
+  const r = ce.getBoundingClientRect(), sr = tlScroll.getBoundingClientRect();
+  const x = clamp(clientX - r.left + 14, Math.max(4, sr.left - r.left + 4), Math.max(4, Math.min(r.width, sr.right - r.left) - 70));
+  tag.style.left = x + 'px'; tag.style.right = 'auto';
+  line.classList.toggle('tag-below', parseFloat(line.style.top) < 34);
+}
+tlLanes.addEventListener('mousemove', (e) => { const vl = e.target.closest && e.target.closest('.vol-line'); if (vl && !vl.classList.contains('active')) placeVolTag(vl, e.clientX); });
 // the part of a clip (in px from its left edge) worth drawing: what's on screen plus a margin
 function waveRange(c, w) {
   const vw = tlScroll.clientWidth || 1600, left = c.start * state.zoom;
@@ -2323,6 +2340,7 @@ function trySnap(values, excludeId) {
       const v0 = kv(c, 'volume', clamp(state.time - c.start, 0, dur(c)));
       drag = { mode: 'vol', c, snap: snapshot(), y0: e.clientY, v0, line: vline, h: vline.closest('.clip').clientHeight, moved: false };
       vline.classList.add('active');
+      placeVolTag(vline, e.clientX);
       tlLanes.setPointerCapture(e.pointerId);
       return;
     }
@@ -2456,6 +2474,7 @@ function trySnap(values, excludeId) {
       setProp(drag.c, 'volume', v);
       drag.line.style.top = volLineTop(v) + '%';
       drag.line.firstChild.textContent = fmtDb(d);
+      placeVolTag(drag.line, e.clientX);
       const wv = drag.line.parentElement.querySelector('.wave');
       if (wv) { const W = dur(drag.c) * state.zoom, a = +wv.dataset.x0 || 0, b = +wv.dataset.x1 || W; const nw = waveCanvas(drag.c, W, v, a, b); if (nw) { nw.className = 'wave'; nw.style.left = wv.style.left; nw.style.width = wv.style.width; nw.dataset.x0 = a; nw.dataset.x1 = b; wv.replaceWith(nw); } }
       return;

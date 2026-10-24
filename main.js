@@ -567,6 +567,86 @@ ipcMain.handle('exp2:direct', async (_e, { target, fps, format, quality, duratio
   return r.ok ? { ok: true, path: target, encoder: enc } : { ok: false, error: 'Saving the video failed.\n' + r.error };
 });
 
+
+// ===================== Smooth-editing copies (proxies) =====================
+// Game recordings (long, .mkv, few keyframes) are slow to jump around in. Flux makes a light 720p copy with a
+// keyframe every half second just for editing - like DaVinci's proxy media. Exports always use your original file.
+// .mkv/.flv/.avi files also get a full-quality .mp4 copy (no re-encoding) because the editor can't jump inside them.
+const proxyDir = () => path.join(app.getPath('userData'), 'proxies');
+const proxyJobs = new Map();
+let proxyQueue = Promise.resolve();
+function mediaKey(file) {
+  const st = fs.statSync(file);
+  return crypto.createHash('sha1').update(file + '|' + st.size + '|' + Math.round(st.mtimeMs)).digest('hex').slice(0, 24);
+}
+function proxyArgs(enc) {
+  switch (enc) {
+    case 'h264_nvenc': return ['-c:v', 'h264_nvenc', '-preset', 'p2', '-rc', 'vbr', '-cq', '25', '-b:v', '0', '-g', '15', '-bf', '0'];
+    case 'h264_qsv': return ['-c:v', 'h264_qsv', '-preset', 'veryfast', '-global_quality', '25', '-g', '15', '-bf', '0'];
+    case 'h264_amf': return ['-c:v', 'h264_amf', '-quality', 'speed', '-rc', 'cqp', '-qp_i', '24', '-qp_p', '26', '-g', '15', '-bf', '0'];
+    case 'h264_videotoolbox': return ['-c:v', 'h264_videotoolbox', '-b:v', '6M', '-g', '15'];
+    default: return ['-c:v', 'libx264', '-preset', 'veryfast', '-tune', 'fastdecode', '-crf', '24', '-g', '15', '-bf', '0'];
+  }
+}
+function ffRun(args, onTime) {
+  const ff = ffmpegPath();
+  return new Promise((resolve) => {
+    const p = spawn(ff, args, { windowsHide: true });
+    let dur = 0, err = '';
+    p.stderr.on('data', (d) => {
+      const s = d.toString(); err = (err + s).slice(-3000);
+      const dm = /Duration: (\d+):(\d+):(\d+\.\d+)/.exec(s);
+      if (dm && !dur) dur = (+dm[1]) * 3600 + (+dm[2]) * 60 + parseFloat(dm[3]);
+      const m = /time=(\d+):(\d+):(\d+\.\d+)/.exec(s);
+      if (m && dur && onTime) onTime(Math.min(1, ((+m[1]) * 3600 + (+m[2]) * 60 + parseFloat(m[3])) / dur));
+    });
+    p.on('error', () => resolve(false));
+    p.on('close', (code) => resolve(code === 0));
+  });
+}
+ipcMain.handle('media:proxy', async (_e, { file, id, remux }) => {
+  const ff = ffmpegPath();
+  if (!ff) return null;
+  let key;
+  try { key = mediaKey(file); } catch { return null; }
+  fs.mkdirSync(proxyDir(), { recursive: true });
+  const out = path.join(proxyDir(), key + (remux ? '.full.mp4' : '.edit.mp4'));
+  if (fs.existsSync(out) && fs.statSync(out).size > 1000) return { path: out };
+  const jk = out;
+  if (proxyJobs.has(jk)) return proxyJobs.get(jk);
+  const job = (async () => {
+    const tmp = out + '.part.mp4';
+    const run = async () => {
+      if (remux) {
+        // same video and sound, just a container the editor can jump around in (takes seconds)
+        return ffRun(['-y', '-hide_banner', '-i', file, '-map', '0:v:0', '-map', '0:a:0?', '-c', 'copy', '-movflags', '+faststart', tmp], (p) => send('proxy:progress', { id, p, remux: true }));
+      }
+      const enc = await pickEncoder(ff);
+      const base = ['-y', '-hide_banner', '-i', file, '-map', '0:v:0', '-map', '0:a:0?', '-vf', "scale=-2:'min(720,ih)':flags=bicubic,format=yuv420p"];
+      const tail = ['-c:a', 'aac', '-b:a', '160k', '-ac', '2', '-movflags', '+faststart', tmp];
+      let ok = await ffRun([...base, ...proxyArgs(enc), ...tail], (p) => send('proxy:progress', { id, p }));
+      if (!ok && enc !== 'libx264') ok = await ffRun([...base, ...proxyArgs('libx264'), ...tail], (p) => send('proxy:progress', { id, p }));
+      return ok;
+    };
+    const ok = remux ? await run() : await (proxyQueue = proxyQueue.then(run, run));
+    proxyJobs.delete(jk);
+    if (ok && fs.existsSync(tmp)) { try { fs.renameSync(tmp, out); } catch {} return { path: out }; }
+    try { fs.unlinkSync(tmp); } catch {}
+    return null;
+  })();
+  proxyJobs.set(jk, job);
+  return job;
+});
+ipcMain.handle('proxy:size', () => {
+  let n = 0;
+  try { for (const f of fs.readdirSync(proxyDir())) n += fs.statSync(path.join(proxyDir(), f)).size; } catch {}
+  return n;
+});
+ipcMain.handle('proxy:clear', () => {
+  try { for (const f of fs.readdirSync(proxyDir())) { if (/\.part\.mp4$/.test(f)) continue; try { fs.unlinkSync(path.join(proxyDir(), f)); } catch {} } } catch {}
+  return true;
+});
+
 ipcMain.handle('shell:show', (_e, p) => shell.showItemInFolder(p));
 
 

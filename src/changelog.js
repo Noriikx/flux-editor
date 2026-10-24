@@ -1,6 +1,12 @@
 /* Flux — changelog. Shown once after an update, and any time from Settings → About. */
 'use strict';
 const CHANGELOG = [
+  { v: '4.10.0', date: '2026-10-25', items: [
+    'Smooth editing copies (like DaVinci proxies): long videos and .mkv recordings get a light copy for editing, so playing and dragging the playhead back and forth is smooth. Exports always use the original. Turn off or delete them in Settings → Performance',
+    'Fixed: .mkv recordings showing blocky / glitchy pictures',
+    'Fixed: sound glitching or jumping when a video takes a moment to load - everything now waits together',
+    'Fixed: the dB label disappearing when you raise the volume - it now follows your mouse and stays inside the clip'
+  ] },
   { v: '4.9.0', date: '2026-10-25', items: [
     'New export engine: every single frame is saved - no more choppy 10 fps or blurry exports',
     'Simple edits (cuts of videos and photos) export super fast using your graphics card',
