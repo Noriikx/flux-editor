@@ -130,7 +130,10 @@ async function ensureFont(name) {
 // load every font a project uses (called when a project opens and before export)
 function ensureProjectFonts() {
   const names = new Set();
-  for (const c of (typeof P !== 'undefined' && P && P.clips) || []) if (c.kind === 'text' && c.text && c.text.font) names.add(c.text.font);
+  for (const c of (typeof P !== 'undefined' && P && P.clips) || []) {
+    if (c.kind === 'text' && c.text && c.text.font) names.add(c.text.font);
+    for (const e of c.effects || []) if (e.font) names.add(e.font); // Text+ nodes
+  }
   return Promise.all([...names].map(ensureFont));
 }
 

@@ -1278,18 +1278,16 @@ function syncMedia(L = rt.layout || computeLayout()) {
     setGain(p, silent ? 0 : kv(c, 'volume', t - s) * fadeEnv(c, t - s) * tg * p.duck * bleep);
     applyAudioFx(p, c);
     if (state.playing) {
-      if (c.kind === 'video' && c.speed > 3 && silent) {
-        // Very fast video: the computer can't decode every frame, so jump from frame to frame instead
-        if (!el.paused) el.pause();
-        if (!el.seeking && el.readyState >= 1 && Math.abs(el.currentTime - src) > 0.04) el.currentTime = src;
-      } else {
+      // waiting for the picture? hold the clock a moment instead of stuttering (see frame())
+      if (c.kind === 'video' && !state.exporting && (el.seeking || el.readyState < 3) && t >= w.vs + 0.02) rt.stallNow = true;
+      {
         if (Math.abs(el.playbackRate - c.speed) > 0.001) el.playbackRate = clamp(c.speed, 0.0625, 16);
         if (el.paused) {
           if (el.readyState < 1) { el.preload = 'auto'; continue; } // still opening the file
           if (Math.abs(el.currentTime - src) > 0.08) el.currentTime = src;
           el.play().catch(() => {});
-        } else if (Math.abs(el.currentTime - src) > 0.3 + 0.12 * c.speed && !el.seeking) {
-          el.currentTime = src;
+        } else if (Math.abs(el.currentTime - src) > 0.35 + 0.15 * c.speed && !el.seeking) {
+          el.currentTime = src + (c.kind === 'video' ? 0.05 * c.speed : 0); // land a touch ahead so it doesn't fall behind again
         }
       }
     } else if (scrubRate() > 0) {
@@ -1322,7 +1320,7 @@ function syncMedia(L = rt.layout || computeLayout()) {
 
 /* ============================ RENDERING ============================ */
 const canvas = $('#previewCanvas');
-const ctx = canvas.getContext('2d');
+const ctx = canvas.getContext('2d', { alpha: false });
 const overlay = $('#overlayCanvas');
 const octx = overlay.getContext('2d');
 function requestDraw() { rt.needsDraw = true; }
@@ -1527,7 +1525,7 @@ function drawMedia(g, c, local, W, H, k, fx) {
 // Remember the last good frame of each video so the preview never flashes black while the next one loads.
 function keepLastFrame(p, m) {
   const now = performance.now();
-  if (p.lastAt && now - p.lastAt < 90 && p.lastTime === p.el.currentTime) return;
+  if (p.lastAt && now - p.lastAt < (state.playing ? 300 : 90)) return;
   p.lastAt = now; p.lastTime = p.el.currentTime;
   const vw = p.el.videoWidth, vh = p.el.videoHeight;
   const sc = Math.min(1, 960 / vw);
@@ -3714,6 +3712,11 @@ window.addEventListener('beforeunload', () => { if (state.inEditor && state.dirt
 /* ============================ MAIN LOOP ============================ */
 let lastTimelineFollow = 0;
 function frame(now) {
+  const dtWall = now - (rt.lastFrameAt || now);
+  rt.lastFrameAt = now;
+  if (state.playing && !state.exporting && rt.stall && (rt.stallMs || 0) < 450) {
+    playStartWall += dtWall; rt.stallMs = (rt.stallMs || 0) + dtWall; // a video is still loading: wait for it
+  } else if (!rt.stall) rt.stallMs = 0;
   if (state.playing) {
     const total = playEndTime();
     let t = playStartTime + ((now - playStartWall) / 1000);
@@ -3736,7 +3739,9 @@ function frame(now) {
   }
   if (state.inEditor) {
     rt.layout = computeLayout();
+    rt.stallNow = false;
     syncMedia(rt.layout);
+    rt.stall = rt.stallNow;
     // on slow computers draw at most ~30 times a second while playing
     const minGap = state.exporting ? 0 : lowEnd() ? 32 : 0;
     if ((state.playing || rt.needsDraw || anyVideoActive()) && now - (rt.lastRender || 0) >= minGap) {

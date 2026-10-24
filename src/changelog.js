@@ -1,6 +1,13 @@
 /* Flux — changelog. Shown once after an update, and any time from Settings → About. */
 'use strict';
 const CHANGELOG = [
+  { v: '4.8.0', date: '2026-10-24', items: [
+    'New Fusion page (like DaVinci, but simple): switch Edit / Fusion at the bottom left. Your clip flows through nodes left → right',
+    'Fusion nodes: Text+, Shape, Background, Transform, Color + every effect. Ready-made sets: Big title, Lower third, Picture in picture, Retro TV, Dreamy, Spotlight',
+    'Smoother playback: Flux waits a moment for a video instead of stuttering',
+    'Smoother high speeds (4x-10x): videos now play fast instead of jumping frame by frame',
+    'Smoother transition previews'
+  ] },
   { v: '4.7.0', date: '2026-10-24', items: [
     'Fixed: dragging the playhead now shows the video (no more black screen) - videos can jump to any moment instantly',
     'Text now goes on Media tracks (like DaVinci) - no separate Text track',

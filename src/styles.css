@@ -998,3 +998,42 @@ body.resizing-track, body.resizing-track * { cursor: ns-resize !important; }
 .media-item .dur { right: 5px; top: 5px; }
 .media-item.picked { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent) inset, 0 0 0 2px rgba(141,125,255,.25); }
 .media-item.picked .meta { background: rgba(141,125,255,.14); }
+/* ---------- Fusion page ---------- */
+.page-switch { display: inline-flex; background: var(--panel-2); border: 1px solid var(--line-2); border-radius: 8px; padding: 2px; margin-right: 6px; }
+.page-switch button { border: none; background: none; color: var(--muted); font: 600 12px var(--font); padding: 5px 11px; border-radius: 6px; cursor: pointer; }
+.page-switch button.on { background: var(--accent); color: #fff; }
+body.fusion-open #timeline, body.fusion-open #tlToolbar .tl-tools > :not(.page-switch), body.fusion-open #tlToolbar .tl-zoom { display: none; }
+#fusionPage { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+#fusionPage[hidden] { display: none; }
+.fu-bar { display: flex; align-items: center; gap: 8px; padding: 6px 12px; border-bottom: 1px solid var(--line); flex-wrap: wrap; }
+.fu-title { font-size: 13px; margin-right: 6px; }
+.fu-presets { display: flex; gap: 5px; flex-wrap: wrap; }
+.fu-presets .chip { padding: 3px 9px; font-size: 11.5px; }
+.fu-hint { color: var(--faint); font-size: 11.5px; }
+.fu-main { flex: 1; min-height: 0; display: grid; grid-template-columns: 1fr 300px; }
+.fu-graph { position: relative; overflow: auto; background:
+  radial-gradient(circle, rgba(255,255,255,.07) 1px, transparent 1.5px) 0 0 / 22px 22px, #0b0b11; }
+.fu-wires { position: absolute; left: 0; top: 0; pointer-events: none; }
+.fu-wires path { fill: none; stroke: #8d7dff; stroke-width: 2.5; opacity: .8; }
+.fu-node { position: absolute; width: 132px; height: 64px; border-radius: 10px; background: #1c1c28; border: 1.5px solid #34344a; padding: 8px 10px; cursor: grab; box-shadow: 0 6px 18px rgba(0,0,0,.45); user-select: none; transition: border-color .12s; }
+.fu-node b { display: block; font-size: 12.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; padding-right: 30px; }
+.fu-node small { display: block; color: var(--muted); font-size: 10.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; margin-top: 3px; }
+.fu-node.io { background: #16202a; border-color: #2a5068; cursor: pointer; }
+.fu-node.gen { border-color: #6a4bd6; }
+.fu-node.fx { border-color: #3d6b56; }
+.fu-node.sel { border-color: #ffd23f; box-shadow: 0 0 0 2px rgba(255,210,63,.25), 0 6px 18px rgba(0,0,0,.45); }
+.fu-node.off { opacity: .45; }
+.fu-node.dragging { cursor: grabbing; z-index: 5; transition: none; }
+.fu-dot { position: absolute; top: 50%; width: 10px; height: 10px; margin-top: -5px; border-radius: 50%; background: #8d7dff; border: 2px solid #0b0b11; }
+.fu-dot.in { left: -6px; } .fu-dot.out { right: -6px; }
+.fu-node.io:first-of-type .fu-dot.in, .fu-node[data-id="__in"] .fu-dot.in, .fu-node[data-id="__out"] .fu-dot.out { display: none; }
+.fu-pow, .fu-x { position: absolute; top: 5px; width: 18px; height: 18px; border: none; border-radius: 5px; background: rgba(255,255,255,.07); color: #ccc; font-size: 11px; line-height: 18px; padding: 0; cursor: pointer; }
+.fu-pow { right: 26px; } .fu-x { right: 5px; }
+.fu-pow:hover, .fu-x:hover { background: var(--accent); color: #fff; }
+.fu-insp { border-left: 1px solid var(--line); overflow: auto; padding: 10px 12px; background: var(--panel); }
+.fu-ih b { display: block; margin-bottom: 4px; }
+.fu-ih small { color: var(--muted); line-height: 1.5; }
+.fu-card { border: none; padding: 0; background: none; }
+.fu-empty { margin: auto; text-align: center; color: var(--muted); }
+.fu-empty b { color: var(--text); font-size: 15px; }
+.fx-text { width: 100%; resize: vertical; background: var(--panel-2); color: var(--text); border: 1px solid var(--line-2); border-radius: 6px; padding: 6px; font: 13px var(--font); }

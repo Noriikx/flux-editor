@@ -23,6 +23,8 @@ function newEffect(type) {
   for (const [k, , , , d] of t.params) e[k] = d;
   if (t.color) e[t.color[0]] = t.color[2];
   if (t.color2) e[t.color2[0]] = t.color2[2];
+  if (t.text) e[t.text[0]] = t.text[2];
+  if (t.font) e[t.font[0]] = t.font[2];
   if (t.choice) e[t.choice[0]] = t.choice[3];
   for (const [k, , d] of t.flags || []) e[k] = d;
   return e;
@@ -30,6 +32,7 @@ function newEffect(type) {
 function addEffect(c, type) {
   const t = EFFECT_TYPES[type];
   if (!c || !(isVisual(c) || c.kind === 'adjust')) return toast('Select a video, photo or adjustment clip first');
+  if (t.font && typeof ensureFont === 'function') ensureFont(t.font[2]);
   if (t.pro && !requirePremium(t.name)) return;
   commit(() => { c.effects = c.effects || []; c.effects.push(newEffect(type)); });
   toast(t.name + ' added');
@@ -278,37 +281,58 @@ function fxInspector(body, c) {
   const add = el('button', 'btn fx-add', '+ Add effect');
   add.onclick = (e) => {
     const r = e.currentTarget.getBoundingClientRect();
+    if (typeof nodeMenu === 'function') return nodeMenu(c, r.left, r.bottom + 4, (id) => addEffect(c, id));
     contextMenu(r.left, r.bottom + 4, Object.entries(EFFECT_TYPES).map(([id, t]) => ({ label: t.name, pro: t.pro && !isPremium(), fn: () => addEffect(c, id) })));
   };
   s.appendChild(add);
-  for (const fxo of c.effects || []) {
-    const t = EFFECT_TYPES[fxo.type];
-    if (!t) continue;
-    const card = el('div', 'fx-card' + (fxo.on === false ? ' off' : ''));
-    card.innerHTML = `<div class="fx-top"><label class="fx-on"><input type="checkbox"></label><b></b><span style="flex:1"></span><button class="icon-btn small" data-a="up" data-tip="Move up">↑</button><button class="icon-btn small" data-a="rm" data-tip="Remove">×</button></div>`;
-    $('b', card).textContent = t.name + (t.pro && !isPremium() ? ' 👑' : '');
-    const cb = $('input', card); cb.checked = fxo.on !== false;
-    cb.onchange = () => commit(() => { fxo.on = cb.checked; });
-    $('[data-a=rm]', card).onclick = () => commit(() => { c.effects = c.effects.filter((x) => x !== fxo); });
-    $('[data-a=up]', card).onclick = () => commit(() => { const i = c.effects.indexOf(fxo); if (i > 0) { c.effects.splice(i, 1); c.effects.splice(i - 1, 0, fxo); } });
-    for (const [k, label, mn, mx, d] of t.params) slider(card, label, { min: mn, max: mx, get: () => fxo[k], set: (v) => (fxo[k] = v), fmt: (v) => Math.round(v), def: d, live: false });
-    if (t.choice) {
-      const [ck, cl, opts] = t.choice;
-      const row = el('div', 'field'); row.innerHTML = '<label></label>'; row.firstChild.textContent = cl;
-      chips(row, opts.map(([v, l]) => ({ label: l, value: v })), fxo[ck], (v) => commit(() => { fxo[ck] = v; }));
-      card.appendChild(row);
-    }
-    for (const col of [t.color, t.color2]) {
-      if (!col) continue;
-      const row = el('div', 'field'); row.innerHTML = `<label>${col[1]}</label><input type="color">`;
-      const ci = $('input', row); ci.value = fxo[col[0]] || col[2];
-      ci.addEventListener('input', () => { beginEdit(); fxo[col[0]] = ci.value; requestDraw(); });
-      ci.addEventListener('change', endEdit);
-      card.appendChild(row);
-    }
-    for (const [k, label] of t.flags || []) chips(card, [{ label: (fxo[k] ? '✓ ' : '') + label, value: 1 }], fxo[k] ? 1 : null, () => commit(() => { fxo[k] = !fxo[k]; }), 'toggle-row');
-    s.appendChild(card);
+  for (const fxo of c.effects || []) { const card = fxCard(c, fxo); if (card) s.appendChild(card); }
+}
+// One effect's controls (used by the clip panel and by the Fusion page)
+function fxCard(c, fxo) {
+  const t = EFFECT_TYPES[fxo.type];
+  if (!t) return null;
+  const card = el('div', 'fx-card' + (fxo.on === false ? ' off' : ''));
+  card.innerHTML = `<div class="fx-top"><label class="fx-on"><input type="checkbox"></label><b></b><span style="flex:1"></span><button class="icon-btn small" data-a="up" data-tip="Move earlier">↑</button><button class="icon-btn small" data-a="rm" data-tip="Remove">×</button></div>`;
+  $('b', card).textContent = t.name + (t.pro && !isPremium() ? ' 👑' : '');
+  const cb = $('input', card); cb.checked = fxo.on !== false;
+  cb.onchange = () => commit(() => { fxo.on = cb.checked; });
+  $('[data-a=rm]', card).onclick = () => commit(() => { c.effects = c.effects.filter((x) => x !== fxo); });
+  $('[data-a=up]', card).onclick = () => commit(() => { const i = c.effects.indexOf(fxo); if (i > 0) { c.effects.splice(i, 1); c.effects.splice(i - 1, 0, fxo); } });
+  if (t.text) {
+    const [tk, tl] = t.text;
+    const row = el('div', 'field wide'); row.innerHTML = '<label></label><textarea rows="2" class="fx-text"></textarea>'; row.firstChild.textContent = tl;
+    const ta = $('textarea', row); ta.value = fxo[tk] || '';
+    ta.addEventListener('input', () => { beginEdit(); fxo[tk] = ta.value; requestDraw(); });
+    ta.addEventListener('change', endEdit);
+    card.appendChild(row);
   }
+  if (t.font) {
+    const [fk, fl] = t.font;
+    const row = el('div', 'field wide'); row.innerHTML = '<label></label><select></select>'; row.firstChild.textContent = fl;
+    const sel = $('select', row);
+    const fonts = typeof ALL_FONTS !== 'undefined' ? ALL_FONTS.filter((f) => !f.pro || isPremium()).map((f) => f.name || f) : FONTS;
+    for (const f of fonts) { const o = el('option'); o.value = o.textContent = f; sel.appendChild(o); }
+    sel.value = fxo[fk];
+    sel.onchange = () => { if (typeof ensureFont === 'function') ensureFont(sel.value); commit(() => { fxo[fk] = sel.value; }); };
+    card.appendChild(row);
+  }
+  for (const [k, label, mn, mx, d] of t.params) slider(card, label, { min: mn, max: mx, get: () => fxo[k], set: (v) => (fxo[k] = v), fmt: (v) => Math.round(v), def: d, live: false });
+  if (t.choice) {
+    const [ck, cl, opts] = t.choice;
+    const row = el('div', 'field'); row.innerHTML = '<label></label>'; row.firstChild.textContent = cl;
+    chips(row, opts.map(([v, l]) => ({ label: l, value: v })), fxo[ck], (v) => commit(() => { fxo[ck] = v; }));
+    card.appendChild(row);
+  }
+  for (const col of [t.color, t.color2]) {
+    if (!col) continue;
+    const row = el('div', 'field'); row.innerHTML = `<label>${col[1]}</label><input type="color">`;
+    const ci = $('input', row); ci.value = fxo[col[0]] || col[2];
+    ci.addEventListener('input', () => { beginEdit(); fxo[col[0]] = ci.value; requestDraw(); });
+    ci.addEventListener('change', endEdit);
+    card.appendChild(row);
+  }
+  for (const [k, label] of t.flags || []) chips(card, [{ label: (fxo[k] ? '✓ ' : '') + label, value: 1 }], fxo[k] ? 1 : null, () => commit(() => { fxo[k] = !fxo[k]; }), 'toggle-row');
+  return card;
 }
 
 /* ---------- inspector: mask ---------- */
