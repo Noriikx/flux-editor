@@ -2,7 +2,7 @@
 function hpCoef(f, sr) { const w = 2 * Math.PI * f / sr, cs = Math.cos(w), al = Math.sin(w) / (2 * 0.7071); const a0 = 1 + al;
   return [(1 + cs) / 2 / a0, -(1 + cs) / a0, (1 + cs) / 2 / a0, -2 * cs / a0, (1 - al) / a0]; }
 class FluxDyn extends AudioWorkletProcessor {
-  constructor(o) { super(); this.mode = o.processorOptions.mode; this.p = { amount: 50, freq: 6500 }; this.env = []; this.g = []; this.z = []; this.cf = null;
+  constructor(o) { super(); this.mode = o.processorOptions.mode; this.p = Object.assign({ amount: 50, freq: 6500 }, (o.processorOptions && o.processorOptions.params) || {}); this.env = []; this.g = []; this.z = []; this.cf = null;
     this.port.onmessage = (e) => { Object.assign(this.p, e.data); this.cf = null; }; }
   process(inputs, outputs) {
     const inp = inputs[0], out = outputs[0];

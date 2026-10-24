@@ -280,7 +280,7 @@ function openBalanceDialog(c) {
   const draw = () => {
     body.innerHTML = '';
     const lv = section(body, 'Level');
-    slider(lv, 'Volume', { min: 0, max: 300, get: () => Math.round(kvNow(c, 'volume') * 100), set: (v) => setProp(c, 'volume', v / 100), fmt: (v) => v + '%', def: 100, live: false });
+    volumeSlider(lv, c, 'Volume', false);
     slider(lv, 'Left ↔ Right', { min: -100, max: 100, get: () => Math.round(a.pan * 100), set: (v) => (a.pan = v / 100), fmt: (v) => (v === 0 ? 'C' : v < 0 ? 'L' + -v : 'R' + v), def: 0, live: false });
     const auto = el('div', 'v-btns');
     auto.innerHTML = '<button class="btn ghost" data-x="lvl">Auto-level this clip</button><button class="btn ghost" data-x="ctr">Center</button>';

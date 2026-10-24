@@ -59,12 +59,12 @@ function loadFxWorklet() {
 
 /* ---------- building the nodes ---------- */
 const irCache = new Map();
-function impulse(e) {
-  const key = `${e.room}|${e.size}|${e.decay}|${actx.sampleRate}`;
+function impulse(e, A = actx) {
+  const key = `${e.room}|${e.size}|${e.decay}|${A.sampleRate}`;
   if (irCache.has(key)) return irCache.get(key);
   const base = e.room === 'hall' ? 2.6 : e.room === 'plate' ? 1.6 : 0.7;
-  const len = Math.max(0.15, base * (0.3 + (e.size / 100) * 1.4)), sr = actx.sampleRate, n = Math.floor(len * sr);
-  const buf = actx.createBuffer(2, n, sr), pow = 1.5 + (1 - e.decay / 100) * 4;
+  const len = Math.max(0.15, base * (0.3 + (e.size / 100) * 1.4)), sr = A.sampleRate, n = Math.floor(len * sr);
+  const buf = A.createBuffer(2, n, sr), pow = 1.5 + (1 - e.decay / 100) * 4;
   for (let ch = 0; ch < 2; ch++) {
     const d = buf.getChannelData(ch);
     let lp = 0; const bright = e.room === 'plate' ? 0.9 : e.room === 'hall' ? 0.45 : 0.6;
@@ -74,12 +74,13 @@ function impulse(e) {
   irCache.set(key, buf);
   return buf;
 }
-function makeUnit(e) {
-  const A = actx, nodes = [];
+// A = the audio context (live, or an offline one while exporting); instant = set values right away (export)
+function makeUnit(e, A = actx, workletOk = afxWorkletReady === true, instant = false) {
+  const nodes = [];
   const mk = (n) => (nodes.push(n), n);
   const biq = (type, f, q) => { const b = mk(A.createBiquadFilter()); b.type = type; b.frequency.value = f; if (q) b.Q.value = q; return b; };
   const chain = (list) => { for (let i = 0; i < list.length - 1; i++) list[i].connect(list[i + 1]); return { in: list[0], out: list[list.length - 1] }; };
-  const set = (param, v) => { if (Math.abs(param.value - v) > 1e-4) param.setTargetAtTime(v, A.currentTime, 0.015); };
+  const set = (param, v) => { if (instant) { param.value = v; return; } if (Math.abs(param.value - v) > 1e-4) param.setTargetAtTime(v, A.currentTime, 0.015); };
   switch (e.type) {
     case 'feq': {
       const hp = biq('highpass', 20, 0.7), ls = biq('lowshelf', 100), p1 = biq('peaking', 300, 1), p2 = biq('peaking', 1200, 1), p3 = biq('peaking', 4000, 1), hs = biq('highshelf', 10000), lp = biq('lowpass', 20000, 0.7);
@@ -95,8 +96,8 @@ function makeUnit(e) {
       let hp = null, notches = [];
       if (e.type === 'nr') { hp = biq('highpass', 80, 0.7); pre.push(hp); for (let i = 1; i <= 3; i++) { const n = biq('notch', 50 * i, 30); notches.push(n); pre.push(n); } }
       let dyn = null;
-      if (afxWorkletReady === true) {
-        try { dyn = mk(new AudioWorkletNode(A, 'flux-dyn', { processorOptions: { mode: e.type === 'deess' ? 'deess' : 'gate' }, outputChannelCount: [2] })); } catch {}
+      if (workletOk) {
+        try { dyn = mk(new AudioWorkletNode(A, 'flux-dyn', { processorOptions: { mode: e.type === 'deess' ? 'deess' : 'gate', params: { amount: e.amount, freq: e.freq || 6500 } }, outputChannelCount: [2] })); } catch {}
       }
       if (!dyn && e.type === 'deess') dyn = biq('peaking', 6500, 2); // fallback: a fixed cut while the worklet loads
       const list = [...pre, ...(dyn ? [dyn] : [])];
@@ -127,7 +128,7 @@ function makeUnit(e) {
       let irKey = '';
       return { in: inp, out, nodes, update: (x) => {
         const k = `${x.room}|${x.size}|${x.decay}`;
-        if (k !== irKey) { irKey = k; conv.buffer = impulse(x); }
+        if (k !== irKey) { irKey = k; conv.buffer = impulse(x, A); }
         set(wet.gain, (x.mix / 100) * 1.4); set(dry.gain, 1 - (x.mix / 100) * 0.5);
       } };
     }
@@ -153,7 +154,7 @@ function syncAudioFx(p, c) {
   }
   if (!p.afx || p.afx.sig !== sig) {
     teardownAudioFx(p);
-    const units = list.map(makeUnit);
+    const units = list.map((e) => makeUnit(e));
     let prev = p.afxIn;
     for (const u of units) { prev.connect(u.in); prev = u.out; }
     prev.connect(p.afxOut);

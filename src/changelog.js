@@ -1,6 +1,17 @@
 /* Flux — changelog. Shown once after an update, and any time from Settings → About. */
 'use strict';
 const CHANGELOG = [
+  { v: '4.9.0', date: '2026-10-25', items: [
+    'New export engine: every single frame is saved - no more choppy 10 fps or blurry exports',
+    'Simple edits (cuts of videos and photos) export super fast using your graphics card',
+    'Sound is mixed separately, faster than real time, in high quality (320 kbps)',
+    'No more waiting at 90% - the slow "converting" step is gone',
+    'Export quality is set to Best by default',
+    'Volume is now in decibels like CapCut (-∞ to +20 dB, 0 dB = original). Hold Shift while dragging the volume line for fine steps',
+    'Fixed: waveforms of long sound clips turning into big blocky bars',
+    'Fixed: level labels covering the clip name on sound clips',
+    'Fixed: audio effects sometimes not starting'
+  ] },
   { v: '4.8.0', date: '2026-10-24', items: [
     'New Fusion page (like DaVinci, but simple): switch Edit / Fusion at the bottom left. Your clip flows through nodes left → right',
     'Fusion nodes: Text+, Shape, Background, Transform, Color + every effect. Ready-made sets: Big title, Lower third, Picture in picture, Retro TV, Dreamy, Spotlight',

@@ -9,7 +9,7 @@ const GRAPH_PROPS = [
   ['y', 'Position Y', (v) => Math.round(v * 100), '#57d9a3'],
   ['rotation', 'Rotation', (v) => Math.round(v) + '°', '#ffb35c'],
   ['opacity', 'Opacity', (v) => Math.round(v * 100) + '%', '#ff7ab6'],
-  ['volume', 'Volume', (v) => Math.round(v * 100) + '%', '#9be15d']
+  ['volume', 'Volume', (v) => fmtDb(gainToDb(v)), '#9be15d']
 ];
 const EASE_OPTS = [['smooth', 'Smooth'], ['linear', 'Linear'], ['in', 'Ease in'], ['out', 'Ease out'], ['hold', 'Hold'], ['bezier', 'Custom curve']];
 const graph = { open: false, prop: null, sel: -1, selKeys: new Set(), drag: null, view: null, clipId: null };
@@ -325,7 +325,7 @@ function setupGraphCanvas(cv) {
         b.k.t = clamp(b.t + dt, lo, hi);
         let v = b.v + dv;
         if (graph.prop === 'opacity') v = clamp(v, 0, 1);
-        if (graph.prop === 'volume') v = clamp(v, 0, 3);
+        if (graph.prop === 'volume') v = clamp(v, 0, 10);
         if (graph.prop === 'scale') v = Math.max(0.01, v);
         b.k.v = v;
       }

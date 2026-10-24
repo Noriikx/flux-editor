@@ -731,7 +731,7 @@ body.recording #playhead::before { background: #ff4d6d; box-shadow: 0 0 8px #ff4
 .vol-grid { position: absolute; inset: 0; pointer-events: none; opacity: 0; transition: opacity .15s; }
 .clip:hover .vol-grid, .clip.selected .vol-grid { opacity: 1; }
 .vol-grid i { position: absolute; left: 0; right: 0; border-top: 1px dashed rgba(255,255,255,.22); }
-.vol-grid i b { position: absolute; left: 4px; top: -7px; font: 600 8.5px var(--mono); color: rgba(255,255,255,.6); background: rgba(0,0,0,.35); padding: 0 3px; border-radius: 3px; }
+.vol-grid i b { position: absolute; right: 6px; top: -7px; font: 600 8.5px var(--mono); color: rgba(255,255,255,.6); background: rgba(0,0,0,.35); padding: 0 3px; border-radius: 3px; }
 .vol-grid i:nth-child(3) { border-top-color: rgba(255,255,255,.4); }
 .lane.t-audio, .track-header.t-audio { height: 78px; }
 
@@ -1037,3 +1037,5 @@ body.fusion-open #timeline, body.fusion-open #tlToolbar .tl-tools > :not(.page-s
 .fu-empty { margin: auto; text-align: center; color: var(--muted); }
 .fu-empty b { color: var(--text); font-size: 15px; }
 .fx-text { width: 100%; resize: vertical; background: var(--panel-2); color: var(--text); border: 1px solid var(--line-2); border-radius: 6px; padding: 6px; font: 13px var(--font); }
+.vol-grid i.zero { border-top-color: rgba(255,255,255,.45); }
+.vol-grid i:nth-child(3) { border-top-color: rgba(255,255,255,.22); }

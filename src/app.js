@@ -10,6 +10,15 @@ const $ = (s, r = document) => r.querySelector(s);
 const $$ = (s, r = document) => Array.from(r.querySelectorAll(s));
 const uid = () => Math.random().toString(36).slice(2, 10);
 const clamp = (v, a, b) => Math.min(b, Math.max(a, v));
+// Volume is stored as a gain (1 = original) but shown in decibels, like CapCut: -∞ … +20 dB, 0 dB = original
+const DB_MIN = -60, DB_MAX = 20;
+const gainToDb = (g) => (g <= 0.001 ? DB_MIN : clamp(20 * Math.log10(g), DB_MIN, DB_MAX));
+const dbToGain = (d) => (d <= DB_MIN + 0.05 ? 0 : Math.pow(10, clamp(d, DB_MIN, DB_MAX) / 20));
+const fmtDb = (d) => (d <= DB_MIN + 0.05 ? '-∞ dB' : (d > 0.04 ? '+' : '') + (Math.round(d * 10) / 10).toFixed(1).replace(/\.0$/, '') + ' dB');
+const parseDb = (s) => (/∞|inf/i.test(String(s)) ? DB_MIN : parseFloat(String(s).replace(',', '.')));
+function volumeSlider(parent, c, label = 'Volume', withKeys = true) {
+  return slider(parent, label, { min: DB_MIN, max: DB_MAX, step: 0.1, get: () => Math.round(gainToDb(kvNow(c, 'volume')) * 10) / 10, set: (v) => setProp(c, 'volume', dbToGain(v)), fmt: fmtDb, parse: parseDb, def: 0, live: false, kf: withKeys ? [c, 'volume'] : undefined });
+}
 let FPS = 30; // follows the project's frame rate (Quality settings)
 const MIN_DUR = 0.1;
 
@@ -1237,12 +1246,13 @@ function syncMedia(L = rt.layout || computeLayout()) {
     const s = c.start;
     const w = L.get(c.id) || { vs: s, ve: endOf(c) };
     const active = t >= w.vs && t < w.ve;
-    const soon = t < w.vs && w.vs - t < (state.playing ? 2.5 : 0.6);
+    const soon = t < w.vs && w.vs - t < (state.playing || rt.exp2 ? 2.5 : 0.6);
     const existing = rt.players.get(c.id);
     if (!active && !soon) {
       if (existing && !existing.el.paused) existing.el.pause();
       continue;
     }
+    if (rt.exp2 && c.kind === 'audio') { const ex = rt.players.get(c.id); if (ex && !ex.el.paused) ex.el.pause(); continue; } // sound is mixed separately when exporting
     alive.add(c.id);
     const p = getPlayer(c, m);
     const el = p.el;
@@ -1277,6 +1287,7 @@ function syncMedia(L = rt.layout || computeLayout()) {
     p.duck = p.duck == null ? duckTarget : p.duck + (duckTarget - p.duck) * 0.12;
     setGain(p, silent ? 0 : kv(c, 'volume', t - s) * fadeEnv(c, t - s) * tg * p.duck * bleep);
     applyAudioFx(p, c);
+    if (rt.exp2) { setGain(p, 0); exp2SyncPlayer(p, c, src); continue; }
     if (state.playing) {
       // waiting for the picture? hold the clock a moment instead of stuttering (see frame())
       if (c.kind === 'video' && !state.exporting && (el.seeking || el.readyState < 3) && t >= w.vs + 0.02) rt.stallNow = true;
@@ -1449,7 +1460,7 @@ function drawMedia(g, c, local, W, H, k, fx) {
       src = p.el; sw = src.videoWidth; sh = src.videoHeight;
       if (!state.exporting) keepLastFrame(p, m);
     } else {
-      if (state.exporting) return;
+      if (state.exporting && !rt.exp2) return;
       const fb = fallbackFrame(c, m, p);
       if (!fb) return;
       src = fb; sw = fb.width; sh = fb.height;
@@ -1905,13 +1916,19 @@ const waveCache = new Map();
 // Loudness -> bar height. 0 dB (the loudest a file can be) reaches the top of the clip.
 const WAVE_FLOOR_DB = -42;
 const waveLevel = (a) => (a <= 0.0001 ? 0 : clamp((20 * Math.log10(a) - WAVE_FLOOR_DB) / -WAVE_FLOOR_DB, 0, 1));
-function waveCanvas(c, widthPx, volOverride) {
+// Draws the waveform for pixels [x0, x1) of a clip that is widthPx wide on screen.
+// Only the visible part is drawn, so long clips stay sharp (no giant stretched bars) and memory stays low.
+function waveCanvas(c, widthPx, volOverride, x0 = 0, x1 = widthPx) {
   const peaks = rt.peaks.get(c.mediaId);
   const m = getMedia(c.mediaId);
   if (!peaks || !m || !m.duration) return null;
-  const w = Math.max(1, Math.min(6000, Math.round(widthPx)));
+  const full = Math.max(1, widthPx);
+  x0 = clamp(Math.floor(x0), 0, full); x1 = clamp(Math.ceil(x1), x0 + 1, Math.ceil(full));
+  const w = Math.max(1, x1 - x0);
   const vol = Math.max(0, volOverride != null ? volOverride : (c.volume == null ? 1 : c.volume));
-  const key = `${c.mediaId}|${c.in.toFixed(3)}|${c.out.toFixed(3)}|${w}|${vol.toFixed(2)}`;
+  const cin = c.in + (x0 / full) * (c.out - c.in), cout = c.in + (x1 / full) * (c.out - c.in);
+  c = { in: cin, out: cout };
+  const key = `${m.id}|${cin.toFixed(4)}|${cout.toFixed(4)}|${w}|${vol.toFixed(3)}`;
   if (waveCache.has(key)) return cloneCanvas(waveCache.get(key));
   const abs = rt.peaksAbs.get(c.mediaId) || peaks;
   const dpr = Math.min(2, window.devicePixelRatio || 1);
@@ -2028,8 +2045,9 @@ function renderLanes() {
       }
       if (c.kind === 'audio') {
         const vol = kv(c, 'volume', clamp(state.time - c.start, 0, dur(c)));
-        const wc = waveCanvas(c, w, vol);
-        if (wc) { wc.className = 'wave'; wc.style.width = w + 'px'; ce.appendChild(wc); }
+        const [wx0, wx1] = waveRange(c, w);
+        const wc = waveCanvas(c, w, vol, wx0, wx1);
+        if (wc) { wc.className = 'wave'; wc.style.left = wx0 + 'px'; wc.style.width = wx1 - wx0 + 'px'; wc.dataset.x0 = wx0; wc.dataset.x1 = wx1; ce.appendChild(wc); }
         else {
           const m0 = getMedia(c.mediaId);
           if (m0 && !m0.missing && !m0.error) { loadPeaks(m0); ce.appendChild(el('div', 'wave-loading', 'Reading sound…')); }
@@ -2047,15 +2065,15 @@ function renderLanes() {
             ce.appendChild(band);
           }
         }
-        // level marks: 200% at the top, 100% in the middle
+        // level marks in dB (0 dB = original loudness)
         const grid = el('div', 'vol-grid');
-        grid.innerHTML = [2, 1.5, 1, 0.5].map((v) => `<i style="top:${volLineTop(v)}%"><b>${Math.round(v * 100)}%</b></i>`).join('');
+        grid.innerHTML = [10, 0, -10, -20, -40].map((d) => `<i class="${d === 0 ? 'zero' : ''}" style="top:${volLineTop(dbToGain(d))}%">${d === 0 ? '<b>0 dB</b>' : ''}</i>`).join('');
         ce.appendChild(grid);
         // volume line: drag it up or down to change the loudness
         const vl = el('div', 'vol-line' + (c.keys && c.keys.volume && c.keys.volume.length ? ' keyed' : ''));
         vl.style.top = volLineTop(vol) + '%';
-        vl.innerHTML = `<span class="vol-tag">${Math.round(vol * 100)}%</span>`;
-        vl.dataset.tip = 'Drag up or down to change volume · double-click to reset';
+        vl.innerHTML = `<span class="vol-tag">${fmtDb(gainToDb(vol))}</span>`;
+        vl.dataset.tip = 'Drag up or down to change volume (hold Shift for fine steps) · double-click for 0 dB';
         ce.appendChild(vl);
       }
       if (c.fadeIn > 0) { const f = el('div', 'fade in'); f.style.width = c.fadeIn * z + 'px'; ce.appendChild(f); }
@@ -2141,8 +2159,31 @@ function renderLanes() {
   }
   fillFilmstrips();
 }
-// 200% at the top of the clip, 100% in the middle, silent at the bottom
-function volLineTop(v) { return clamp(92 - (v / 2) * 84, 8, 92); }
+// +20 dB at the top of the clip, silent at the bottom, 0 dB a quarter of the way down
+// the part of a clip (in px from its left edge) worth drawing: what's on screen plus a margin
+function waveRange(c, w) {
+  const vw = tlScroll.clientWidth || 1600, left = c.start * state.zoom;
+  const a = clamp(tlScroll.scrollLeft - left - vw, 0, w), b = clamp(tlScroll.scrollLeft - left + vw * 2, 0, w);
+  return b - a < 1 ? [0, Math.min(w, 1)] : [a, b];
+}
+// redraw waveforms that scrolled out of their drawn part
+let waveScrollRaf = 0;
+tlScroll.addEventListener('scroll', () => {
+  if (waveScrollRaf) return;
+  waveScrollRaf = requestAnimationFrame(() => {
+    waveScrollRaf = 0;
+    for (const wv of tlLanes.querySelectorAll('.clip.kind-audio .wave')) {
+      const ce = wv.closest('.clip'), c = getClip(ce.dataset.id);
+      if (!c) continue;
+      const w = dur(c) * state.zoom, [a, b] = waveRange(c, w), x0 = +wv.dataset.x0, x1 = +wv.dataset.x1;
+      const visL = clamp(tlScroll.scrollLeft - c.start * state.zoom, 0, w), visR = clamp(visL + tlScroll.clientWidth, 0, w);
+      if (visL >= x0 && visR <= x1) continue;
+      const nw = waveCanvas(c, w, kv(c, 'volume', clamp(state.time - c.start, 0, dur(c))), a, b);
+      if (nw) { nw.className = 'wave'; nw.style.left = a + 'px'; nw.style.width = b - a + 'px'; nw.dataset.x0 = a; nw.dataset.x1 = b; wv.replaceWith(nw); }
+    }
+  });
+}, { passive: true });
+function volLineTop(v) { return clamp(92 - ((gainToDb(v) - DB_MIN) / (DB_MAX - DB_MIN)) * 84, 8, 92); }
 tlLanes.addEventListener('dblclick', (e) => {
   const vl = e.target.closest('.vol-line');
   if (!vl) return;
@@ -2407,13 +2448,16 @@ function trySnap(values, excludeId) {
     }
     if (drag.mode === 'vol') {
       drag.moved = true;
-      let v = clamp(drag.v0 - ((e.clientY - drag.y0) / Math.max(20, drag.h - 10)) * 2, 0, 2);
-      if (Math.abs(v - 1) < 0.04) v = 1; // gently snap to 100%
+      // hold Shift for fine steps
+      let d = clamp(gainToDb(drag.v0) - (((e.clientY - drag.y0) * (e.shiftKey ? 0.15 : 1)) / Math.max(20, drag.h * 0.84)) * (DB_MAX - DB_MIN), DB_MIN, DB_MAX);
+      if (Math.abs(d) < 0.8) d = 0; // gently snap to 0 dB (original loudness)
+      d = Math.round(d * 10) / 10;
+      const v = dbToGain(d);
       setProp(drag.c, 'volume', v);
       drag.line.style.top = volLineTop(v) + '%';
-      drag.line.firstChild.textContent = Math.round(v * 100) + '%';
+      drag.line.firstChild.textContent = fmtDb(d);
       const wv = drag.line.parentElement.querySelector('.wave');
-      if (wv) { const nw = waveCanvas(drag.c, parseFloat(wv.style.width) || wv.clientWidth, v); if (nw) { nw.className = 'wave'; nw.style.width = wv.style.width; wv.replaceWith(nw); } }
+      if (wv) { const W = dur(drag.c) * state.zoom, a = +wv.dataset.x0 || 0, b = +wv.dataset.x1 || W; const nw = waveCanvas(drag.c, W, v, a, b); if (nw) { nw.className = 'wave'; nw.style.left = wv.style.left; nw.style.width = wv.style.width; nw.dataset.x0 = a; nw.dataset.x1 = b; wv.replaceWith(nw); } }
       return;
     }
     if (!drag.moved && Math.abs(e.clientX - drag.x0) < 3 && drag.mode === 'move' && !laneChanged(e)) return;
@@ -2517,7 +2561,7 @@ function trySnap(values, excludeId) {
       const c = drag.c;
       drag = null;
       renderLanes(); renderInspector();
-      if (c) toast(`Volume ${Math.round(kv(c, 'volume', clamp(state.time - c.start, 0, dur(c))) * 100)}%`, { duration: 1200 });
+      if (c) toast(`Volume ${fmtDb(gainToDb(kv(c, 'volume', clamp(state.time - c.start, 0, dur(c)))))}`, { duration: 1200 });
       return;
     }
     if (drag.mode !== 'scrub' && drag.moved) {
@@ -2955,7 +2999,7 @@ function renderInspector() {
       a0.appendChild(b0);
     } else {
     const a = section(body, 'Sound', () => Object.assign(c, { volume: 1, muted: false }));
-    slider(a, 'Volume', { min: 0, max: 200, get: () => Math.round(kvNow(c, 'volume') * 100), set: (v) => setProp(c, 'volume', v / 100), fmt: (v) => v + '%', def: 100, live: false, kf: [c, 'volume'] });
+    volumeSlider(a, c);
     chips(a, [{ label: c.muted ? 'Muted - click to unmute' : 'Mute this clip', value: 'm' }], c.muted ? 'm' : null, () => commit(() => { c.muted = !c.muted; }), 'toggle-row');
     if (c.kind === 'video') {
       const tools = el('div', 'insp-actions');
@@ -3346,10 +3390,10 @@ function openExportDialog() {
   const total = projectDuration();
   if (!total) return toast('Your timeline is empty - add some media first');
   pause();
-  const opts = { res: (P.output && P.output.res) || 1080, fps: (P.output && P.output.fps) || 30, format: 'mp4', quality: 'standard' };
+  const opts = { res: (P.output && P.output.res) || 1080, fps: (P.output && P.output.fps) || 30, format: 'mp4', quality: 'high' };
   const box = modal(`
     <h2>Export video</h2>
-    <p class="sub">Your video is <b>${fmt(total)}</b> long. Exporting plays it through once, so it takes about that long.</p>
+    <p class="sub">Your video is <b>${fmt(total)}</b> long. Every frame is saved at full quality - simple edits export extra fast.</p>
     <div class="row"><label>Resolution</label><div class="seg tall" data-k="res">
       <button data-v="720">720p<small>Smaller file</small></button><button data-v="1080">1080p<small>Full HD</small></button><button data-v="1440">1440p<small>Sharper</small></button><button data-v="2160" data-pro="1">4K ${CROWN}<small>Ultra HD</small></button></div></div>
     <div class="row"><label>Frame rate</label><div class="seg" data-k="fps">
@@ -3387,9 +3431,9 @@ function exportDims(res) {
 function estimateExport(opts, total) {
   const [w, h] = exportDims(opts.res);
   const fpsF = opts.fps > 30 ? 0.7 : 1; // later frames compress better at 60 fps
-  const bpp = opts.format === 'webm' ? { small: 0.07, standard: 0.12, high: 0.2 }[opts.quality] : { small: 0.035, standard: 0.06, high: 0.11 }[opts.quality];
+  const bpp = opts.format === 'webm' ? { small: 0.05, standard: 0.08, high: 0.12 }[opts.quality] : { small: 0.05, standard: 0.09, high: 0.15 }[opts.quality];
   const videoBits = w * h * opts.fps * bpp * fpsF * total;
-  const audioBits = 192000 * total;
+  const audioBits = 320000 * total;
   return { w, h, bytes: (videoBits + audioBits) / 8 };
 }
 function formatBytes(b) {
@@ -3402,7 +3446,7 @@ function pickMime() {
   return list.find((m) => window.MediaRecorder && MediaRecorder.isTypeSupported(m)) || '';
 }
 
-async function runExport(opts) {
+async function runExportLegacy(opts) {
   const useRange = opts.range && rangeOK();
   const r0 = useRange ? P.range.in : 0, r1 = useRange ? P.range.out : projectDuration();
   const total = r1 - r0;
@@ -3712,6 +3756,7 @@ window.addEventListener('beforeunload', () => { if (state.inEditor && state.dirt
 /* ============================ MAIN LOOP ============================ */
 let lastTimelineFollow = 0;
 function frame(now) {
+  if (rt.exp2) { requestAnimationFrame(frame); return; } // the exporter drives everything itself
   const dtWall = now - (rt.lastFrameAt || now);
   rt.lastFrameAt = now;
   if (state.playing && !state.exporting && rt.stall && (rt.stallMs || 0) < 450) {
@@ -3779,5 +3824,5 @@ function initEditor() {
 // expose a little for testing / debugging in DevTools (F12)
 window.__flux = {
   get P() { return P; }, state, rt, importFiles, addMediaAt, appendMediaToTimeline, splitAt, seek, play, pause, addText, select,
-  runExport, getClip, projectDuration, undo, redo, setAspect, deleteSelected, setTransition, toggleMarker, detachAudio, freezeFrame, saveNow
+  get runExport() { return runExport; }, getClip, projectDuration, undo, redo, setAspect, deleteSelected, setTransition, toggleMarker, detachAudio, freezeFrame, saveNow
 };

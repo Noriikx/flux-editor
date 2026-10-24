@@ -147,7 +147,7 @@ function compoundInspector(body, c) {
   $('button', acts).onclick = () => decompose(c);
   s.appendChild(acts);
   const a = section(body, 'Sound', () => Object.assign(c, { volume: 1, muted: false }));
-  slider(a, 'Volume', { min: 0, max: 200, get: () => Math.round(kvNow(c, 'volume') * 100), set: (v) => setProp(c, 'volume', v / 100), fmt: (v) => v + '%', def: 100, live: false, kf: [c, 'volume'] });
+  volumeSlider(a, c);
   chips(a, [{ label: c.muted ? 'Muted - click to unmute' : 'Mute this clip', value: 'm' }], c.muted ? 'm' : null, () => commit(() => { c.muted = !c.muted; }), 'toggle-row');
 }
 

@@ -689,7 +689,7 @@ async function runAiActions(actions) {
         }
         case 'move': if (!c) break; commit(() => { const d = Math.max(0, +a.start) - c.start; for (const x of [c, ...partners(c)]) x.start = Math.max(0, x.start + d); }); done.push(`Moved ${clipLabel(c)}`); break;
         case 'speed': if (!c) break; commit(() => setSpeed(c, clamp(+a.speed || 1, 0.1, 10))); done.push(`Speed ${a.speed}x on ${clipLabel(c)}`); break;
-        case 'volume': if (!c) break; commit(() => { const t = soundSource(c) || c; t.volume = clamp(+a.volume, 0, 3); }); done.push(`Volume ${Math.round(a.volume * 100)}%`); break;
+        case 'volume': if (!c) break; commit(() => { const t = soundSource(c) || c; t.volume = clamp(+a.volume, 0, 10); }); done.push(`Volume ${fmtDb(gainToDb(+a.volume))}`); break;
         case 'fade': if (!c) break; commit(() => { for (const x of [c, ...partners(c)]) { if (a.in != null) x.fadeIn = +a.in; if (a.out != null) x.fadeOut = +a.out; } }); done.push('Added fades'); break;
         case 'filter': commit(() => { for (const x of a.clipId === 'all' ? P.clips.filter(isVisual) : [c].filter(Boolean)) x.filter = a.filter; }); done.push(`Look: ${filterById(a.filter).name}`); break;
         case 'motion': if (c) { commit(() => { c.motion = a.motion; }); done.push(`Motion: ${a.motion}`); } break;

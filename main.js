@@ -412,6 +412,161 @@ ipcMain.handle('export:finish', async (_e, { target, format, duration, quality, 
   });
 });
 
+
+// ===================== Export engine 2 =====================
+// Video frames are rendered by the app and encoded (H.264) frame by frame - nothing is skipped, no matter how
+// slow the computer is. Sound is mixed separately (faster than real time). ffmpeg then puts them together.
+// Simple edits (just cuts of videos/photos) skip the frame renderer and go straight to ffmpeg = much faster.
+let exp2 = null;
+const send = (ch, v) => { try { if (win && !win.isDestroyed()) win.webContents.send(ch, v); } catch {} };
+let encoderCache = null;
+function runQuick(ff, args, ms = 15000) {
+  return new Promise((resolve) => {
+    let done = false;
+    const p = spawn(ff, args, { windowsHide: true });
+    const t = setTimeout(() => { if (!done) { done = true; try { p.kill(); } catch {} resolve(false); } }, ms);
+    p.on('error', () => { if (!done) { done = true; clearTimeout(t); resolve(false); } });
+    p.on('close', (code) => { if (!done) { done = true; clearTimeout(t); resolve(code === 0); } });
+  });
+}
+// Find the fastest H.264 encoder this computer has (graphics card first), once.
+async function pickEncoder(ff) {
+  if (encoderCache) return encoderCache;
+  const list = process.platform === 'darwin' ? ['h264_videotoolbox'] : ['h264_nvenc', 'h264_qsv', 'h264_amf'];
+  for (const enc of list) {
+    const ok = await runQuick(ff, ['-hide_banner', '-v', 'error', '-f', 'lavfi', '-i', 'color=black:s=640x360:r=30:d=0.3', '-c:v', enc, '-f', 'null', '-']);
+    if (ok) { encoderCache = enc; return enc; }
+  }
+  encoderCache = 'libx264';
+  return encoderCache;
+}
+function encoderArgs(enc, quality, w, h, fps) {
+  const q = { high: 0, standard: 1, small: 2 }[quality] ?? 1;
+  const kbps = Math.round((w * h * fps * [0.16, 0.1, 0.055][q]) / 1000);
+  switch (enc) {
+    case 'h264_nvenc': return ['-c:v', 'h264_nvenc', '-preset', 'p5', '-tune', 'hq', '-rc', 'vbr', '-cq', String([17, 21, 27][q]), '-b:v', '0', '-maxrate', kbps * 2 + 'k', '-bufsize', kbps * 4 + 'k', '-profile:v', 'high', '-spatial-aq', '1'];
+    case 'h264_qsv': return ['-c:v', 'h264_qsv', '-preset', 'medium', '-global_quality', String([18, 22, 28][q]), '-look_ahead', '0'];
+    case 'h264_amf': return ['-c:v', 'h264_amf', '-quality', 'quality', '-rc', 'cqp', '-qp_i', String([17, 21, 27][q]), '-qp_p', String([19, 23, 29][q]), '-qp_b', String([21, 25, 31][q])];
+    case 'h264_videotoolbox': return ['-c:v', 'h264_videotoolbox', '-b:v', kbps + 'k', '-profile:v', 'high'];
+    default: return ['-c:v', 'libx264', '-preset', 'faster', '-crf', String([17, 20, 26][q]), '-profile:v', 'high'];
+  }
+}
+function exp2Clean() {
+  if (!exp2) return;
+  try { fs.closeSync(exp2.vfd); } catch {}
+  try { fs.closeSync(exp2.afd); } catch {}
+  if (exp2.proc) try { exp2.proc.kill(); } catch {}
+  try { fs.rmSync(exp2.dir, { recursive: true, force: true }); } catch {}
+  exp2 = null;
+}
+ipcMain.handle('exp2:begin', () => {
+  exp2Clean();
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'flux-export-'));
+  exp2 = { dir, v: path.join(dir, 'video.h264'), a: path.join(dir, 'sound.pcm') };
+  exp2.vfd = fs.openSync(exp2.v, 'w');
+  exp2.afd = fs.openSync(exp2.a, 'w');
+  return { ok: !!ffmpegPath() };
+});
+ipcMain.handle('exp2:video', (_e, buf) => { if (exp2) fs.writeSync(exp2.vfd, Buffer.from(buf)); return true; });
+ipcMain.handle('exp2:audio', (_e, buf) => { if (exp2) fs.writeSync(exp2.afd, Buffer.from(buf)); return true; });
+ipcMain.handle('exp2:cancel', () => { exp2Clean(); return true; });
+// Sound from part of a file, at a speed (pitch kept), as 48 kHz stereo float samples
+function atempoChain(speed) {
+  const out = [];
+  let s = speed;
+  while (s > 2) { out.push('atempo=2'); s /= 2; }
+  while (s < 0.5) { out.push('atempo=0.5'); s /= 0.5; }
+  if (Math.abs(s - 1) > 1e-4) out.push('atempo=' + s.toFixed(5));
+  return out.join(',');
+}
+ipcMain.handle('audio:extract', (_e, { file, start, dur, speed }) => new Promise((resolve) => {
+  const ff = ffmpegPath();
+  if (!ff || !fs.existsSync(file)) return resolve(null);
+  const af = atempoChain(speed || 1);
+  const args = ['-v', 'error', '-ss', Math.max(0, start).toFixed(4), '-t', Math.max(0.01, dur).toFixed(4), '-i', file, '-vn', '-ac', '2', '-ar', '48000'];
+  if (af) args.push('-af', af);
+  args.push('-f', 'f32le', 'pipe:1');
+  const p = spawn(ff, args, { windowsHide: true });
+  const parts = [];
+  p.stdout.on('data', (d) => parts.push(d));
+  p.on('error', () => resolve(null));
+  p.on('close', () => { const b = Buffer.concat(parts); resolve(b.buffer.slice(b.byteOffset, b.byteOffset + b.length)); });
+}));
+function runFfmpeg(args, duration) {
+  const ff = ffmpegPath();
+  return new Promise((resolve) => {
+    const proc = spawn(ff, args, { windowsHide: true });
+    if (exp2) exp2.proc = proc;
+    let errText = '';
+    proc.stderr.on('data', (d) => {
+      const s = d.toString(); errText = (errText + s).slice(-6000);
+      const m = /time=(\d+):(\d+):(\d+\.\d+)/.exec(s);
+      if (m && duration) send('exp2:progress', Math.min(1, ((+m[1]) * 3600 + (+m[2]) * 60 + parseFloat(m[3])) / duration));
+    });
+    proc.on('error', (e) => resolve({ ok: false, error: String(e) }));
+    proc.on('close', (code) => resolve(code === 0 ? { ok: true } : { ok: false, error: errText.split('\n').filter(Boolean).slice(-6).join('\n') }));
+  });
+}
+function audioOut(format) { return format === 'webm' ? ['-c:a', 'libopus', '-b:a', '256k'] : ['-c:a', 'aac', '-b:a', '320k']; }
+// frames from the app + mixed sound -> final file
+ipcMain.handle('exp2:finish', async (_e, { target, fps, format, quality, duration, w, h }) => {
+  if (!exp2) return { ok: false, error: 'No export in progress' };
+  try { fs.closeSync(exp2.vfd); } catch {}
+  try { fs.closeSync(exp2.afd); } catch {}
+  const vArgs = format === 'webm'
+    ? ['-c:v', 'libvpx-vp9', '-crf', String({ high: 24, standard: 30, small: 36 }[quality] || 30), '-b:v', '0', '-deadline', 'good', '-cpu-used', '4', '-row-mt', '1']
+    : ['-c:v', 'copy'];
+  const args = ['-y', '-hide_banner', '-fflags', '+genpts', '-r', String(fps), '-f', 'h264', '-i', exp2.v,
+    '-f', 'f32le', '-ar', '48000', '-ac', '2', '-i', exp2.a, '-map', '0:v:0', '-map', '1:a:0', ...vArgs, ...audioOut(format),
+    '-t', duration.toFixed(3), '-movflags', '+faststart', target];
+  const r = await runFfmpeg(args, duration);
+  exp2Clean();
+  return r.ok ? { ok: true, path: target } : { ok: false, error: 'Saving the video failed.\n' + r.error };
+});
+// the fast way: ffmpeg cuts and joins the original files itself
+ipcMain.handle('exp2:direct', async (_e, { target, fps, format, quality, duration, w, h, bg, segs }) => {
+  if (!exp2) return { ok: false, error: 'No export in progress' };
+  try { fs.closeSync(exp2.afd); } catch {}
+  const ff = ffmpegPath();
+  const enc = format === 'webm' ? 'vp9' : await pickEncoder(ff);
+  const inputs = [], filters = [];
+  const col = (bg || '#000000').replace('#', '0x');
+  let k = 0;
+  for (const sg of segs) {
+    const d = sg.dur.toFixed(4);
+    if (sg.type === 'gap') { filters.push(`color=c=${col}:s=${w}x${h}:r=${fps}:d=${d},format=yuv420p,setsar=1[v${k}]`); k++; continue; }
+    const idx = inputs.filter((x) => x === '-i').length;
+    if (sg.kind === 'image') inputs.push('-loop', '1', '-framerate', String(fps), '-t', d, '-i', sg.file);
+    else inputs.push('-ss', Math.max(0, sg.in).toFixed(4), '-t', (sg.dur * sg.speed + 0.25).toFixed(4), '-i', sg.file);
+    const fit = sg.fit === 'cover'
+      ? `scale=${w}:${h}:force_original_aspect_ratio=increase:flags=lanczos,crop=${w}:${h}`
+      : `scale=${w}:${h}:force_original_aspect_ratio=decrease:flags=lanczos,pad=${w}:${h}:(ow-iw)/2:(oh-ih)/2:color=${col}`;
+    const sp = sg.kind === 'image' ? 'setpts=PTS-STARTPTS' : `setpts=(PTS-STARTPTS)/${sg.speed}`;
+    filters.push(`[${idx}:v]${sp},fps=${fps},${fit},setsar=1,format=yuv420p,tpad=stop_mode=clone:stop_duration=${d},trim=duration=${d},setpts=PTS-STARTPTS[v${k}]`);
+    k++;
+  }
+  const aIdx = inputs.filter((x) => x === '-i').length;
+  filters.push(Array.from({ length: k }, (_, i) => `[v${i}]`).join('') + `concat=n=${k}:v=1:a=0[vout]`);
+  const fgFile = path.join(exp2.dir, 'graph.txt');
+  fs.writeFileSync(fgFile, filters.join(';\n'));
+  const vArgs = enc === 'vp9'
+    ? ['-c:v', 'libvpx-vp9', '-crf', String({ high: 24, standard: 30, small: 36 }[quality] || 30), '-b:v', '0', '-deadline', 'good', '-cpu-used', '4', '-row-mt', '1']
+    : [...encoderArgs(enc, quality, w, h, fps), '-pix_fmt', 'yuv420p', '-g', String(fps * 2)];
+  const args = ['-y', '-hide_banner', ...inputs, '-f', 'f32le', '-ar', '48000', '-ac', '2', '-i', exp2.a,
+    '-filter_complex_script', fgFile, '-map', '[vout]', '-map', `${aIdx}:a:0`, ...vArgs, ...audioOut(format), '-r', String(fps),
+    '-t', duration.toFixed(3), '-movflags', '+faststart', target];
+  let r = await runFfmpeg(args, duration);
+  if (!r.ok && enc !== 'libx264' && enc !== 'vp9') {
+    // the graphics card encoder failed on this video - do it with the normal encoder
+    encoderCache = 'libx264';
+    const i = args.indexOf('-c:v'), j = args.indexOf('-pix_fmt');
+    args.splice(i, j - i, ...encoderArgs('libx264', quality, w, h, fps));
+    r = await runFfmpeg(args, duration);
+  }
+  exp2Clean();
+  return r.ok ? { ok: true, path: target, encoder: enc } : { ok: false, error: 'Saving the video failed.\n' + r.error };
+});
+
 ipcMain.handle('shell:show', (_e, p) => shell.showItemInFolder(p));
 
 
