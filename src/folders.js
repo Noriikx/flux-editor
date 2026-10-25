@@ -23,6 +23,7 @@ function makeFolder(name, parent = null) {
 function folderNamed(name, parent = null) { return childFolders(parent).find((f) => f.name === name) || makeFolder(name, parent); }
 // where a newly imported file goes
 function folderForImport(m) {
+  if (lib.importTarget !== undefined && (lib.importTarget === null || folderById(lib.importTarget))) return lib.importTarget;
   if (lib.folder && folderById(lib.folder)) return lib.folder;
   if (m.kind === 'audio') return folderNamed(m.tag === 'voice' ? 'Voiceovers' : 'Music').id;
   return folderNamed('Media').id;
@@ -80,15 +81,36 @@ function moveMenuItems(ids) {
   walk(null, 0);
   return out;
 }
+// is folder `id` inside folder `anc` (or the same one)?
+function isInside(id, anc) { for (let f = folderById(id); f; f = folderById(f.parent)) if (f.id === anc) return true; return false; }
+function moveFolder(fid, targetId) {
+  const f = folderById(fid);
+  if (!f || (targetId && isInside(targetId, fid))) return toast('A folder can\u2019t go inside itself');
+  if ((f.parent || null) === (targetId || null)) return;
+  f.parent = targetId || null;
+  markDirty(); renderMedia();
+  toast(`Moved “${f.name}” to ${targetId ? folderById(targetId).name : 'the top level'}`);
+}
+// which folder tile / crumb is under the mouse (for files dropped from your computer); undefined = none
+function folderElAt(x, y) {
+  for (const el of document.elementsFromPoint(x, y)) { const t = el.closest && el.closest('[data-drop-folder]'); if (t) return t; }
+  return null;
+}
+function folderTileAt(x, y) { const t = folderElAt(x, y); return t ? (t.dataset.dropFolder || null) : undefined; }
 function acceptDrop(elm, targetId) {
-  elm.addEventListener('dragover', (e) => { if (e.dataTransfer.types.includes('text/flux-media')) { e.preventDefault(); e.dataTransfer.dropEffect = 'move'; elm.classList.add('drop'); } });
-  elm.addEventListener('dragleave', () => elm.classList.remove('drop'));
+  elm.dataset.dropFolder = targetId || '';
+  const ok = (e) => e.dataTransfer.types.includes('text/flux-media') || e.dataTransfer.types.includes('text/flux-folder');
+  elm.addEventListener('dragenter', (e) => { if (ok(e)) { e.preventDefault(); elm.classList.add('drop'); } });
+  elm.addEventListener('dragover', (e) => { if (ok(e)) { e.preventDefault(); e.dataTransfer.dropEffect = 'move'; elm.classList.add('drop'); } });
+  elm.addEventListener('dragleave', (e) => { if (!elm.contains(e.relatedTarget)) elm.classList.remove('drop'); });
   elm.addEventListener('drop', (e) => {
-    const id = e.dataTransfer.getData('text/flux-media');
     elm.classList.remove('drop');
-    if (!id) return;
+    const fid = e.dataTransfer.getData('text/flux-folder');
+    const id = e.dataTransfer.getData('text/flux-media');
+    if (!id && !fid) return;
     e.preventDefault(); e.stopPropagation();
-    moveToFolder(pickedIds(id), targetId);
+    if (fid) moveFolder(fid, targetId);
+    else moveToFolder(pickedIds(id), targetId);
   });
 }
 function decorateLibrary() {
@@ -125,6 +147,8 @@ function decorateLibrary() {
     t.onclick = () => { lib.pickedFolder = f.id; rt.libFocus = true; if (rt.mediaSel) rt.mediaSel.clear(); $$('#mediaGrid .media-item').forEach((x) => x.classList.toggle('picked', x === t)); };
     t.ondblclick = () => openFolder(f.id);
     t.oncontextmenu = (e) => { e.preventDefault(); folderMenu(f, e.clientX, e.clientY); };
+    t.draggable = true;
+    t.addEventListener('dragstart', (e) => { e.dataTransfer.setData('text/flux-folder', f.id); e.dataTransfer.effectAllowed = 'move'; });
     acceptDrop(t, f.id);
     tiles.push(t);
   }
@@ -182,6 +206,20 @@ function setupFolders() {
   };
   const baseLoad = loadProjectData;
   loadProjectData = async function () { lib.folder = null; lib.pickedFolder = null; const r = await baseLoad.apply(this, arguments); P.folders = P.folders || []; renderMedia(); return r; };
+  // files dragged in from your computer: show which folder they'll land in
+  let hot = null;
+  const card = () => document.querySelector('#dropOverlay .drop-card');
+  const clear = () => { if (hot) hot.classList.remove('drop'); hot = null; const c = card(); if (c && c.dataset.base) c.lastChild.textContent = c.dataset.base; };
+  window.addEventListener('dragover', (e) => {
+    if (!e.dataTransfer.types.includes('Files')) return;
+    const id = folderTileAt(e.clientX, e.clientY);
+    const el = folderElAt(e.clientX, e.clientY);
+    if (el !== hot) { clear(); hot = el; if (el) el.classList.add('drop'); }
+    const c = card();
+    if (c) { if (!c.dataset.base) c.dataset.base = c.lastChild.textContent; c.lastChild.textContent = id === undefined ? c.dataset.base : 'Drop into “' + (id ? folderById(id).name : 'All media') + '”'; }
+  });
+  window.addEventListener('drop', clear);
+  window.addEventListener('dragleave', (e) => { if (!e.relatedTarget) clear(); });
   document.addEventListener('pointerdown', (e) => { if (!(e.target.closest && e.target.closest('.media-item.folder'))) lib.pickedFolder = null; }, true);
   renderMedia();
 }

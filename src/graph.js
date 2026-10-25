@@ -131,16 +131,48 @@ function graphView(c, cv) {
   for (const k of arr) { lo = Math.min(lo, k.v); hi = Math.max(hi, k.v); }
   const def = { scale: [0, 2], x: [-1, 1], y: [-1, 1], rotation: [-180, 180], opacity: [0, 1], volume: [0, 2] }[graph.prop] || [0, 1];
   if (!isFinite(lo) || hi - lo < 1e-6) { lo = Math.min(isFinite(lo) ? lo : def[0], def[0]); hi = Math.max(isFinite(hi) ? hi : def[1], def[1]); }
+  const minRange = { rotation: 20, volume: 0.25 }[graph.prop] || 0.2;
+  if (hi - lo < minRange) { const m = (hi + lo) / 2; lo = m - minRange / 2; hi = m + minRange / 2; }
   const pad = (hi - lo) * 0.15 || 0.1;
   lo -= pad; hi += pad;
-  const W = cv.width, H = cv.height, L = 54, R = 16, T = 14, B = 24;
+  // PX keeps keyframes at the very start / end of the view clear of the labels and edges
+  const W = cv.width, H = cv.height, L = 58, R = 16, T = 14, B = 24, PX = 14;
+  const iw = Math.max(10, W - L - R - PX * 2);
   return {
-    d, t0, t1, lo, hi, W, H, L, R, T, B,
-    x: (t) => L + ((t - t0) / (t1 - t0)) * (W - L - R),
+    d, t0, t1, lo, hi, W, H, L, R, T, B, PX, iw,
+    x: (t) => L + PX + ((t - t0) / (t1 - t0)) * iw,
     y: (v) => T + (1 - (v - lo) / (hi - lo)) * (H - T - B),
-    t: (x) => clamp(t0 + ((x - L) / (W - L - R)) * (t1 - t0), 0, d),
+    t: (x) => clamp(t0 + ((x - L - PX) / iw) * (t1 - t0), 0, d),
     v: (y) => lo + (1 - (y - T) / (H - T - B)) * (hi - lo)
   };
+}
+function fmtFine(v) {
+  if (graph.prop === 'rotation') return v.toFixed(1) + '°';
+  if (graph.prop === 'volume') return fmtDb(gainToDb(v));
+  if (graph.prop === 'x' || graph.prop === 'y') return (v * 100).toFixed(1);
+  return (v * 100).toFixed(1) + '%';
+}
+// keyframes outside the visible time range (shown as little arrows you can click)
+function graphHidden(c, V) {
+  const arr = gKeys(c);
+  return { left: arr.filter((k) => k.t < V.t0 - 1e-4), right: arr.filter((k) => k.t > V.t1 + 1e-4) };
+}
+function graphArrowBoxes(V, hid) {
+  const out = [];
+  const yc = V.T + 4;
+  if (hid.left.length) out.push({ side: 'left', x: V.L + 4, y: yc, w: 46, h: 20, n: hid.left.length });
+  if (hid.right.length) out.push({ side: 'right', x: V.W - V.R - 50, y: yc, w: 46, h: 20, n: hid.right.length });
+  return out;
+}
+function graphReveal(c, V, side) {
+  const hid = graphHidden(c, V), span = V.t1 - V.t0, d = dur(c);
+  const k = side === 'left' ? hid.left[hid.left.length - 1] : hid.right[0];
+  if (!k) return;
+  // move the view so that keyframe sits a bit inside the edge
+  let t0 = side === 'left' ? k.t - span * 0.15 : k.t - span * 0.85;
+  t0 = clamp(t0, 0, Math.max(0, d - span));
+  graph.view = { t0, t1: t0 + span, d };
+  drawGraph();
 }
 function drawGraph() {
   const box = $('#graphEditor'), c = getClip(state.selectedId);
@@ -159,13 +191,16 @@ function drawGraph() {
   const fmtV = info[2], color = info[3];
   // grid + labels
   g.strokeStyle = 'rgba(255,255,255,.06)'; g.lineWidth = 1; g.fillStyle = '#8a8ca3'; g.font = '10px "JetBrains Mono", monospace';
-  for (let i = 0; i <= 4; i++) {
-    const v = V.lo + ((V.hi - V.lo) * i) / 4, y = V.y(v);
+  const labels = [];
+  for (let i = 0; i <= 4; i++) labels.push(V.lo + ((V.hi - V.lo) * i) / 4);
+  const fine = new Set(labels.map((v) => String(fmtV(v)))).size < labels.length;
+  for (const v of labels) {
+    const y = V.y(v);
     g.beginPath(); g.moveTo(V.L, y); g.lineTo(w - V.R, y); g.stroke();
-    g.fillText(String(fmtV(v)), 6, y + 3);
+    g.fillText(fine ? fmtFine(v) : String(fmtV(v)), 6, y + 3);
   }
   const span = V.t1 - V.t0;
-  const step = [0.04, 0.1, 0.2, 0.5, 1, 2, 5, 10, 30].find((s) => (s / span) * (w - V.L - V.R) > 60) || 30;
+  const step = [0.04, 0.1, 0.2, 0.5, 1, 2, 5, 10, 30].find((s) => (s / span) * V.iw > 60) || 30;
   for (let t = Math.ceil(V.t0 / step) * step; t <= V.t1 + 1e-6; t += step) {
     const x = V.x(t);
     g.beginPath(); g.moveTo(x, V.T); g.lineTo(x, h - V.B); g.stroke();
@@ -181,12 +216,14 @@ function drawGraph() {
     for (let i = 0; i <= 120; i++) { const t = V.t0 + (i / 120) * span; const v = kv(c, pid, t); const y = V.T + (1 - (v - lo) / (hi - lo)) * (h - V.T - V.B); i ? g.lineTo(V.x(t), y) : g.moveTo(V.x(t), y); }
     g.stroke(); g.globalAlpha = 1;
   }
-  // the curve
+  // the curve (clipped to the graph area so it never runs under the value labels)
+  g.save(); g.beginPath(); g.rect(V.L, 0, w - V.L, h); g.clip();
   g.strokeStyle = color; g.lineWidth = 2.2;
   g.beginPath();
   const N = Math.max(80, Math.round(w - V.L - V.R));
-  for (let i = 0; i <= N; i++) { const t = V.t0 + (i / N) * span, x = V.x(t), y = V.y(kv(c, graph.prop, t)); i ? g.lineTo(x, y) : g.moveTo(x, y); }
-  g.stroke();
+  const ta = V.t(V.L), tb = V.t(w - V.R);
+  for (let i = 0; i <= N; i++) { const t = ta + (i / N) * (tb - ta), x = V.x(t), y = V.y(kv(c, graph.prop, t)); i ? g.lineTo(x, y) : g.moveTo(x, y); }
+  g.stroke(); g.restore();
   // custom-curve handles of selected keys
   const arr = gKeys(c);
   for (const sk of graphSelected(c)) {
@@ -209,6 +246,15 @@ function drawGraph() {
     g.fillRect(-r, -r, r * 2, r * 2); g.strokeRect(-r, -r, r * 2, r * 2);
     g.restore();
   }
+  // keyframes you can't see right now: arrows at the edges
+  const hid = graphHidden(c, V);
+  for (const b of graphArrowBoxes(V, hid)) {
+    g.fillStyle = 'rgba(141,125,255,.9)';
+    g.beginPath(); g.roundRect ? g.roundRect(b.x, b.y, b.w, b.h, 10) : g.rect(b.x, b.y, b.w, b.h); g.fill();
+    g.fillStyle = '#fff'; g.font = '600 11px Inter, sans-serif'; g.textAlign = 'center';
+    g.fillText(b.side === 'left' ? `◀ ${b.n}` : `${b.n} ▶`, b.x + b.w / 2, b.y + 14);
+    g.textAlign = 'left'; g.font = '10px "JetBrains Mono", monospace';
+  }
   // box selection
   if (graph.drag && graph.drag.kind === 'box') {
     const b = graph.drag;
@@ -224,7 +270,7 @@ function drawGraph() {
     g.fillStyle = '#fff'; g.beginPath(); g.moveTo(px - 6, 2); g.lineTo(px + 6, 2); g.lineTo(px, V.T); g.closePath(); g.fill();
   }
   const sel = graphSelected(c);
-  $('.ge-info', box).textContent = sel.length > 1 ? `${sel.length} keyframes selected` : sel.length ? `Keyframe at ${sel[0].t.toFixed(2)}s · ${fmtV(sel[0].v)}` : 'Drag empty space to move the playhead · double-click the line to add a keyframe · wheel to zoom';
+  $('.ge-info', box).textContent = sel.length > 1 ? `${sel.length} keyframes selected` : sel.length ? `Keyframe at ${sel[0].t.toFixed(2)}s · ${fmtV(sel[0].v)}` : 'Drag empty space to move the playhead · double-click the line to add a keyframe · wheel to zoom · middle-drag or Shift+wheel to scroll';
 }
 function graphHandlePoints(V, a, b) {
   const x0 = V.x(a.t), y0 = V.y(a.v), x1 = V.x(b.t), y1 = V.y(b.v);
@@ -273,6 +319,8 @@ function setupGraphCanvas(cv) {
         beginEdit(); graph.drag = { kind: 'handle', hi, k: sk, n: nk }; cv.setPointerCapture(e.pointerId); return;
       }
     }
+    for (const b of graphArrowBoxes(V, graphHidden(c, V))) if (x >= b.x && x <= b.x + b.w && y >= b.y && y <= b.y + b.h) { graphReveal(c, V, b.side); return; }
+    if (e.button === 1 || (e.button === 0 && e.altKey)) { e.preventDefault(); graph.drag = { kind: 'pan', x0: x, t0: V.t0, span: V.t1 - V.t0 }; cv.setPointerCapture(e.pointerId); cv.style.cursor = 'grabbing'; return; }
     const k = hitKey(c, V, x, y);
     if (e.button === 2) { if (k) { if (!graph.selKeys.has(k)) setGraphSel(c, [k]); graphDeleteSelected(); } return; }
     if (k) {
@@ -296,14 +344,21 @@ function setupGraphCanvas(cv) {
     const t = V.t(x); scrubMove(c.start + t); seek(c.start + t);
     drawGraph();
   });
+  cv.addEventListener('mousedown', (e) => { if (e.button === 1) e.preventDefault(); });
   cv.addEventListener('pointermove', (e) => {
-    if (!graph.drag) return;
+    if (!graph.drag) {
+      const [c, V] = view(); if (!c) return;
+      const [x, y] = pos(e);
+      cv.style.cursor = graphArrowBoxes(V, graphHidden(c, V)).some((b) => x >= b.x && x <= b.x + b.w && y >= b.y && y <= b.y + b.h) || hitKey(c, V, x, y) ? 'pointer' : '';
+      return;
+    }
     const [c, V] = view();
     if (!c) return;
     const [x, y] = pos(e);
     const arr = gKeys(c);
     const d = graph.drag;
     if (d.kind === 'scrub') { const t = c.start + V.t(x); scrubMove(t); seek(t); drawGraph(); return; }
+    if (d.kind === 'pan') { const dd = dur(c); const t0 = clamp(d.t0 - ((x - d.x0) / V.iw) * d.span, 0, Math.max(0, dd - d.span)); graph.view = { t0, t1: t0 + d.span, d: dd }; drawGraph(); return; }
     if (d.kind === 'box') {
       d.x1 = x; d.y1 = y;
       const xa = Math.min(d.x0, x), xb = Math.max(d.x0, x), ya = Math.min(d.y0, y), yb = Math.max(d.y0, y);
@@ -313,7 +368,7 @@ function setupGraphCanvas(cv) {
     }
     if (d.kind === 'keys') {
       d.moved = true;
-      const dt = Math.round(((x - d.x0) / (V.W - V.L - V.R)) * (V.t1 - V.t0) * FPS) / FPS;
+      const dt = Math.round(((x - d.x0) / V.iw) * (V.t1 - V.t0) * FPS) / FPS;
       const dv = e.shiftKey && multiKey() !== 'shift' ? 0 : V.v(y) - V.v(d.y0);
       const moving = new Set(d.base.map((b) => b.k));
       for (const b of d.base) {
@@ -347,6 +402,8 @@ function setupGraphCanvas(cv) {
     const d = graph.drag;
     if (!d) return;
     graph.drag = null;
+    cv.style.cursor = '';
+    if (d.kind === 'pan') return;
     if (d.kind === 'scrub') { scrubEnd(); drawGraph(); return; }
     if (d.kind === 'box') { renderGraphHead(); drawGraph(); return; }
     endEdit(); renderLanes(); scheduleInspector(); renderGraphHead(); drawGraph();
@@ -362,7 +419,7 @@ function setupGraphCanvas(cv) {
     e.preventDefault();
     const span = V.t1 - V.t0, d = dur(c);
     if (e.shiftKey || Math.abs(e.deltaX) > Math.abs(e.deltaY)) {
-      const sh = ((e.shiftKey ? e.deltaY : e.deltaX) / (V.W - V.L - V.R)) * span;
+      const sh = ((e.shiftKey ? e.deltaY : e.deltaX) / V.iw) * span;
       const t0 = clamp(V.t0 + sh, 0, Math.max(0, d - span));
       graph.view = { t0, t1: t0 + span, d };
     } else {

@@ -1,6 +1,14 @@
 /* Flux — changelog. Shown once after an update, and any time from Settings → About. */
 'use strict';
 const CHANGELOG = [
+  { v: '4.12.0', date: '2026-10-25', items: [
+    'Drag files onto a folder in the library to move them - now really works (also from File Explorer straight into a folder, and folders into other folders)',
+    'Graph editor: keyframes you scrolled or zoomed past show as little arrows at the edges - click one to jump to it. Middle-drag (or Alt+drag) to scroll',
+    'Graph editor: keyframes right at the start of the view no longer hide under the numbers, and the value labels stay readable when you zoom in',
+    'New Terms of Service and Privacy Policy (Settings → About, or the links on the sign-in screen)',
+    'You can delete your account yourself: Account → Delete my account',
+    'Premium is "coming soon" - it can\u2019t be bought right now and no payments are taken. Everything free stays free'
+  ] },
   { v: '4.11.0', date: '2026-10-25', items: [
     'Folders in the media library: Media and Music folders are made for you, and you can create, rename and delete your own (deleting a folder keeps its files)',
     'Drag files onto a folder to move them, or right-click → Move to…. New imports go into the folder you have open',

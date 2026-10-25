@@ -1,3 +1,16 @@
 [build]
   publish = "."
   functions = "netlify/functions"
+
+# old pages from when Premium was sold
+[[redirects]]
+  from = "/thanks.html"
+  to = "/"
+  status = 301
+  force = true
+
+[[redirects]]
+  from = "/site.html"
+  to = "/"
+  status = 301
+  force = true

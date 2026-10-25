@@ -3,6 +3,14 @@
 'use strict';
 const API_BASE = 'https://flux-editor.netlify.app/api/';
 const ADMIN_URL = 'https://flux-editor.netlify.app/admin.html';
+// Terms of Service + Privacy Policy. Bump TERMS_VERSION when they change in an important way:
+// signed-in users are then asked once to accept the new version.
+const TERMS_VERSION = '2026-10-25';
+const TERMS_URL = 'https://flux-editor.netlify.app/terms.html';
+const PRIVACY_URL = 'https://flux-editor.netlify.app/privacy.html';
+function openLink(url) { if (api && api.openExternal) api.openExternal(url); else window.open(url); }
+const legalLinks = () => `<a href="#" data-legal="terms">Terms of Service</a> and <a href="#" data-legal="privacy">Privacy Policy</a>`;
+function wireLegal(root) { $$('[data-legal]', root).forEach((a) => a.onclick = (e) => { e.preventDefault(); openLink(a.dataset.legal === 'terms' ? TERMS_URL : PRIVACY_URL); }); }
 
 async function apiCall(path, body, token) {
   const headers = { 'content-type': 'application/json' };
@@ -19,7 +27,7 @@ async function apiCall(path, body, token) {
 }
 
 function storeAccount(token, a) {
-  settings.account = { token, email: a.email, admin: !!a.admin, premium: !!a.premium, until: a.until || null, source: a.source || null, checkedAt: Date.now() };
+  settings.account = { token, email: a.email, admin: !!a.admin, premium: !!a.premium, until: a.until || null, source: a.source || null, termsVersion: a.termsVersion || (settings.account && settings.account.termsVersion) || null, checkedAt: Date.now() };
   saveSettings();
   updatePremiumBadge(); updateAccountButton();
 }
@@ -49,7 +57,7 @@ function waitForPremium() {
 function signOut(expired) {
   settings.account = null; saveSettings();
   updatePremiumBadge(); updateAccountButton();
-  showAuth(expired ? 'Your sign-in expired. Please sign in again.' : '');
+  showAuth(typeof expired === 'string' ? expired : expired ? 'Your sign-in expired. Please sign in again.' : '');
 }
 
 /* ---------------- sign-in screen ---------------- */
@@ -58,7 +66,7 @@ function showAuth(note) {
   if (!el) { el = document.createElement('section'); el.id = 'auth'; document.body.appendChild(el); }
   document.body.classList.add('needs-auth');
   let mode = 'login', email = '', msg = note || '', err = false;
-  const titles = { login: ['Welcome back', 'Sign in to Flux'], signup: ['Create your account', 'Free account · Premium is optional'],
+  const titles = { login: ['Welcome back', 'Sign in to Flux'], signup: ['Create your account', 'Free account · no watermark'],
     code: ['Check your email', ''], forgot: ['Forgot password', 'We’ll email you a code'], reset: ['New password', ''] };
   const done = (r, text) => {
     storeAccount(r.token, r.account);
@@ -70,7 +78,8 @@ function showAuth(note) {
     const [h, sub] = titles[mode];
     const body = {
       login: field('email', 'Email', 'email', 'autocomplete="email" placeholder="you@example.com"') + field('password', 'Password', 'password', 'autocomplete="current-password"'),
-      signup: field('email', 'Email', 'email', 'autocomplete="email" placeholder="you@example.com"') + field('password', 'Password', 'password', 'minlength="8" autocomplete="new-password" placeholder="At least 8 characters"') + field('password2', 'Repeat password', 'password', 'autocomplete="new-password"'),
+      signup: field('email', 'Email', 'email', 'autocomplete="email" placeholder="you@example.com"') + field('password', 'Password', 'password', 'minlength="8" autocomplete="new-password" placeholder="At least 8 characters"') + field('password2', 'Repeat password', 'password', 'autocomplete="new-password"') +
+        `<label class="auth-agree"><input type="checkbox" name="agree" required> <span>I’m 16 or older (or my parent agrees) and I accept the ${legalLinks()}</span></label>`,
       code: field('code', 'Code', 'text', 'inputmode="numeric" maxlength="6" class="code-input" placeholder="000000" autocomplete="one-time-code"'),
       forgot: field('email', 'Email', 'email', 'autocomplete="email"'),
       reset: field('code', 'Code from the email', 'text', 'inputmode="numeric" maxlength="6" class="code-input" placeholder="000000"') + field('password', 'New password', 'password', 'minlength="8" autocomplete="new-password" placeholder="At least 8 characters"')
@@ -91,9 +100,11 @@ function showAuth(note) {
           ${mode === 'code' ? '<a href="#" data-go="resend">Send the code again</a><a href="#" data-go="login">Back</a>' : ''}
           ${mode === 'forgot' || mode === 'reset' ? '<a href="#" data-go="login">Back to sign in</a>' : ''}
         </div>
+        <div class="auth-legal">${legalLinks()}</div>
         <button class="auth-quit" data-a="quit">Exit Flux</button>
       </div>`;
     $('.auth-msg', el).textContent = msg;
+    wireLegal(el);
     $$('.auth-tabs button', el).forEach((b) => b.onclick = () => { mode = b.dataset.m; msg = ''; draw(); });
     $$('[data-go]', el).forEach((a) => a.onclick = async (e) => {
       e.preventDefault();
@@ -110,6 +121,7 @@ function showAuth(note) {
       if (mode === 'signup' && f.password.value !== f.password2.value) { msg = 'The two passwords are not the same.'; err = true; return draw(); }
       const go = $('.auth-go', el); go.disabled = true; go.textContent = 'Please wait…';
       const payload = { email, password: f.password && f.password.value, code: f.code && f.code.value };
+      if (mode === 'signup') payload.terms = TERMS_VERSION;
       const path = { login: 'login', signup: 'signup', code: 'verify', forgot: 'forgot', reset: 'reset' }[mode];
       const r = await apiCall(path, payload);
       if (r.token) return done(r, mode === 'code' ? 'Account confirmed - welcome to Flux!' : mode === 'reset' ? 'Password changed - you’re signed in' : 'Signed in as ' + r.account.email);
@@ -142,13 +154,16 @@ function openAccount() {
     <h2>Your account</h2>
     <div class="acct-row"><div class="acct-avatar">${a.email[0].toUpperCase()}</div><div><b>${a.email.replace(/</g, '&lt;')}</b><small class="${isPremium() ? 'acct-pro' : ''}">${status}</small></div></div>
     <div class="acct-actions">
-      ${isPremium() ? '' : '<button class="btn primary" data-a="buy">Get Premium - €4.99/month</button>'}
+      ${isPremium() ? '' : PREMIUM_FOR_SALE ? '<button class="btn primary" data-a="buy">Get Premium - €4.99/month</button>' : '<button class="btn" data-a="buy">Premium - coming soon</button>'}
       <button class="btn" data-a="refresh">Check Premium status</button>
       <button class="btn" data-a="pw">Change password</button>
       ${a.admin ? '<button class="btn" data-a="admin">Open admin panel</button>' : ''}
     </div>
-    <p class="hint">To cancel your subscription, use the link in the Stripe receipt email you got after paying.</p>
+    ${a.source === 'subscription' ? '<p class="hint">To cancel your subscription, use the link in the Stripe receipt email you got after paying.</p>' : ''}
+    <p class="hint acct-legal">${legalLinks()}${a.admin ? '' : ' · <a href="#" data-a="delete" class="danger-link">Delete my account</a>'}</p>
     <div class="footer"><button class="btn ghost" data-a="out">Sign out</button><button class="btn" data-a="close">Close</button></div>`);
+  wireLegal(box);
+  const delA = $('[data-a=delete]', box); if (delA) delA.onclick = (e) => { e.preventDefault(); deleteAccountDialog(); };
   $('[data-a=close]', box).onclick = closeModal;
   $('[data-a=out]', box).onclick = () => { closeModal(); signOut(); };
   const buy = $('[data-a=buy]', box); if (buy) buy.onclick = () => { closeModal(); openCheckout(); };
@@ -179,8 +194,47 @@ function setupAccount() {
   updateAccountButton();
   if (!settings.account || !settings.account.token) showAuth();
   else refreshAccount(false);
+  // ask once to accept the Terms / Privacy Policy (waits until no other window is open)
+  const termsWatch = setInterval(() => { const a = settings.account; if (a && a.termsVersion === TERMS_VERSION) return clearInterval(termsWatch); if (!document.body.classList.contains('needs-auth')) checkTermsAccepted(); }, 4000);
   // re-check every 30 minutes and when the window comes back into focus
   setInterval(() => refreshAccount(false), 30 * 60000);
   let last = 0;
   window.addEventListener('focus', () => { if (Date.now() - last > 60000) { last = Date.now(); refreshAccount(false); } });
+}
+
+/* ---------------- delete account (GDPR) ---------------- */
+function deleteAccountDialog() {
+  const a = settings.account; if (!a) return;
+  const box = modal(`<h2>Delete your account?</h2>
+    <p class="sub">This removes your Flux account (<b>${a.email.replace(/</g, '&lt;')}</b>) and everything we store about it from our server. It can’t be undone.<br>Your projects and videos on this computer are <b>not</b> touched.</p>
+    <label class="field">Type your password to confirm<input type="password" class="num-input" data-f="pw" autocomplete="current-password"></label>
+    <div class="auth-msg err" style="min-height:18px"></div>
+    <div class="footer"><button class="btn ghost" data-a="no">Cancel</button><button class="btn danger" data-a="yes">Delete my account</button></div>`);
+  const pw = $('[data-f=pw]', box), msg = $('.auth-msg', box), yes = $('[data-a=yes]', box);
+  setTimeout(() => pw.focus(), 30);
+  $('[data-a=no]', box).onclick = closeModal;
+  const go = async () => {
+    yes.disabled = true; yes.textContent = 'Deleting…';
+    const r = await apiCall('delete', { password: pw.value }, a.token);
+    if (r.ok) { closeModal(); signOut('Your account was deleted. Thanks for trying Flux.'); return; }
+    msg.textContent = r.error || 'Something went wrong. Try again.'; yes.disabled = false; yes.textContent = 'Delete my account';
+  };
+  yes.onclick = go;
+  pw.onkeydown = (e) => { if (e.key === 'Enter') go(); };
+}
+
+/* ---------------- new Terms: ask signed-in users once ---------------- */
+function checkTermsAccepted() {
+  const a = settings.account;
+  if (!a || !a.token || a.termsVersion === TERMS_VERSION || document.querySelector('.modal')) return;
+  const box = modal(`<h2>Terms of Service &amp; Privacy Policy</h2>
+    <p class="sub">Flux now has ${legalLinks()}. In short: Flux is free, your videos stay on your computer, we only keep your email and a hashed password for your account, and there are no ads or tracking.</p>
+    <p class="hint">By continuing to use Flux you accept them. Not okay with that? You can delete your account in Account → Delete my account.</p>
+    <div class="footer"><button class="btn primary" data-a="ok">I accept</button></div>`);
+  wireLegal(box);
+  $('[data-a=ok]', box).onclick = async () => {
+    closeModal();
+    a.termsVersion = TERMS_VERSION; saveSettings();
+    await apiCall('terms', { version: TERMS_VERSION }, a.token);
+  };
 }

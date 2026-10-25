@@ -8,6 +8,9 @@
 // You own this copy, so Premium is unlocked. Set this to false in builds you give to other people.
 const OWNER_UNLOCKED = false;
 const PREMIUM_PRICE = '€4.99';
+// Premium isn't sold right now - it's 'coming soon' and can only be given from the admin panel.
+// Turn this back on (and the Stripe link) only once selling is set up properly.
+const PREMIUM_FOR_SALE = false;
 // Payments: your Stripe Payment Link (monthly subscription).
 const CHECKOUT_URL = 'https://buy.stripe.com/3cIaEX20u4o26rI4LUfMA00';
 const PREMIUM_FEATURES = [
@@ -34,6 +37,7 @@ function requirePremium(feature) {
   return false;
 }
 function openCheckout() {
+  if (!PREMIUM_FOR_SALE) return openPremium();
   const a = settings.account;
   const url = CHECKOUT_URL + (a && a.email ? '?prefilled_email=' + encodeURIComponent(a.email) : '');
   if (api && api.openExternal) api.openExternal(url); else window.open(url);
@@ -46,10 +50,10 @@ function openPremium(feature) {
     <div class="prem-head"><span class="crown">${CROWN}</span><div><h2>Flux Premium</h2>
       <p class="sub" style="margin:0">${feature ? `<b>${feature}</b> is a Premium feature.` : 'More tools for better videos.'}</p></div></div>
     <ul class="prem-list">${PREMIUM_FEATURES.map(([a, b]) => `<li><span>✓</span><div><b>${a}</b><small>${b}</small></div></li>`).join('')}</ul>
-    <div class="prem-price"><b>${PREMIUM_PRICE}</b><small>per month · cancel anytime</small></div>
-    ${unlocked ? `<div class="prem-ok">✓ Premium is active on your account${settings.account && settings.account.until ? ' until ' + new Date(settings.account.until).toLocaleDateString() : ''}</div>` : `
+    ${PREMIUM_FOR_SALE ? `<div class="prem-price"><b>${PREMIUM_PRICE}</b><small>per month · cancel anytime</small></div>` : unlocked ? '' : `<div class="prem-soon"><b>Coming soon</b><small>Premium can't be bought yet. Everything else in Flux is free - keep an eye on the changelog!</small></div>`}
+    ${!PREMIUM_FOR_SALE && !unlocked ? '' : unlocked ? `<div class="prem-ok">✓ Premium is active on your account${settings.account && settings.account.until ? ' until ' + new Date(settings.account.until).toLocaleDateString() : ''}</div>` : `
     <p class="hint">Secure checkout by Stripe. Use the same email as your Flux account (${settings.account ? settings.account.email : ''}).<br>Already paid? <a href="#" data-a="refresh">Check again</a></p>`}
-    <div class="footer"><button class="btn ghost" data-a="close">Close</button>${unlocked ? '' : `<button class="btn primary prem-buy" data-a="buy">Get Premium - ${PREMIUM_PRICE}/month</button>`}</div>`);
+    <div class="footer"><button class="btn ghost" data-a="close">Close</button>${unlocked || !PREMIUM_FOR_SALE ? '' : `<button class="btn primary prem-buy" data-a="buy">Get Premium - ${PREMIUM_PRICE}/month</button>`}</div>`);
   $('[data-a=close]', box).onclick = closeModal;
   const buy = $('[data-a=buy]', box);
   if (buy) buy.onclick = () => { closeModal(); openCheckout(); };
@@ -58,7 +62,7 @@ function openPremium(feature) {
 }
 function updatePremiumBadge() {
   const b = $('#btnPremium');
-  if (b) { b.classList.toggle('on', isPremium()); b.lastChild.textContent = isPremium() ? 'Premium' : 'Get Premium'; }
+  if (b) { b.classList.toggle('on', isPremium()); b.lastChild.textContent = isPremium() || !PREMIUM_FOR_SALE ? 'Premium' : 'Get Premium'; }
 }
 
 /* ============================ LINKED VIDEO SOUND ============================ */

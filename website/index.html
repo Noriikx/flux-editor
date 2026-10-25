@@ -105,6 +105,8 @@ section { padding-block: 84px; }
 .plan h3 svg { width: 24px; height: 24px; }
 .price { font-family: var(--f-display); font-size: 52px; font-weight: 800; margin: 14px 0 2px; letter-spacing: -0.03em; }
 .price small { font: 500 15px var(--f-body); color: var(--muted); letter-spacing: 0; margin-left: 6px; }
+.price.soon { font-size: 40px; background: var(--grad); -webkit-background-clip: text; background-clip: text; color: transparent; }
+.btn.disabled { opacity: .55; cursor: default; pointer-events: none; }
 .plan ul { list-style: none; padding: 0; margin: 20px 0 26px; display: grid; gap: 10px; }
 .plan li { display: flex; gap: 10px; font-size: 15px; color: var(--muted); }
 .plan li::before { content: ""; width: 6px; height: 6px; border-radius: 50%; background: var(--lav); margin-top: 10px; flex: none; }
@@ -127,6 +129,7 @@ details p { color: var(--muted); margin: 12px 0 0; }
 .cta .dl { justify-content: center; }
 footer { border-top: 1px solid var(--line); padding-block: 28px; color: var(--muted); font-size: 13.5px; }
 footer .wrap { display: flex; justify-content: space-between; gap: 16px; flex-wrap: wrap; }
+.foot-links { display: flex; gap: 16px; } .foot-links a { color: var(--muted); } .foot-links a:hover { color: var(--text); }
 
 @media (max-width: 900px) {
   .hero-grid, .split, .plans { grid-template-columns: 1fr; }
@@ -178,7 +181,7 @@ footer .wrap { display: flex; justify-content: space-between; gap: 16px; flex-wr
           </a>
         </div>
         <div class="mac-pick">Older Intel Mac? <a id="dlMacIntel" href="#">Get the Intel version</a></div>
-        <p class="dl-note"><b>Free forever</b> · Premium €4.99/month · Cancel anytime</p>
+        <p class="dl-note"><b>Free forever</b> · No watermark · Premium coming soon</p>
       </div>
       <div class="hero-shot">
         <img src="editor.jpg" alt="The Flux editor with a mountain video, a title and music on the timeline" width="1600" height="940">
@@ -229,7 +232,7 @@ footer .wrap { display: flex; justify-content: space-between; gap: 16px; flex-wr
 
   <section id="premium">
     <div class="wrap">
-      <div class="sec-head"><span class="tc">00:00:15</span><div><h2>Free to use. Premium when you want more.</h2><p>Make a free account in the app. Subscribe with the same email and Premium turns on by itself, on any computer you sign in to.</p></div></div>
+      <div class="sec-head"><span class="tc">00:00:15</span><div><h2>Free to use. Premium is coming soon.</h2><p>Everything in the free plan is yours to keep - no watermark, no trial. Premium can't be bought yet; we'll announce it in the changelog when it's ready.</p></div></div>
       <div class="plans">
         <div class="plan">
           <h3>Flux</h3>
@@ -247,7 +250,7 @@ footer .wrap { display: flex; justify-content: space-between; gap: 16px; flex-wr
         </div>
         <div class="plan pro">
           <h3><svg viewBox="0 0 24 24"><defs><linearGradient id="cg" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#e6eaff"/><stop offset=".5" stop-color="#a59cff"/><stop offset="1" stop-color="#6c4bff"/></linearGradient></defs><path d="M3 7.5l4.6 4.2L12 4.5l4.4 7.2L21 7.5l-1.9 11H4.9L3 7.5z" fill="url(#cg)"/></svg>Flux Premium</h3>
-          <div class="price">€4.99<small>per month</small></div>
+          <div class="price soon">Coming soon</div>
           <ul>
             <li><span><b>AI Editor</b> - type what you want, Flux does the edit</span></li>
             <li><span><b>Time machine</b> - jump back to any earlier version</span></li>
@@ -258,8 +261,8 @@ footer .wrap { display: flex; justify-content: space-between; gap: 16px; flex-wr
             <li><span><b>Pro audio</b> - Fairlight EQ, de-esser and noise reduction</span></li>
             <li><span><b>4K export</b>, 34 pro transitions, 19 pro effects, 100+ extra fonts</span></li>
           </ul>
-          <a class="btn primary" id="buy" href="#">Get Premium - €4.99/month</a>
-          <div class="secure">Secure checkout by Stripe · cards, Apple Pay, Google Pay</div>
+          <span class="btn disabled" aria-disabled="true">Not available yet</span>
+          <div class="secure">No payments are taken right now.</div>
         </div>
       </div>
     </div>
@@ -269,6 +272,12 @@ footer .wrap { display: flex; justify-content: space-between; gap: 16px; flex-wr
     <div class="wrap">
       <div class="sec-head"><span class="tc">00:00:18</span><div><h2>What's new</h2><p>Flux updates itself - click <b>Update</b> in the app when a new version is ready.</p></div></div>
       <div class="changelog">
+        <div class="cl"><div class="cl-v"><b>4.12.0</b><small>Oct 25, 2026</small></div><ul>
+          <li>Drag files into library folders (also straight from File Explorer)</li>
+          <li>Graph editor: arrows show keyframes outside the view, clearer labels when zoomed</li>
+          <li>Terms of Service, Privacy Policy and "delete my account"</li>
+          <li>Premium is coming soon - no payments are taken right now</li>
+        </ul></div>
         <div class="cl"><div class="cl-v"><b>4.11.0</b><small>Oct 25, 2026</small></div><ul>
           <li>Folders in the media library - create, rename, delete, drag files in</li>
           <li>Smoother keyframed zooms</li>
@@ -325,13 +334,12 @@ footer .wrap { display: flex; justify-content: space-between; gap: 16px; flex-wr
     <div class="wrap">
       <div class="sec-head"><span class="tc">00:00:20</span><div><h2>Questions</h2></div></div>
       <div class="faq">
-        <details><summary>Is Flux safe to install?</summary><p>Yes. Your videos stay on your computer. Flux only goes online for your sign-in, free music and the caption model. Passwords are stored encrypted. Payments are handled by Stripe, so Flux never sees your card.</p></details>
+        <details><summary>Is Flux safe to install?</summary><p>Yes. Your videos stay on your computer. Flux only goes online for your sign-in, free music and the caption model. Passwords are stored encrypted (hashed), never in plain text. See the <a href="/privacy.html">Privacy Policy</a>.</p></details>
         <details><summary>Windows says “Windows protected your PC”. What do I do?</summary><p>That message appears for new apps that aren't widely downloaded yet. Click <b>More info</b>, then <b>Run anyway</b>.</p></details>
         <details><summary>My Mac says Flux can't be opened.</summary><p>In Finder, right-click Flux in Applications and choose <b>Open</b>, then <b>Open</b> again. You only need to do this once.</p></details>
         <details><summary>What computer do I need?</summary><p>Windows 10 or 11 (64-bit), or macOS 12 or newer. 4 GB of memory works; 8 GB is smoother for HD video. Flux lowers the preview quality automatically on slower laptops - exports always stay full quality.</p></details>
         <details><summary>Do captions work offline?</summary><p>Yes, after a one-time download of the speech model (40-250 MB depending on the accuracy you pick). Your audio never leaves your computer.</p></details>
-        <details><summary>How do I get Premium?</summary><p>Install Flux and make a free account (we email you a code to confirm it). Then click <b>Get Premium</b> and pay with the same email. Premium turns on by itself within a minute, on every computer you sign in to.</p></details>
-        <details><summary>Is Premium a subscription?</summary><p>Yes, €4.99 a month. Cancel anytime with the link in your Stripe receipt email - Premium stays on until the paid month ends.</p></details>
+        <details><summary>How do I get Premium?</summary><p>You can't buy it yet - Premium is coming soon. No payments are taken right now. Everything in the free plan works without an account limit, trial or watermark.</p></details>
       </div>
     </div>
   </section>
@@ -345,18 +353,16 @@ footer .wrap { display: flex; justify-content: space-between; gap: 16px; flex-wr
   </div>
 </main>
 
-<footer><div class="wrap"><span>© <span id="yr">2026</span> Flux</span><span>Music by Kevin MacLeod (incompetech.com, CC BY 4.0) and the Internet Archive.</span></div></footer>
+<footer><div class="wrap"><span>© <span id="yr">2026</span> Flux</span><span class="foot-links"><a href="/terms.html">Terms of Service</a><a href="/privacy.html">Privacy Policy</a><a href="mailto:flux.editing.app@gmail.com">Contact</a></span><span>Music by Kevin MacLeod (incompetech.com, CC BY 4.0) and the Internet Archive.</span></div></footer>
 
 <script>
   // ---- Set these once your downloads and checkout are live ----
   const GITHUB = 'Noriikx/flux-editor';      // the GitHub repo that builds Flux (see .github/workflows/release.yml)
-  const CHECKOUT_URL = 'https://buy.stripe.com/3cIaEX20u4o26rI4LUfMA00';                      // your Stripe Payment Link
   const rel = (f) => `https://github.com/${GITHUB}/releases/latest/download/${f}`;
   const win = document.getElementById('dlWin'), mac = document.getElementById('dlMac'), macI = document.getElementById('dlMacIntel');
   win.href = rel('Flux-Setup.exe');
   mac.href = rel('Flux-mac-arm64.dmg');
   macI.href = rel('Flux-mac-x64.dmg');
-  document.getElementById('buy').href = CHECKOUT_URL || '#premium';
   // Put the visitor's own system first
   const isMac = /Mac/i.test(navigator.platform || navigator.userAgent);
   if (isMac) { win.classList.remove('primary'); mac.classList.add('primary'); mac.parentNode.insertBefore(mac, win); }

@@ -502,7 +502,7 @@ function renderMedia() {
     $('.name', item).title = m.path;
     item.addEventListener('dragstart', (e) => {
       e.dataTransfer.setData('text/flux-media', m.id);
-      e.dataTransfer.effectAllowed = 'copy';
+      e.dataTransfer.effectAllowed = 'copyMove';
     });
     item.addEventListener('dblclick', () => appendMediaToTimeline(m));
     $('.add', item).addEventListener('click', (e) => { e.stopPropagation(); appendMediaToTimeline(m); });
@@ -3694,7 +3694,11 @@ window.addEventListener('drop', (e) => {
   if (!e.dataTransfer.types.includes('Files')) return;
   e.preventDefault();
   const files = filesFromDrop(e);
-  if (files.length) importFiles(files);
+  if (!files.length) return;
+  // dropped on a folder in the library? import straight into that folder
+  const tile = typeof folderTileAt === 'function' ? folderTileAt(e.clientX, e.clientY) : undefined;
+  if (tile !== undefined && typeof lib !== 'undefined') { lib.importTarget = tile; importFiles(files).finally(() => { lib.importTarget = undefined; }); }
+  else importFiles(files);
 });
 
 $('#btnImport').onclick = promptImport;

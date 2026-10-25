@@ -936,7 +936,7 @@ ipcMain.handle('update:install', async (e) => {
   }
 });
 ipcMain.handle('app:version', () => app.getVersion());
-ipcMain.handle('app:openExternal', (_e, url) => { if (/^https:\/\//.test(url)) shell.openExternal(url); });
+ipcMain.handle('app:openExternal', (_e, url) => { if (/^(https:\/\/|mailto:[^/]+$)/.test(url)) shell.openExternal(url); });
 
 // Stripe licence keys: FLUX-<data>.<signature>, signed by your website after payment, checked here offline.
 ipcMain.handle('license:verify', (_e, { key, publicKey }) => {

@@ -14,6 +14,9 @@ const TOKEN_DAYS = 120;
 const AI_MODEL = 'claude-haiku-5-5';
 const AI_DAILY_LIMIT = 60;
 const STRIPE_CACHE_MS = 20 * 60 * 1000;
+// Premium is not for sale right now (no payments are taken). Premium only comes from gifts in the admin panel.
+// Set this to true again only once selling is set up properly - then the Stripe check below runs again.
+const SALES_ON = false;
 const scrypt = promisify(crypto.scrypt);
 
 const HEADERS = {
@@ -138,13 +141,13 @@ async function status(u, force) {
   if (u.email === ADMIN_EMAIL) return { premium: true, source: 'owner', until: null };
   let best = { premium: false, source: null, until: null };
   if (u.grantUntil === -1 || (u.grantUntil && u.grantUntil > now)) best = { premium: true, source: 'gift', until: u.grantUntil === -1 ? null : u.grantUntil };
-  if (best.until !== null || !best.premium) {
+  if (SALES_ON && (best.until !== null || !best.premium)) {
     const s = await stripeStatus(u, force);
     if (s.active && (!best.premium || (s.until && s.until > best.until))) best = { premium: true, source: 'subscription', until: s.until, cancelAtEnd: s.cancelAtEnd };
   }
   return best;
 }
-const publicUser = async (u, force) => ({ email: u.email, admin: u.email === ADMIN_EMAIL, ...(await status(u, force)) });
+const publicUser = async (u, force) => ({ email: u.email, admin: u.email === ADMIN_EMAIL, termsVersion: u.termsVersion || null, ...(await status(u, force)) });
 
 // ---------- routes ----------
 export default async (req) => {
@@ -159,6 +162,7 @@ export default async (req) => {
       let u = await getUser(email);
       if (u && u.hash && isVerified(u)) return fail('There is already an account with this email. Sign in instead.', 409);
       u = { ...(u || {}), email, createdAt: (u && u.createdAt) || Date.now(), ...(await hashPassword(pw)), verified: false, codeSentAt: 0 };
+      if (body.terms) u.termsAt = Date.now(), u.termsVersion = String(body.terms).slice(0, 20);
       await saveUser(u);
       await sendCode(u, 'verify');
       return json({ needCode: true, message: 'We emailed a 6-digit code to ' + email + '.' });
@@ -246,6 +250,21 @@ export default async (req) => {
       const j = await r.json().catch(() => ({}));
       if (!r.ok) { console.error('anthropic', r.status, j); return fail('The AI is busy right now. Try again in a minute.', 502); }
       return json({ text: (j.content || []).filter((b) => b.type === 'text').map((b) => b.text).join('\n'), left: me.email === ADMIN_EMAIL ? null : AI_DAILY_LIMIT - me.aiCount });
+    }
+
+    // accept the current Terms / Privacy Policy (shown once to existing users)
+    if (route === 'terms' && req.method === 'POST') {
+      me.termsAt = Date.now(); me.termsVersion = String(body.version || '').slice(0, 20);
+      await saveUser(me);
+      return json({ ok: true });
+    }
+
+    // delete your own account and everything we store about it (GDPR right to erasure)
+    if (route === 'delete' && req.method === 'POST') {
+      if (me.email === ADMIN_EMAIL) return fail('The owner account can\'t be deleted from the app.');
+      if (!(await checkPassword(String(body.password || ''), me))) return fail('That password is wrong.', 401);
+      await users().delete(keyOf(me.email));
+      return json({ ok: true });
     }
 
     if (route === 'password' && req.method === 'POST') {
