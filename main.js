@@ -581,11 +581,11 @@ function mediaKey(file) {
 }
 function proxyArgs(enc) {
   switch (enc) {
-    case 'h264_nvenc': return ['-c:v', 'h264_nvenc', '-preset', 'p2', '-rc', 'vbr', '-cq', '25', '-b:v', '0', '-g', '15', '-bf', '0'];
+    case 'h264_nvenc': return ['-c:v', 'h264_nvenc', '-preset', 'p1', '-tune', 'll', '-rc', 'vbr', '-cq', '26', '-b:v', '0', '-g', '15', '-bf', '0'];
     case 'h264_qsv': return ['-c:v', 'h264_qsv', '-preset', 'veryfast', '-global_quality', '25', '-g', '15', '-bf', '0'];
     case 'h264_amf': return ['-c:v', 'h264_amf', '-quality', 'speed', '-rc', 'cqp', '-qp_i', '24', '-qp_p', '26', '-g', '15', '-bf', '0'];
     case 'h264_videotoolbox': return ['-c:v', 'h264_videotoolbox', '-b:v', '6M', '-g', '15'];
-    default: return ['-c:v', 'libx264', '-preset', 'veryfast', '-tune', 'fastdecode', '-crf', '24', '-g', '15', '-bf', '0'];
+    default: return ['-c:v', 'libx264', '-preset', 'ultrafast', '-tune', 'fastdecode', '-crf', '25', '-g', '15', '-bf', '0'];
   }
 }
 function ffRun(args, onTime) {
@@ -622,10 +622,13 @@ ipcMain.handle('media:proxy', async (_e, { file, id, remux }) => {
         return ffRun(['-y', '-hide_banner', '-i', file, '-map', '0:v:0', '-map', '0:a:0?', '-c', 'copy', '-movflags', '+faststart', tmp], (p) => send('proxy:progress', { id, p, remux: true }));
       }
       const enc = await pickEncoder(ff);
-      const base = ['-y', '-hide_banner', '-i', file, '-map', '0:v:0', '-map', '0:a:0?', '-vf', "scale=-2:'min(720,ih)':flags=bicubic,format=yuv420p"];
-      const tail = ['-c:a', 'aac', '-b:a', '160k', '-ac', '2', '-movflags', '+faststart', tmp];
-      let ok = await ffRun([...base, ...proxyArgs(enc), ...tail], (p) => send('proxy:progress', { id, p }));
-      if (!ok && enc !== 'libx264') ok = await ffRun([...base, ...proxyArgs('libx264'), ...tail], (p) => send('proxy:progress', { id, p }));
+      // decode with the graphics card too (much faster), shrink to 720p
+      const base = (hw) => ['-y', '-hide_banner', ...(hw ? ['-hwaccel', 'auto'] : []), '-i', file, '-map', '0:v:0', '-map', '0:a:0?', '-vf', "scale=-2:'min(720,ih)':flags=fast_bilinear,format=yuv420p", '-threads', '0'];
+      const tail = ['-c:a', 'aac', '-b:a', '128k', '-ac', '2', '-movflags', '+faststart', tmp];
+      const prog = (p) => send('proxy:progress', { id, p });
+      let ok = await ffRun([...base(true), ...proxyArgs(enc), ...tail], prog);
+      if (!ok) ok = await ffRun([...base(false), ...proxyArgs(enc), ...tail], prog);
+      if (!ok && enc !== 'libx264') ok = await ffRun([...base(false), ...proxyArgs('libx264'), ...tail], prog);
       return ok;
     };
     const ok = remux ? await run() : await (proxyQueue = proxyQueue.then(run, run));

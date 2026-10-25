@@ -7,7 +7,7 @@ const proxyState = new Map(); // media id -> { p, remux }
 function wantsProxy(m) {
   if (!m || m.kind !== 'video' || !m.path || m.missing || m.error) return false;
   if (settings.proxies === false) return false;
-  return NEEDS_REMUX.test(m.path) || (m.duration || 0) > 20 || (m.height || 0) > 1080;
+  return NEEDS_REMUX.test(m.path) || (m.duration || 0) > 60 || (m.height || 0) > 1440;
 }
 // which file the editor plays (exports use m.full / the original)
 function playPathOf(m) {

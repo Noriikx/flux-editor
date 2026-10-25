@@ -337,6 +337,7 @@ async function importFiles(files) {
     const m = { id: uid(), path: f.path, name: f.name, kind, duration: kind === 'image' ? 5 : (f.duration || 0), width: 0, height: 0, loading: true };
     if (f.credit) m.credit = f.credit;
     if (f.tag) m.tag = f.tag;
+    if (typeof folderForImport === 'function') m.folder = folderForImport(m);
     P.media.push(m);
     added.push(m);
   }
@@ -1526,7 +1527,7 @@ function drawMedia(g, c, local, W, H, k, fx) {
   try {
     if (fx.pixel > 1) drawPixelated(g, src, sx, sy, cw, ch, dw, dh, fx.pixel);
     else if (fx.glitch > 0) drawGlitched(g, src, sx, sy, cw, ch, dw, dh, fx.glitch);
-    else g.drawImage(src, sx, sy, cw, ch, -dw / 2, -dh / 2, dw, dh);
+    else drawVisiblePart(g, src, sx, sy, cw, ch, dw, dh, rot + fx.rot, (c.flipH || c.flipV || fx.flipX != null) ? 0 : fx.scale * mo.s, cx + fx.dx + mo.dx * W, cy + fx.dy + mo.dy * H, W, H);
   } catch {}
   g.filter = 'none';
   const f = filterById(c.filter);
@@ -1540,6 +1541,18 @@ function drawMedia(g, c, local, W, H, k, fx) {
   rt.hitBoxes.push({ id: c.id, cx, cy, w: dw, h: dh, rot });
 }
 
+// When a picture is zoomed in past the edges of the frame, only draw the part you can see
+// (much less work for the computer - keyframed zooms stay smooth).
+function drawVisiblePart(g, src, sx, sy, cw, ch, dw, dh, rot, S, tx, ty, W, H) {
+  if (!S || Math.abs(rot) > 1e-6) { g.drawImage(src, sx, sy, cw, ch, -dw / 2, -dh / 2, dw, dh); return; }
+  // picture corners in frame coordinates
+  const x0 = tx - (dw / 2) * S, y0 = ty - (dh / 2) * S, x1 = tx + (dw / 2) * S, y1 = ty + (dh / 2) * S;
+  const vx0 = Math.max(x0, 0), vy0 = Math.max(y0, 0), vx1 = Math.min(x1, W), vy1 = Math.min(y1, H);
+  if (vx1 <= vx0 || vy1 <= vy0) return; // completely outside the frame
+  if (vx0 === x0 && vy0 === y0 && vx1 === x1 && vy1 === y1) { g.drawImage(src, sx, sy, cw, ch, -dw / 2, -dh / 2, dw, dh); return; }
+  const fx0 = (vx0 - x0) / (x1 - x0), fy0 = (vy0 - y0) / (y1 - y0), fx1 = (vx1 - x0) / (x1 - x0), fy1 = (vy1 - y0) / (y1 - y0);
+  g.drawImage(src, sx + fx0 * cw, sy + fy0 * ch, (fx1 - fx0) * cw, (fy1 - fy0) * ch, -dw / 2 + fx0 * dw, -dh / 2 + fy0 * dh, (fx1 - fx0) * dw, (fy1 - fy0) * dh);
+}
 // Remember the last good frame of each video so the preview never flashes black while the next one loads.
 function keepLastFrame(p, m) {
   const now = performance.now();
@@ -3357,7 +3370,8 @@ function serializeProject() {
   return {
     version: 2, id: P.id, name: P.name, aspect: P.aspect, background: P.background, bgChosen: P.bgChosen, tracks: P.tracks, clips: P.clips,
     markers: P.markers || [], output: P.output, createdAt: P.createdAt, updatedAt: P.updatedAt, duration: projectDuration(),
-    media: P.media.map(({ id, path, name, kind, duration, width, height, credit, tag, hasAudio, words, wordsKey }) => ({ id, path, name, kind, duration, width, height, credit, tag, hasAudio, words, wordsKey }))
+    folders: P.folders || [],
+    media: P.media.map(({ id, path, name, kind, duration, width, height, credit, tag, hasAudio, words, wordsKey, folder }) => ({ id, path, name, kind, duration, width, height, credit, tag, hasAudio, words, wordsKey, folder }))
   };
 }
 // Opens a project's data in the editor.

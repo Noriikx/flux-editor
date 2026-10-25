@@ -1,6 +1,12 @@
 /* Flux — changelog. Shown once after an update, and any time from Settings → About. */
 'use strict';
 const CHANGELOG = [
+  { v: '4.11.0', date: '2026-10-25', items: [
+    'Folders in the media library: Media and Music folders are made for you, and you can create, rename and delete your own (deleting a folder keeps its files)',
+    'Drag files onto a folder to move them, or right-click → Move to…. New imports go into the folder you have open',
+    'Smoother keyframes: zoomed-in clips now only draw the part you can see (up to 3x less work per frame)',
+    'Faster editing copies: uses your graphics card to read the video too, and short videos (under 1 minute) don\u2019t need one at all'
+  ] },
   { v: '4.10.0', date: '2026-10-25', items: [
     'Smooth editing copies (like DaVinci proxies): long videos and .mkv recordings get a light copy for editing, so playing and dragging the playhead back and forth is smooth. Exports always use the original. Turn off or delete them in Settings → Performance',
     'Fixed: .mkv recordings showing blocky / glitchy pictures',
