@@ -149,18 +149,61 @@ Object.assign(EFFECT_TYPES, {
   halftone: { name: 'Halftone', pro: true, params: [['size', 'Dot size', 3, 40, 10]] },
   kaleido: { name: 'Kaleidoscope', pro: true, params: [['spin', 'Spin', -180, 180, 0]] },
   lightleak: { name: 'Light leak', pro: true, params: [['amount', 'Strength', 0, 100, 55], ['speed', 'Movement', 0, 100, 30]], color: ['color', 'Color', '#ff8a3d'] },
-  dreamglow: { name: 'Dream glow', pro: true, params: [['amount', 'Strength', 0, 100, 50]] }
+  dreamglow: { name: 'Dream glow', pro: true, params: [['amount', 'Strength', 0, 100, 50]] },
+  glitch: { name: 'Glitch', params: [['amount', 'Strength', 0, 100, 60], ['every', 'Pause between glitches (s)', 0.3, 10, 2, 0.1], ['length', 'Glitch length (s)', 0.05, 1.5, 0.3, 0.05]] }
 });
 Object.assign(FX_SWATCH, {
   glow: 'brightness(1.25) blur(1px)', chroma: 'saturate(1.6) hue-rotate(15deg)', mirror: 'none', letterbox: 'contrast(1.1)', rounded: 'none', border: 'none',
   invert: 'invert(1)', scanlines: 'contrast(1.2)', shake: 'blur(1px)', pulse: 'saturate(1.2)', tiltshift: 'saturate(1.4) contrast(1.1)', vhs: 'saturate(1.5) hue-rotate(-10deg) blur(.5px)',
   duotone: 'grayscale(1) sepia(1) hue-rotate(230deg) saturate(3)', posterize: 'contrast(1.6) saturate(1.6)', threshold: 'grayscale(1) contrast(6)', emboss: 'grayscale(1) contrast(1.4)',
   edges: 'invert(1) hue-rotate(180deg) contrast(2)', sketch: 'grayscale(1) invert(1) contrast(1.5)', halftone: 'contrast(1.5) grayscale(.5)', kaleido: 'saturate(1.4)',
-  lightleak: 'sepia(.4) brightness(1.2) saturate(1.4)', dreamglow: 'brightness(1.15) saturate(1.2) blur(.6px)'
+  lightleak: 'sepia(.4) brightness(1.2) saturate(1.4)', dreamglow: 'brightness(1.15) saturate(1.2) blur(.6px)', glitch: 'hue-rotate(160deg) saturate(2.5) contrast(1.3)'
 });
 const conv = (k) => `<feConvolveMatrix order="3" preserveAlpha="true" kernelMatrix="${k.join(' ')}"/>`;
 // each one draws `src` (the clip so far) into `g` (a fresh canvas the same size)
+// Glitch: short bursts with calm pauses in between. Random but the same every time (so the preview matches the export).
+function glitchAt(e, local) {
+  const every = Math.max(0.3, +e.every || 2), len = clamp(+e.length || 0.3, 0.05, every);
+  const cycle = Math.floor(local / every), start = cycle * every + tHash(cycle * 3.7 + 1) * (every - len) * 0.9;
+  if (local < start || local > start + len) return 0;
+  // flicker inside the burst: on/off steps at ~24 per second, mostly on
+  const step = Math.floor(local * 24);
+  return tHash(step * 1.3 + 7) < 0.82 ? 0.45 + 0.55 * tHash(step * 2.1 + 3) : 0;
+}
 Object.assign(FX_EXTRA, {
+  glitch(g, src, e, w, h, k, local) {
+    const lt = local || 0, on = glitchAt(e, lt) * (e.amount / 100);
+    if (on <= 0.001) { g.drawImage(src, 0, 0); return; }
+    const step = Math.floor(lt * 24), R = (i) => tHash(step * 13.37 + i * 7.13);
+    // 1) a jolt: the whole picture jumps a little
+    const jx = (R(1) - 0.5) * w * 0.04 * on, jy = (R(2) - 0.5) * h * 0.02 * on;
+    g.drawImage(src, jx, jy);
+    // 2) RGB split
+    const d = (6 + R(3) * 22) * k * on;
+    const T = poolCanvas(5, w, h), tg = T.getContext('2d');
+    const ch = (col, x) => { tg.globalCompositeOperation = 'copy'; tg.drawImage(src, 0, 0); tg.globalCompositeOperation = 'multiply'; tg.fillStyle = col; tg.fillRect(0, 0, w, h); tg.globalCompositeOperation = 'destination-in'; tg.drawImage(src, 0, 0); g.drawImage(T, x + jx, jy); };
+    g.globalCompositeOperation = 'screen'; g.globalAlpha = 0.85;
+    ch('#ff0040', -d); ch('#00e5ff', d);
+    g.globalCompositeOperation = 'source-over'; g.globalAlpha = 1;
+    // 3) torn horizontal slices
+    const n = 3 + Math.floor(R(4) * 9 * on);
+    for (let i = 0; i < n; i++) {
+      const sy = R(10 + i) * h, sh = (0.01 + R(30 + i) * 0.08) * h, dx = (R(50 + i) - 0.5) * w * 0.25 * on;
+      g.drawImage(src, 0, sy, w, sh, dx, sy, w, sh);
+      if (R(70 + i) < 0.25) { g.fillStyle = R(90 + i) < 0.5 ? 'rgba(0,255,200,.35)' : 'rgba(255,0,120,.35)'; g.fillRect(dx, sy, w, sh); }
+    }
+    // 4) a few blocky "data" squares
+    const b = Math.floor(R(5) * 5 * on);
+    for (let i = 0; i < b; i++) {
+      const bw = (0.04 + R(110 + i) * 0.16) * w, bh = (0.02 + R(130 + i) * 0.08) * h, bx = R(150 + i) * (w - bw), by = R(170 + i) * (h - bh);
+      g.drawImage(src, bx + (R(190 + i) - 0.5) * bw, by, bw, bh, bx, by, bw, bh);
+    }
+    // 5) sometimes a quick color flash / inverted frame
+    if (R(6) < 0.12 * on) { g.globalCompositeOperation = 'difference'; g.fillStyle = '#ffffff'; g.fillRect(0, 0, w, h); g.globalCompositeOperation = 'source-over'; }
+    // thin scan noise
+    g.fillStyle = `rgba(255,255,255,${0.06 * on})`;
+    for (let y = R(8) * 6 * k; y < h; y += 6 * k) g.fillRect(0, y, w, Math.max(1, k));
+  },
   glow(g, src, e, w, h, k) {
     g.drawImage(src, 0, 0);
     g.globalCompositeOperation = 'screen'; g.globalAlpha = e.amount / 100; g.filter = `blur(${(e.radius * k).toFixed(1)}px) brightness(1.2)`;

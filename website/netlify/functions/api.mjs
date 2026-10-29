@@ -279,6 +279,41 @@ export default async (req) => {
     if (route.startsWith('admin/')) {
       if (email !== ADMIN_EMAIL) return fail('Only the owner can do that.', 403);
       const action = route.slice(6);
+      if (action === 'earnings') {
+        // money from Stripe (if a Stripe key is set on Netlify) + simple user numbers
+        const { blobs } = await users().list();
+        let total = 0, gifts = 0, newThisMonth = 0;
+        const now = Date.now(), monthStart = new Date(new Date().getFullYear(), new Date().getMonth(), 1).getTime();
+        for (const b of blobs) {
+          const u = await users().get(b.key, { type: 'json' });
+          if (!u) continue;
+          total++;
+          if (u.grantUntil === -1 || u.grantUntil > now) gifts++;
+          if ((u.createdAt || 0) >= monthStart) newThisMonth++;
+        }
+        const out = { salesOn: SALES_ON, stripe: false, users: total, gifts, newThisMonth };
+        if (process.env.STRIPE_SECRET_KEY) {
+          out.stripe = true;
+          const bal = await stripe('balance');
+          const sum = (arr) => { const m = {}; for (const x of arr || []) m[x.currency] = (m[x.currency] || 0) + x.amount; return m; };
+          if (bal) { out.available = sum(bal.available); out.pending = sum(bal.pending); }
+          const tally = { month: {}, all: {} }; let after = null, pages = 0, charges = 0;
+          do {
+            const page = await stripe('charges?limit=100' + (after ? '&starting_after=' + after : ''));
+            if (!page) break;
+            for (const ch of page.data || []) {
+              if (ch.status !== 'succeeded' || !ch.paid) continue;
+              const net = (ch.amount_captured || ch.amount) - (ch.amount_refunded || 0);
+              charges++;
+              tally.all[ch.currency] = (tally.all[ch.currency] || 0) + net;
+              if (ch.created * 1000 >= monthStart) tally.month[ch.currency] = (tally.month[ch.currency] || 0) + net;
+            }
+            after = page.has_more && page.data.length ? page.data[page.data.length - 1].id : null;
+          } while (after && ++pages < 10);
+          out.month = tally.month; out.all = tally.all; out.charges = charges;
+        }
+        return json(out);
+      }
       if (action === 'users') {
         const { blobs } = await users().list();
         const list = [];

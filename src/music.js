@@ -123,8 +123,9 @@ function stopMusicPreview() {
   music.playingUrl = null;
   $$('.mrow.playing').forEach((r) => r.classList.remove('playing'));
 }
-function previewTrack(t, row) {
+async function previewTrack(t, row) {
   if (music.playingUrl === t.url) { stopMusicPreview(); return; }
+  const src = t.sfx ? await sfxPreviewUrl(t) : t.url;
   if (state.playing) pause();
   if (!musicPreview) {
     musicPreview = new Audio();
@@ -132,7 +133,7 @@ function previewTrack(t, row) {
     musicPreview.addEventListener('error', () => { toast("Couldn't play that song", { error: true }); stopMusicPreview(); });
     if (settings.outputDevice && settings.outputDevice !== 'default' && musicPreview.setSinkId) musicPreview.setSinkId(settings.outputDevice).catch(() => {});
   }
-  musicPreview.src = t.url;
+  musicPreview.src = src;
   musicPreview.volume = 0.8;
   musicPreview.play().catch(() => {});
   music.playingUrl = t.url;
@@ -144,6 +145,7 @@ const downloading = new Map();
 async function downloadTrack(t) {
   if (downloading.has(t.url)) return downloading.get(t.url);
   const job = (async () => {
+    if (t.sfx) return sfxImport(t);
     const name = (t.fileName || (t.title + '.mp3')).replace(/[\\/:*?"<>|]+/g, '_');
     const path = api && api.musicDownload ? await api.musicDownload({ url: t.url, name }) : t.url;
     if (!path) throw new Error('download failed');
@@ -159,13 +161,15 @@ async function addTrackToTimeline(t, row, track, at) {
   try {
     const m = await downloadTrack(t);
     if (!m) throw new Error('import failed');
-    const tr = track && track.type === 'audio' ? track : (P.tracks.find((x) => x.type === 'audio' && /music/i.test(x.name)) || firstTrack('audio'));
-    addMediaAt(m, tr.id, at != null ? at : state.time);
+    const when = at != null ? at : state.time;
+    const tr = track && track.type === 'audio' ? track : t.sfx ? sfxTrackAt(when, t.length || 1) : (P.tracks.find((x) => x.type === 'audio' && /music/i.test(x.name)) || firstTrack('audio'));
+    addMediaAt(m, tr.id, when);
     renderCredits();
+    if (t.sfx) { toast(`Added “${t.title}”`); row && row.classList.remove('busy'); return; }
     toast(t.credit && !/public domain|cc0/i.test(t.license) ? `Added “${t.title}” - remember to credit it (see Credits)` : `Added “${t.title}”`);
   } catch (e) {
     console.warn(e);
-    toast("Couldn't download that song. Check your internet connection.", { error: true });
+    toast(t.sfx ? "Couldn't make that sound effect." : "Couldn't download that song. Check your internet connection.", { error: true });
   }
   row && row.classList.remove('busy');
 }
@@ -199,7 +203,7 @@ function renderMusic() {
   $$('#musicSource button').forEach((b) => b.classList.toggle('active', b.dataset.src === music.source));
   const chipsBox = $('#musicMoods');
   chipsBox.innerHTML = '';
-  for (const m of music.source === 'km' ? KM_MOODS : PD_PRESETS) {
+  for (const m of music.source === 'km' ? KM_MOODS : music.source === 'sfx' ? SFX_CATS : PD_PRESETS) {
     const b = el('button', 'chip' + (music.mood === m ? ' active' : ''));
     b.textContent = m;
     b.onclick = () => {
@@ -212,8 +216,19 @@ function renderMusic() {
   list.innerHTML = '';
   const status = $('#musicStatus');
   status.textContent = '';
-  if (music.error) { status.textContent = music.error; const b = el('button', 'btn ghost', 'Try again'); b.onclick = () => (music.source === 'km' ? loadKM() : searchPD()); status.appendChild(el('br')); status.appendChild(b); }
+  if (music.error && music.source !== 'sfx') { status.textContent = music.error; const b = el('button', 'btn ghost', 'Try again'); b.onclick = () => (music.source === 'km' ? loadKM() : searchPD()); status.appendChild(el('br')); status.appendChild(b); }
 
+  if (music.source === 'sfx') {
+    $('#musicNote').textContent = 'Made by Flux - free for anything, no credit needed. Click ▶ to listen, + or drag to add.';
+    const q = music.query.toLowerCase();
+    const items = SFX.filter((s) => (!music.mood || s.cat === music.mood) && (!q || (s.name + ' ' + s.cat).toLowerCase().includes(q)));
+    if (!items.length) status.textContent = 'No sound effects match. Try another word.';
+    const frag = document.createDocumentFragment();
+    items.forEach((s) => { const r = trackRow(sfxTrack(s)); r.classList.add('sfx'); frag.appendChild(r); });
+    list.appendChild(frag);
+    $('#musicCount').textContent = `${items.length} of ${SFX.length} sounds`;
+    return;
+  }
   if (music.source === 'km') {
     $('#musicNote').textContent = 'Free to use with credit (CC BY 4.0). Flux keeps the credit text for you under Credits.';
     if (!music.catalog) { if (music.loading) status.textContent = 'Loading music…'; return; }
@@ -287,14 +302,15 @@ function setupMusic() {
   $$('#musicSource button').forEach((b) => (b.onclick = () => {
     music.source = b.dataset.src; music.mood = ''; music.query = ''; $('#musicSearch').value = '';
     stopMusicPreview();
-    if (music.source === 'km') { if (!music.catalog) loadKM(); else renderMusic(); }
+    if (music.source === 'sfx') renderMusic();
+    else if (music.source === 'km') { if (!music.catalog) loadKM(); else renderMusic(); }
     else if (!music.pdItems.length) { music.mood = 'Piano'; searchPD(); } else renderMusic();
   }));
   let timer = null;
   $('#musicSearch').addEventListener('input', (e) => {
     music.query = e.target.value.trim();
     clearTimeout(timer);
-    if (music.source === 'km') renderMusic();
+    if (music.source === 'km' || music.source === 'sfx') renderMusic();
     else timer = setTimeout(() => { music.mood = ''; searchPD(); }, 500);
   });
   $('#musicCredits').onclick = showCredits;

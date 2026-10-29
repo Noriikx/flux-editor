@@ -41,6 +41,15 @@
   .pill.sub { background: rgba(87,217,163,.14); color: var(--mint); }
   .muted { color: var(--muted); font-size: 12.5px; }
   .hide { display: none; }
+  /* screen-share safe: hide every email */
+  body.blur-emails .em { filter: blur(7px); user-select: none; }
+  body.blur-emails input.em:focus { filter: none; }
+  #blurBtn.on { border-color: var(--gold); color: var(--gold); }
+  .stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 12px; }
+  .stat { background: var(--panel2); border: 1px solid var(--line); border-radius: 12px; padding: 14px; }
+  .stat b { display: block; font: 800 26px "Bricolage Grotesque", sans-serif; margin-top: 2px; }
+  .stat small { color: var(--muted); font-size: 12px; }
+  .stat.money b { background: var(--grad); -webkit-background-clip: text; background-clip: text; color: transparent; }
   @media (max-width: 700px) {
     .give { grid-template-columns: 1fr; }
     thead { display: none; }
@@ -66,12 +75,18 @@
 
   <!-- panel -->
   <section id="panel" class="hide">
-    <header><img src="logo.png" alt=""><h1>Flux Admin</h1><span class="muted" id="who"></span><button class="small" id="out">Sign out</button></header>
+    <header><img src="logo.png" alt=""><h1>Flux Admin</h1><span class="muted em" id="who"></span><button class="small" id="blurBtn" title="Blur every email - for screen sharing">🙈 Blur emails</button><button class="small" id="out">Sign out</button></header>
+
+    <div class="card">
+      <div class="tools" style="margin-bottom:12px"><h2 style="margin:0;flex:1">Earnings</h2><button class="small" id="reloadMoney">Refresh</button></div>
+      <div class="stats" id="stats"><div class="stat"><small>Loading…</small></div></div>
+      <p class="muted" id="moneyNote" style="margin:10px 0 0"></p>
+    </div>
 
     <div class="card">
       <h2>Give Premium</h2>
       <form class="give" id="giveForm">
-        <label>User's email<input name="email" type="email" required placeholder="friend@example.com"></label>
+        <label>User's email<input name="email" type="email" required placeholder="friend@example.com" class="em"></label>
         <label>For how long
           <select name="days">
             <option value="7">1 week</option>
@@ -104,6 +119,11 @@
 const API = '/api/';
 let token = null, users = [];
 try { token = sessionStorage.getItem('fluxAdmin'); } catch {}
+// opened from the Flux app: it passes your sign-in in the #hash (never sent to the server), then we hide it
+{ const m = /[#&]t=([^&]+)/.exec(location.hash); if (m) { token = decodeURIComponent(m[1]); try { sessionStorage.setItem('fluxAdmin', token); } catch {} history.replaceState(null, '', location.pathname + location.search); } }
+// blur emails (remembered on this computer)
+let blur = false; try { blur = localStorage.getItem('fluxAdminBlur') === '1'; } catch {}
+function setBlur(v) { blur = v; document.body.classList.toggle('blur-emails', v); const b = document.getElementById('blurBtn'); b.classList.toggle('on', v); b.textContent = v ? '🙈 Emails blurred' : '👁 Blur emails'; try { localStorage.setItem('fluxAdminBlur', v ? '1' : '0'); } catch {} }
 const $ = (s) => document.querySelector(s);
 const esc = (s) => String(s || '').replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 const day = (t) => t ? new Date(t).toLocaleDateString() : '-';
@@ -139,6 +159,26 @@ $('#loginForm').onsubmit = async (e) => {
   start();
 };
 $('#out').onclick = signOut;
+$('#blurBtn').onclick = () => setBlur(!blur);
+setBlur(blur);
+// Ctrl+B toggles too
+document.addEventListener('keydown', (e) => { if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'b') { e.preventDefault(); setBlur(!blur); } });
+
+const money = (cents, cur) => (cents / 100).toLocaleString(undefined, { style: 'currency', currency: (cur || 'eur').toUpperCase() });
+const moneyMap = (m) => { const k = Object.keys(m || {}); return k.length ? k.map((c) => money(m[c], c)).join(' + ') : money(0, 'eur'); };
+async function loadMoney() {
+  const r = await call('admin/earnings');
+  if (r.error) { $('#stats').innerHTML = `<div class="stat"><small class="msg err">${esc(r.error)}</small></div>`; return; }
+  const cards = [];
+  if (r.stripe) {
+    cards.push(['This month', moneyMap(r.month), true], ['All time', moneyMap(r.all), true], ['Stripe balance', moneyMap(r.available), true], ['Payments', String(r.charges || 0)]);
+  } else cards.push(['This month', money(0, 'eur'), true], ['All time', money(0, 'eur'), true]);
+  cards.push(['Users', String(r.users)], ['New this month', String(r.newThisMonth)], ['Premium gifts', String(r.gifts)]);
+  $('#stats').innerHTML = cards.map(([a, b, m]) => `<div class="stat${m ? ' money' : ''}"><small>${a}</small><b>${esc(b)}</b></div>`).join('');
+  $('#moneyNote').textContent = r.salesOn ? (r.stripe ? 'Numbers come straight from Stripe (after refunds, before Stripe fees and taxes).' : 'Sales are on but no Stripe key is set on Netlify.')
+    : 'Premium is not for sale right now (no payments are taken), so you are earning €0.' + (r.stripe ? ' Older Stripe numbers are shown above.' : '');
+}
+$('#reloadMoney').onclick = loadMoney;
 
 $('#giveForm').days.onchange = (e) => $('#customWrap').classList.toggle('hide', e.target.value !== 'custom');
 $('#giveForm').onsubmit = async (e) => {
@@ -149,7 +189,7 @@ $('#giveForm').onsubmit = async (e) => {
   msg.className = 'msg'; msg.textContent = 'Saving…';
   const r = await call('admin/grant', { email: f.email.value, days });
   if (r.error) { msg.className = 'msg err'; msg.textContent = r.error; return; }
-  msg.textContent = `✓ ${f.email.value} has Premium ${days === 0 ? 'forever' : 'until ' + day(r.grantUntil)}.`;
+  msg.innerHTML = `✓ <span class="em">${esc(f.email.value)}</span> has Premium ${days === 0 ? 'forever' : 'until ' + day(r.grantUntil)}.`;
   f.email.value = '';
   load();
 };
@@ -168,7 +208,7 @@ function draw() {
   $('#count').textContent = `(${users.length})`;
   $('#rows').innerHTML = list.length ? list.map((u) => `
     <tr data-e="${esc(u.email)}">
-      <td><b>${esc(u.email)}</b>${u.hasPassword ? '' : '<br><span class="muted">no account yet</span>'}</td>
+      <td><b class="em">${esc(u.email)}</b>${u.hasPassword ? '' : '<br><span class="muted">no account yet</span>'}</td>
       <td>${premiumText(u)}</td>
       <td class="muted">${day(u.createdAt)}</td>
       <td class="muted">${day(u.lastLogin)}</td>
@@ -216,7 +256,7 @@ async function start() {
   const r = await call('me');
   if (!r.account || !r.account.admin) return signOut();
   $('#who').textContent = r.account.email;
-  show(true); load();
+  show(true); load(); loadMoney();
 }
 if (token) start(); else show(false);
 </script>

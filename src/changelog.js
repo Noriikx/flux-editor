@@ -1,6 +1,16 @@
 /* Flux — changelog. Shown once after an update, and any time from Settings → About. */
 'use strict';
 const CHANGELOG = [
+  { v: '4.13.0', date: '2026-10-29', items: [
+    'Zoom the timeline out much further - a 10-hour project fits on one screen',
+    'Long videos (1 hour+) are smooth: no more mouse stutter while they import, optimize or get dragged around',
+    'Long videos show real frames along the whole clip, and sharper frames load for the part you zoom in on (no more repeating picture)',
+    'Background jobs (optimizing, thumbnails, waveforms) run at low priority and stop properly when you close Flux',
+    'New: Sound effects in the Music tab - 47 whooshes, pops, booms, dings, risers, funny sounds and more. Made by Flux, free, no credit needed',
+    'New effect: Glitch - short glitch bursts with calm pauses in between (choose the strength, pause and glitch length)',
+    'Volume now goes up to +40 dB',
+    'Faster waveforms for long sound'
+  ] },
   { v: '4.12.0', date: '2026-10-25', items: [
     'Drag files onto a folder in the library to move them - now really works (also from File Explorer straight into a folder, and folders into other folders)',
     'Graph editor: keyframes you scrolled or zoomed past show as little arrows at the edges - click one to jump to it. Middle-drag (or Alt+drag) to scroll',

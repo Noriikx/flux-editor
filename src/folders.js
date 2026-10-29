@@ -25,7 +25,7 @@ function folderNamed(name, parent = null) { return childFolders(parent).find((f)
 function folderForImport(m) {
   if (lib.importTarget !== undefined && (lib.importTarget === null || folderById(lib.importTarget))) return lib.importTarget;
   if (lib.folder && folderById(lib.folder)) return lib.folder;
-  if (m.kind === 'audio') return folderNamed(m.tag === 'voice' ? 'Voiceovers' : 'Music').id;
+  if (m.kind === 'audio') return folderNamed(m.tag === 'voice' ? 'Voiceovers' : m.tag === 'sfx' ? 'Sound effects' : 'Music').id;
   return folderNamed('Media').id;
 }
 function moveToFolder(ids, fid) {

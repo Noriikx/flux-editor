@@ -7,7 +7,16 @@ const path = require('path');
 const fs = require('fs');
 const os = require('os');
 const { Readable } = require('stream');
-const { spawn } = require('child_process');
+const { spawn: rawSpawn } = require('child_process');
+// every ffmpeg Flux starts is tracked and stopped when Flux closes (on Windows they'd otherwise keep running in the background)
+const kids = new Set();
+function spawn(cmd, args, opts) {
+  const p = rawSpawn(cmd, args, opts);
+  if (!(opts && opts.detached)) { kids.add(p); p.once('exit', () => kids.delete(p)); p.once('error', () => kids.delete(p)); }
+  return p;
+}
+function killKids() { for (const p of kids) { try { p.kill('SIGKILL'); } catch {} } kids.clear(); }
+process.on('exit', killKids);
 
 let win = null;
 
@@ -162,6 +171,26 @@ function createWindow() {
   win.on('enter-full-screen', sendFs);
   win.on('leave-full-screen', sendFs);
 }
+
+// ---------- admin panel (owner only - the server checks the account on every request) ----------
+let adminWin = null;
+const ADMIN_ORIGIN = 'https://flux-editor.netlify.app';
+ipcMain.handle('admin:open', (_e, token) => {
+  if (typeof token !== 'string' || !/^[\w.-]{20,2000}$/.test(token)) return false;
+  if (adminWin && !adminWin.isDestroyed()) { adminWin.show(); adminWin.focus(); return true; }
+  adminWin = new BrowserWindow({
+    width: 1180, height: 820, minWidth: 720, minHeight: 520, parent: win || undefined, title: 'Flux Admin',
+    backgroundColor: '#09080f', autoHideMenuBar: true, icon: path.join(__dirname, 'build', process.platform === 'win32' ? 'icon.ico' : 'icon.png'),
+    webPreferences: { contextIsolation: true, nodeIntegration: false, sandbox: true }
+  });
+  // stay on the admin site; anything else opens in the normal browser
+  adminWin.webContents.on('will-navigate', (ev, url) => { if (!url.startsWith(ADMIN_ORIGIN + '/admin.html')) { ev.preventDefault(); if (/^https:\/\//.test(url)) shell.openExternal(url); } });
+  adminWin.webContents.setWindowOpenHandler(({ url }) => { if (/^https:\/\//.test(url)) shell.openExternal(url); return { action: 'deny' }; });
+  adminWin.on('closed', () => { adminWin = null; });
+  // the token goes in the #hash, which is never sent over the network
+  adminWin.loadURL(ADMIN_ORIGIN + '/admin.html?app=1#t=' + encodeURIComponent(token));
+  return true;
+});
 
 // ---------- window ----------
 ipcMain.handle('win:toggleFullscreen', () => { if (win) win.setFullScreen(!win.isFullScreen()); return win && win.isFullScreen(); });
@@ -588,10 +617,13 @@ function proxyArgs(enc) {
     default: return ['-c:v', 'libx264', '-preset', 'ultrafast', '-tune', 'fastdecode', '-crf', '25', '-g', '15', '-bf', '0'];
   }
 }
+// background jobs (editing copies, thumbnails, waveforms) run at low priority so the mouse and the editor stay smooth
+function lowPri(p) { try { os.setPriority(p.pid, os.constants.priority.PRIORITY_BELOW_NORMAL); } catch {} return p; }
+const bgThreads = () => String(Math.max(2, Math.floor((os.cpus().length || 4) / 2)));
 function ffRun(args, onTime) {
   const ff = ffmpegPath();
   return new Promise((resolve) => {
-    const p = spawn(ff, args, { windowsHide: true });
+    const p = lowPri(spawn(ff, args, { windowsHide: true }));
     let dur = 0, err = '';
     p.stderr.on('data', (d) => {
       const s = d.toString(); err = (err + s).slice(-3000);
@@ -623,7 +655,7 @@ ipcMain.handle('media:proxy', async (_e, { file, id, remux }) => {
       }
       const enc = await pickEncoder(ff);
       // decode with the graphics card too (much faster), shrink to 720p
-      const base = (hw) => ['-y', '-hide_banner', ...(hw ? ['-hwaccel', 'auto'] : []), '-i', file, '-map', '0:v:0', '-map', '0:a:0?', '-vf', "scale=-2:'min(720,ih)':flags=fast_bilinear,format=yuv420p", '-threads', '0'];
+      const base = (hw) => ['-y', '-hide_banner', ...(hw ? ['-hwaccel', 'auto'] : []), '-i', file, '-map', '0:v:0', '-map', '0:a:0?', '-vf', "scale=-2:'min(720,ih)':flags=fast_bilinear,format=yuv420p", '-threads', bgThreads()];
       const tail = ['-c:a', 'aac', '-b:a', '128k', '-ac', '2', '-movflags', '+faststart', tmp];
       const prog = (p) => send('proxy:progress', { id, p });
       let ok = await ffRun([...base(true), ...proxyArgs(enc), ...tail], prog);
@@ -657,24 +689,52 @@ ipcMain.handle('shell:show', (_e, p) => shell.showItemInFolder(p));
 ipcMain.handle('media:peaks', (_e, file) => new Promise((resolve) => {
   const ff = ffmpegPath();
   if (!ff) return resolve(null);
-  const RATE = 4000, PER = RATE / 40;
-  const p = spawn(ff, ['-v', 'error', '-i', file, '-vn', '-ac', '1', '-ar', String(RATE), '-f', 'f32le', '-']);
+  const RATE = 2000, PER = RATE / 40;
+  const p = lowPri(spawn(ff, ['-v', 'error', '-i', file, '-vn', '-ac', '1', '-ar', String(RATE), '-f', 'f32le', '-'], { windowsHide: true }));
   const peaks = [];
   let cur = 0, n = 0, rest = Buffer.alloc(0), gotAudio = false;
   p.stdout.on('data', (d) => {
     gotAudio = true;
     const buf = rest.length ? Buffer.concat([rest, d]) : d;
     const usable = buf.length - (buf.length % 4);
-    for (let i = 0; i < usable; i += 4) {
-      const v = Math.abs(buf.readFloatLE(i));
+    // copy into an aligned float array (much faster than reading one number at a time)
+    const f = new Float32Array(usable / 4);
+    new Uint8Array(f.buffer).set(buf.subarray(0, usable));
+    for (let i = 0; i < f.length; i++) {
+      const v = f[i] < 0 ? -f[i] : f[i];
       if (v > cur) cur = v;
       if (++n >= PER) { peaks.push(cur); cur = 0; n = 0; }
     }
-    rest = buf.subarray(usable);
+    rest = Buffer.from(buf.subarray(usable));
   });
   p.on('close', () => { if (n) peaks.push(cur); resolve(gotAudio ? { peaks } : { peaks: [], silent: true }); });
   p.on('error', () => resolve(null));
 }));
+
+// ---------- Sharper frames for one part of a long video (when you zoom in on the timeline) ----------
+const rangeJobs = new Map();
+let rangeQueue = Promise.resolve();
+ipcMain.handle('media:stripRange', (_e, { file, start, len, iv }) => {
+  const ff = ffmpegPath();
+  if (!ff || !file || !(len > 0) || !(iv > 0)) return null;
+  let st; try { st = fs.statSync(file); } catch { return null; }
+  const n = Math.max(1, Math.min(200, Math.round(len / iv)));
+  const cols = 10, rows = Math.ceil(n / cols);
+  const key = require('crypto').createHash('md5').update([file, st.size, st.mtimeMs, start, len, iv].join('|')).digest('hex');
+  const out = path.join(ensureDir(path.join(dataDir(), 'cache', 'strips')), 'r' + key + '.jpg');
+  if (fs.existsSync(out)) return { file: out, n, cols, rows };
+  if (rangeJobs.has(key)) return rangeJobs.get(key);
+  // one at a time, low priority: the editor stays smooth
+  const run = () => new Promise((resolve) => {
+    const p = lowPri(spawn(ff, ['-v', 'error', '-y', '-ss', String(Math.max(0, start)), '-threads', bgThreads(), '-i', file, '-t', String(len), '-an',
+      '-vf', `fps=${(1 / iv).toFixed(6)},scale=-2:90,tile=${cols}x${rows}`, '-frames:v', '1', '-q:v', '5', out], { windowsHide: true }));
+    p.on('close', (code) => resolve(code === 0 && fs.existsSync(out) ? { file: out, n, cols, rows } : null));
+    p.on('error', () => resolve(null));
+  });
+  const job = (rangeQueue = rangeQueue.then(run, run)).finally(() => rangeJobs.delete(key));
+  rangeJobs.set(key, job);
+  return job;
+});
 
 // ---------- Video frames for the timeline (one picture sheet per video, cached) ----------
 const stripJobs = new Map();
@@ -682,7 +742,7 @@ ipcMain.handle('media:strip', (_e, { file, duration, count }) => {
   const ff = ffmpegPath();
   if (!ff || !file) return null;
   let st; try { st = fs.statSync(file); } catch { return null; }
-  const n = Math.max(4, Math.min(160, Math.round(count || 30)));
+  const n = Math.max(4, Math.min(600, Math.round(count || 30)));
   const cols = 10, rows = Math.ceil(n / cols);
   const key = require('crypto').createHash('md5').update(file + '|' + st.size + '|' + st.mtimeMs + '|' + n).digest('hex');
   const out = path.join(ensureDir(path.join(dataDir(), 'cache', 'strips')), key + '.jpg');
@@ -691,9 +751,15 @@ ipcMain.handle('media:strip', (_e, { file, duration, count }) => {
   const job = new Promise((resolve) => {
     const d = Math.max(0.1, +duration || 1);
     const vf = `fps=${(n / d).toFixed(6)},scale=-2:90,tile=${cols}x${rows}`;
-    const p = spawn(ff, ['-v', 'error', '-y', '-i', file, '-an', '-vf', vf, '-frames:v', '1', '-q:v', '5', out]);
-    p.on('close', (code) => resolve(code === 0 && fs.existsSync(out) ? { file: out, n, cols, rows } : null));
-    p.on('error', () => resolve(null));
+    // long videos: only decode keyframes (a 1-hour video takes seconds instead of minutes of full CPU)
+    const fast = d > 90;
+    const args = (kf) => ['-v', 'error', '-y', ...(kf ? ['-skip_frame', 'nokey'] : []), '-threads', bgThreads(), '-i', file, '-an', '-vf', vf, '-frames:v', '1', '-q:v', '5', out];
+    const go = (kf) => new Promise((res) => {
+      const p = lowPri(spawn(ff, args(kf), { windowsHide: true }));
+      p.on('close', (code) => res(code === 0 && fs.existsSync(out)));
+      p.on('error', () => res(false));
+    });
+    (async () => { let ok = await go(fast); if (!ok && fast) ok = await go(false); resolve(ok ? { file: out, n, cols, rows } : null); })();
   }).finally(() => stripJobs.delete(key));
   stripJobs.set(key, job);
   return job;
@@ -975,3 +1041,4 @@ app.whenReady().then(async () => {
 });
 
 app.on('window-all-closed', () => { if (process.platform !== 'darwin') app.quit(); });
+app.on('will-quit', killKids);

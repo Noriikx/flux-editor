@@ -316,7 +316,7 @@ function fxCard(c, fxo) {
     sel.onchange = () => { if (typeof ensureFont === 'function') ensureFont(sel.value); commit(() => { fxo[fk] = sel.value; }); };
     card.appendChild(row);
   }
-  for (const [k, label, mn, mx, d] of t.params) slider(card, label, { min: mn, max: mx, get: () => fxo[k], set: (v) => (fxo[k] = v), fmt: (v) => Math.round(v), def: d, live: false });
+  for (const [k, label, mn, mx, d, st] of t.params) slider(card, label, { min: mn, max: mx, step: st || 1, get: () => fxo[k], set: (v) => (fxo[k] = v), fmt: (v) => (st && st < 1 ? (+v).toFixed(2) : Math.round(v)), def: d, live: false });
   if (t.choice) {
     const [ck, cl, opts] = t.choice;
     const row = el('div', 'field'); row.innerHTML = '<label></label>'; row.firstChild.textContent = cl;

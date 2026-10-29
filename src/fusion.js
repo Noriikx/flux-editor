@@ -83,7 +83,7 @@ Object.assign(FX_EXTRA, {
 const FUSION_GROUPS = [
   ['Fusion basics', ['transform', 'colorcorrect', 'textplus', 'shape', 'background']],
   ['Blur & sharpen', ['gaussian', 'lens', 'directional', 'radial', 'zoom', 'mosaic', 'tiltshift', 'sharpen']],
-  ['Stylize', ['glow', 'dreamglow', 'chroma', 'vhs', 'cctv', 'scanlines', 'duotone', 'posterize', 'threshold', 'emboss', 'edges', 'sketch', 'halftone', 'invert', 'lightleak']],
+  ['Stylize', ['glow', 'dreamglow', 'chroma', 'glitch', 'vhs', 'cctv', 'scanlines', 'duotone', 'posterize', 'threshold', 'emboss', 'edges', 'sketch', 'halftone', 'invert', 'lightleak']],
   ['Shape & frame', ['shadow', 'rounded', 'border', 'letterbox', 'paper', 'mirror', 'kaleido']],
   ['Motion', ['shake', 'pulse']]
 ];

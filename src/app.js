@@ -11,7 +11,7 @@ const $$ = (s, r = document) => Array.from(r.querySelectorAll(s));
 const uid = () => Math.random().toString(36).slice(2, 10);
 const clamp = (v, a, b) => Math.min(b, Math.max(a, v));
 // Volume is stored as a gain (1 = original) but shown in decibels, like CapCut: -∞ … +20 dB, 0 dB = original
-const DB_MIN = -60, DB_MAX = 20;
+const DB_MIN = -60, DB_MAX = 40;
 const gainToDb = (g) => (g <= 0.001 ? DB_MIN : clamp(20 * Math.log10(g), DB_MIN, DB_MAX));
 const dbToGain = (d) => (d <= DB_MIN + 0.05 ? 0 : Math.pow(10, clamp(d, DB_MIN, DB_MAX) / 20));
 const fmtDb = (d) => (d <= DB_MIN + 0.05 ? '-∞ dB' : (d > 0.04 ? '+' : '') + (Math.round(d * 10) / 10).toFixed(1).replace(/\.0$/, '') + ' dB');
@@ -1803,8 +1803,10 @@ const tlScroll = $('#tlScroll');
 const tlContent = $('#tlContent');
 const tlLanes = $('#tlLanes');
 const tlRuler = $('#tlRuler');
-const zoomFromSlider = (v) => 8 * Math.pow(50, v / 100);
-const sliderFromZoom = (z) => (Math.log(z / 8) / Math.log(50)) * 100;
+// px per second: from 0.02 (10 hours fit on screen) to 400 (single frames)
+const ZOOM_MIN = 0.02, ZOOM_MAX = 400;
+const zoomFromSlider = (v) => ZOOM_MIN * Math.pow(ZOOM_MAX / ZOOM_MIN, v / 100);
+const sliderFromZoom = (z) => (Math.log(z / ZOOM_MIN) / Math.log(ZOOM_MAX / ZOOM_MIN)) * 100;
 
 function timelineWidth() {
   return Math.max(tlScroll.clientWidth, (projectDuration() + 30) * state.zoom);
@@ -1907,12 +1909,15 @@ function renderRuler() {
   const w = timelineWidth();
   tlContent.style.width = w + 'px';
   tlRuler.innerHTML = '';
-  const steps = [0.1, 0.2, 0.5, 1, 2, 5, 10, 15, 30, 60, 120, 300, 600];
-  const step = steps.find((s) => s * state.zoom >= 90) || 600;
-  const minor = step / (step === 15 || step === 30 ? 3 : 5);
-  const total = w / state.zoom;
+  const steps = [0.1, 0.2, 0.5, 1, 2, 5, 10, 15, 30, 60, 120, 300, 600, 900, 1800, 3600, 7200, 14400, 28800];
+  const step = steps.find((s) => s * state.zoom >= 90) || 28800;
+  const minor = step / (step === 15 || step === 30 || step === 900 || step === 1800 ? 3 : step >= 3600 ? 4 : 5);
+  // only the ticks you can see (plus a screen either side) - long projects used to make tens of thousands of them
+  const vw = tlScroll.clientWidth || 1600;
+  const tA = Math.max(0, (tlScroll.scrollLeft - vw) / state.zoom), tB = Math.min(w / state.zoom, (tlScroll.scrollLeft + vw * 2) / state.zoom);
+  tlRuler._drawn = [tlScroll.scrollLeft - vw * 0.5, tlScroll.scrollLeft + vw * 0.5];
   const frag = document.createDocumentFragment();
-  for (let i = 0; i * minor <= total; i++) {
+  for (let i = Math.floor(tA / minor); i * minor <= tB; i++) {
     const t = i * minor;
     const major = Math.abs(t / step - Math.round(t / step)) < 1e-6;
     const tick = el('div', 'tick' + (major ? '' : ' minor'));
@@ -1991,7 +1996,7 @@ const stripLoading = new Set();
 function loadStrip(m) {
   if (!m || !api || !api.mediaStrip || stripLoading.has(m.id) || rt.strips.has(m.id) || !m.duration) return;
   stripLoading.add(m.id);
-  const count = clamp(Math.round(m.duration / (lowEnd() ? 2 : 1)), 8, lowEnd() ? 80 : 160);
+  const count = clamp(Math.round(m.duration / (lowEnd() ? 2 : 1)), 8, lowEnd() ? 300 : 600);
   api.mediaStrip({ file: m.path, duration: m.duration, count }).then((r) => {
     if (!r) return;
     const img = new Image();
@@ -1999,34 +2004,83 @@ function loadStrip(m) {
     img.src = api.mediaUrl(r.file);
   }).finally(() => stripLoading.delete(m.id));
 }
+// Zoomed in on a long video: the overview sheet has too few frames, so load sharper sheets for just the part on screen.
+// Levels: one frame every 1 s (chunks of 100 s) or every 0.25 s (chunks of 25 s).
+const DETAIL_LEVELS = [{ iv: 1, chunk: 100 }, { iv: 0.25, chunk: 25 }];
+rt.detail = rt.detail || new Map();
+let detailPending = 0;
+function detailSheet(m, lvl, ci) {
+  const key = m.id + '|' + lvl.iv + '|' + ci;
+  const d = rt.detail.get(key);
+  if (d) return d === 'loading' || d === 'failed' ? null : d;
+  if (!api || !api.mediaStripRange || detailPending > 6) return null;
+  rt.detail.set(key, 'loading'); detailPending++;
+  const start = ci * lvl.chunk, len = Math.min(lvl.chunk, Math.max(0.1, m.duration - start));
+  api.mediaStripRange({ file: m.path, start, len, iv: lvl.iv }).then((r) => {
+    if (!r) { rt.detail.set(key, 'failed'); return; }
+    const img = new Image();
+    img.onload = () => { rt.detail.set(key, { img, url: api.mediaUrl(r.file), n: r.n, cols: r.cols, rows: r.rows, start, iv: lvl.iv }); refreshFilmstrips(); };
+    img.onerror = () => rt.detail.set(key, 'failed');
+    img.src = api.mediaUrl(r.file);
+  }).catch(() => rt.detail.set(key, 'failed')).finally(() => { detailPending--; });
+  return null;
+}
+let filmRaf = 0;
+function refreshFilmstrips() { if (filmRaf) return; filmRaf = requestAnimationFrame(() => { filmRaf = 0; for (const cv of filmCache.values()) cv._stale = true; fillFilmstrips(); }); }
 // Fill each video clip with frames from its own part of the video.
+// The frames are drawn into one canvas per clip (only the part near the screen) and the canvas is reused
+// when the timeline redraws - smooth even while dragging a 1-hour clip.
+const filmCache = new Map(); // clip id -> canvas (with ._sig and ._range)
 function fillFilmstrips() {
+  const dpr = Math.min(2, window.devicePixelRatio || 1);
+  const seen = new Set();
   for (const ce of $$('.clip.kind-video', tlLanes)) {
     const c = getClip(ce.dataset.id), m = c && getMedia(c.mediaId);
     if (!c || !m) continue;
     const st = rt.strips.get(m.id);
     if (!st) { loadStrip(m); continue; }
-    let film = $('.film', ce);
-    if (!film) { film = el('div', 'film'); ce.insertBefore(film, ce.firstChild); }
-    film.className = 'film frames';
-    film.style.backgroundImage = '';
-    const h = ce.clientHeight || 40, w = ce.clientWidth;
+    seen.add(c.id);
+    const h = ce.clientHeight || 40, w = dur(c) * state.zoom;
     const tw = Math.max(16, h * st.ar);
-    const n = Math.min(400, Math.ceil(w / tw) + 1);
-    if (film._sig === `${n}|${tw}|${c.in}|${c.out}|${w}`) continue;
-    film._sig = `${n}|${tw}|${c.in}|${c.out}|${w}`;
-    film.innerHTML = '';
-    for (let k = 0; k < n; k++) {
-      const t = c.in + Math.min(1, ((k + 0.5) * tw) / Math.max(1, w)) * (c.out - c.in);
-      const idx = clamp(Math.floor((t / m.duration) * st.n), 0, st.n - 1);
-      const f = el('i');
-      f.style.width = tw + 'px';
-      f.style.backgroundImage = `url("${st.url}")`;
-      f.style.backgroundSize = `${st.cols * 100}% ${st.rows * 100}%`;
-      f.style.backgroundPosition = `${st.cols > 1 ? ((idx % st.cols) / (st.cols - 1)) * 100 : 0}% ${st.rows > 1 ? (Math.floor(idx / st.cols) / (st.rows - 1)) * 100 : 0}%`;
-      film.appendChild(f);
+    const nTiles = Math.ceil(w / tw);
+    const vw = tlScroll.clientWidth || 1600, left = c.start * state.zoom;
+    const visL = tlScroll.scrollLeft - left, visR = visL + vw;
+    const sig = `${tw}|${h}|${c.in}|${c.out}|${w}|${st.n}|${dpr}`;
+    let cv = filmCache.get(c.id);
+    const fits = cv && cv._sig === sig && visL >= cv._range[0] && visR <= cv._range[1] && !cv._stale;
+    if (!fits) {
+      const k0 = Math.max(0, Math.floor((visL - vw) / tw)), k1 = Math.max(k0, Math.min(nTiles, Math.ceil((visR + vw) / tw)));
+      if (!cv) { cv = document.createElement('canvas'); cv.className = 'film frames'; filmCache.set(c.id, cv); }
+      cv._sig = sig; cv._stale = false;
+      cv._range = [k0 === 0 ? -Infinity : k0 * tw + vw * 0.5, k1 >= nTiles ? Infinity : k1 * tw - vw * 0.5];
+      const W = Math.max(1, Math.round((k1 - k0) * tw));
+      cv.width = Math.round(W * dpr); cv.height = Math.round(h * dpr);
+      cv.style.left = k0 * tw + 'px'; cv.style.width = W + 'px';
+      const g = cv.getContext('2d');
+      g.setTransform(dpr, 0, 0, dpr, 0, 0);
+      g.fillStyle = '#0b0b12'; g.fillRect(0, 0, W, h);
+      // how many seconds of video one tile covers, and the matching detail level (if the overview is too coarse)
+      const secPerTile = (tw / Math.max(1e-6, w)) * (c.out - c.in), baseIv = m.duration / st.n;
+      const lvl = secPerTile < baseIv * 0.75 ? (secPerTile < 0.6 ? DETAIL_LEVELS[1] : DETAIL_LEVELS[0]) : null;
+      for (let k = k0; k < k1; k++) {
+        const t = c.in + Math.min(1, ((k + 0.5) * tw) / Math.max(1, w)) * (c.out - c.in);
+        let sh = st, idx = clamp(Math.round((t / m.duration) * st.n - 0.5), 0, st.n - 1);
+        if (lvl && lvl.iv < baseIv) {
+          const d = detailSheet(m, lvl, Math.floor(t / lvl.chunk));
+          if (d) { sh = d; idx = clamp(Math.floor((t - d.start) / d.iv), 0, d.n - 1); }
+        }
+        const img = sh.img;
+        if (!img || !img.naturalWidth) continue;
+        const cw = img.naturalWidth / sh.cols, chh = img.naturalHeight / sh.rows;
+        g.drawImage(img, (idx % sh.cols) * cw, Math.floor(idx / sh.cols) * chh, cw, chh, (k - k0) * tw, 0, tw, h);
+        g.fillStyle = 'rgba(0,0,0,.45)'; g.fillRect((k - k0 + 1) * tw - 1, 0, 1, h);
+      }
     }
+    // put it in the (possibly freshly rebuilt) clip, under everything else
+    const old = $('.film', ce);
+    if (old !== cv) { if (old) old.remove(); ce.insertBefore(cv, ce.firstChild); }
   }
+  for (const id of filmCache.keys()) if (!seen.has(id) && !getClip(id)) filmCache.delete(id);
 }
 function cloneCanvas(src) {
   const c = document.createElement('canvas');
@@ -2087,7 +2141,7 @@ function renderLanes() {
         }
         // level marks in dB (0 dB = original loudness)
         const grid = el('div', 'vol-grid');
-        grid.innerHTML = [10, 0, -10, -20, -40].map((d) => `<i class="${d === 0 ? 'zero' : ''}" style="top:${volLineTop(dbToGain(d))}%">${d === 0 ? '<b>0 dB</b>' : ''}</i>`).join('');
+        grid.innerHTML = [40, 20, 0, -20, -40].map((d) => `<i class="${d === 0 ? 'zero' : ''}" style="top:${volLineTop(dbToGain(d))}%">${d === 0 ? '<b>0 dB</b>' : ''}</i>`).join('');
         ce.appendChild(grid);
         // volume line: drag it up or down to change the loudness
         const vl = el('div', 'vol-line' + (c.keys && c.keys.volume && c.keys.volume.length ? ' keyed' : ''));
@@ -2179,7 +2233,7 @@ function renderLanes() {
   }
   fillFilmstrips();
 }
-// +20 dB at the top of the clip, silent at the bottom, 0 dB a quarter of the way down
+// +40 dB at the top of the clip, silent at the bottom, 0 dB a bit above the middle
 // keep the dB label next to the mouse (long clips go off screen) and below the line when it is near the top
 function placeVolTag(line, clientX) {
   const tag = line.firstChild, ce = line.closest('.clip');
@@ -2202,6 +2256,10 @@ tlScroll.addEventListener('scroll', () => {
   if (waveScrollRaf) return;
   waveScrollRaf = requestAnimationFrame(() => {
     waveScrollRaf = 0;
+    // ruler + filmstrips only hold what's near the screen: refresh when scrolled away from it
+    const dr = tlRuler._drawn;
+    if (!dr || tlScroll.scrollLeft < dr[0] || tlScroll.scrollLeft > dr[1]) renderRuler();
+    fillFilmstrips();
     for (const wv of tlLanes.querySelectorAll('.clip.kind-audio .wave')) {
       const ce = wv.closest('.clip'), c = getClip(ce.dataset.id);
       if (!c) continue;
@@ -2238,7 +2296,7 @@ function scrollTimelineTo(t) {
 }
 function setZoom(z, anchorTime) {
   const old = state.zoom;
-  state.zoom = clamp(z, 8, 400);
+  state.zoom = clamp(z, ZOOM_MIN, ZOOM_MAX);
   if (old === state.zoom) return;
   const at = anchorTime ?? state.time;
   const screenX = at * old - tlScroll.scrollLeft;
@@ -2430,7 +2488,7 @@ function trySnap(values, excludeId) {
     tlLanes.setPointerCapture(e.pointerId);
   });
 
-  tlLanes.addEventListener('pointermove', (e) => {
+  function onLanesMove(e) {
     if (!drag) return;
     if (drag.mode === 'scrub') { scrub(e); return; }
     if (drag.mode === 'box') {
@@ -2556,6 +2614,14 @@ function trySnap(values, excludeId) {
     }
     renderLanes();
     requestDraw();
+  }
+  // gaming mice send up to 1000 moves a second: handle at most one per screen refresh (smooth even with 1-hour clips)
+  let lanesMoveEv = null, lanesMoveRaf = 0;
+  const flushLanesMove = () => { lanesMoveRaf = 0; const ev = lanesMoveEv; lanesMoveEv = null; if (ev) onLanesMove(ev); };
+  tlLanes.addEventListener('pointermove', (e) => {
+    if (!drag) return;
+    lanesMoveEv = e;
+    if (!lanesMoveRaf) lanesMoveRaf = requestAnimationFrame(flushLanesMove);
   });
 
   function laneChanged(e) {
@@ -2564,6 +2630,7 @@ function trySnap(values, excludeId) {
   }
 
   const end = () => {
+    if (lanesMoveEv) { cancelAnimationFrame(lanesMoveRaf); flushLanesMove(); }
     if (!drag) return;
     showSnap(null);
     if (drag.mode === 'pan') { tlLanes.classList.remove('panning'); drag = null; return; }

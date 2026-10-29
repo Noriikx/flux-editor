@@ -380,7 +380,7 @@ function setupGraphCanvas(cv) {
         b.k.t = clamp(b.t + dt, lo, hi);
         let v = b.v + dv;
         if (graph.prop === 'opacity') v = clamp(v, 0, 1);
-        if (graph.prop === 'volume') v = clamp(v, 0, 10);
+        if (graph.prop === 'volume') v = clamp(v, 0, 100);
         if (graph.prop === 'scale') v = Math.max(0.01, v);
         b.k.v = v;
       }

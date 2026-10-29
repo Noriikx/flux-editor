@@ -134,6 +134,12 @@ function showAuth(note) {
 }
 
 /* ---------------- account button + window ---------------- */
+// owner only: the admin panel in its own window, already signed in
+function openAdminPanel() {
+  const a = settings.account;
+  if (!a || !a.admin || !a.token) return;
+  if (api && api.openAdmin) api.openAdmin(a.token); else window.open(ADMIN_URL);
+}
 function updateAccountButton() {
   const b = $('#btnAccount');
   if (!b) return;
@@ -141,6 +147,11 @@ function updateAccountButton() {
   b.querySelector('span').textContent = a ? (a.email[0] || '?').toUpperCase() : '?';
   b.dataset.tip = a ? a.email : 'Account';
   b.classList.toggle('pro', isPremium());
+  // owner: a shield button next to the account button opens the admin panel
+  let ad = $('#btnAdmin');
+  if (a && a.admin) {
+    if (!ad) { ad = el('button', 'icon-btn admin-btn', '<svg viewBox="0 0 24 24"><path d="M12 3 4 6v6c0 4.6 3.4 8.3 8 9 4.6-.7 8-4.4 8-9V6z"/><path d="m9 12 2 2 4-4"/></svg>'); ad.id = 'btnAdmin'; ad.dataset.tip = 'Admin panel (only you can see this)'; ad.onclick = openAdminPanel; b.parentNode.insertBefore(ad, b); }
+  } else if (ad) ad.remove();
 }
 
 function openAccount() {
@@ -167,7 +178,7 @@ function openAccount() {
   $('[data-a=close]', box).onclick = closeModal;
   $('[data-a=out]', box).onclick = () => { closeModal(); signOut(); };
   const buy = $('[data-a=buy]', box); if (buy) buy.onclick = () => { closeModal(); openCheckout(); };
-  const adm = $('[data-a=admin]', box); if (adm) adm.onclick = () => api && api.openExternal ? api.openExternal(ADMIN_URL) : window.open(ADMIN_URL);
+  const adm = $('[data-a=admin]', box); if (adm) adm.onclick = () => { closeModal(); openAdminPanel(); };
   $('[data-a=refresh]', box).onclick = async (e) => { e.target.textContent = 'Checking…'; await refreshAccount(true); openAccount(); };
   $('[data-a=pw]', box).onclick = () => {
     const b2 = modal(`<h2>Change password</h2>

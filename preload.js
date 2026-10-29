@@ -67,6 +67,7 @@ contextBridge.exposeInMainWorld('flux', {
 
   // premium licence
   mediaStrip: (opts) => ipcRenderer.invoke('media:strip', opts),
+  mediaStripRange: (opts) => ipcRenderer.invoke('media:stripRange', opts),
   mediaPeaks: (file) => ipcRenderer.invoke('media:peaks', file),
   licenseVerify: (opts) => ipcRenderer.invoke('license:verify', opts),
   licenseActivate: (key) => ipcRenderer.invoke('license:activate', key),
@@ -76,5 +77,6 @@ contextBridge.exposeInMainWorld('flux', {
   updateCheck: () => ipcRenderer.invoke('update:check'),
   updateInstall: () => ipcRenderer.invoke('update:install'),
   onUpdateProgress: (cb) => ipcRenderer.on('update:progress', (_e, v) => cb(v)),
-  openExternal: (url) => ipcRenderer.invoke('app:openExternal', url)
+  openExternal: (url) => ipcRenderer.invoke('app:openExternal', url),
+  openAdmin: (token) => ipcRenderer.invoke('admin:open', token)
 });

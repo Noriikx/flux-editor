@@ -757,6 +757,7 @@ body.recording #playhead::before { background: #ff4d6d; box-shadow: 0 0 8px #ff4
 .auth-quit { border: 0; background: none; color: var(--muted); margin-top: 8px; cursor: pointer; font: inherit; font-size: 12px; }
 .auth-quit:hover { color: var(--text); }
 .acct-btn span { width: 26px; height: 26px; border-radius: 50%; display: grid; place-items: center; background: var(--accent-soft); color: var(--accent-2); font-weight: 700; font-size: 12.5px; }
+.admin-btn svg { stroke: #ffd23f; }
 .acct-btn.pro span { background: linear-gradient(135deg, #ffd23f, #ff9f43); color: #2a1a00; }
 .acct-row { display: flex; gap: 12px; align-items: center; margin: 10px 0 16px; }
 .acct-row b { display: block; }
@@ -806,8 +807,8 @@ body.recording #playhead::before { background: #ff4d6d; box-shadow: 0 0 8px #ff4
 .clip.kind-audio .wave { left: 0; bottom: 0; height: 100%; opacity: 1; transform: none !important; image-rendering: auto; }
 .clip.kind-audio { background: linear-gradient(180deg, #23704f, #17513a); }
 .clip.kind-audio .label { left: 6px; right: auto; max-width: calc(100% - 12px); top: 3px; padding: 0 5px; border-radius: 4px; background: rgba(8, 30, 20, .55); line-height: 15px; }
-.clip .film.frames { display: flex; opacity: .9; background: #0b0b12; overflow: hidden; }
-.clip .film.frames i { flex: none; height: 100%; border-right: 1px solid rgba(0,0,0,.45); }
+.clip .film.frames { display: block; opacity: .9; background: #0b0b12; top: 0; bottom: auto; height: 100%; right: auto; }
+.clip .film.frames i { position: absolute; top: 0; height: 100%; border-right: 1px solid rgba(0,0,0,.45); }
 .clip.kind-video .label { left: 6px; right: auto; max-width: calc(100% - 12px); padding: 0 5px; border-radius: 4px; background: rgba(20, 16, 50, .6); line-height: 15px; top: 3px; }
 .t-slideLeft .b { animation-name: tSlideL; } .t-slideDown .b { animation-name: tSlideD; }
 .t-pushRight .b { animation-name: tSlideL; } .t-pushDown .b { animation-name: tSlideD; }
