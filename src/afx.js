@@ -1,4 +1,4 @@
-/* Flux — audio effects for any clip with sound: Fairlight EQ, De-esser, Noise reduction, Delay, Limiter, Reverb.
+/* Flux — audio effects for any clip with sound: Fairlight EQ, De-esser, Noise reduction, Delay, Limiter, Reverb (more in afx2.js).
    They sit in the clip's own sound chain, so you hear them while editing and they're in the export too. */
 'use strict';
 const hz = (v) => (v >= 1000 ? (v / 1000).toFixed(v >= 10000 ? 0 : 1) + 'k' : Math.round(v)) + 'Hz';
@@ -230,7 +230,7 @@ function audioFxInspector(body, c) {
       card.appendChild(row);
     }
     for (const [k, label, mn, mx, d, f] of t.params) {
-      const step = mx - mn > 2000 ? 10 : mx - mn > 200 ? 5 : mx - mn <= 30 ? 0.5 : 1;
+      const step = mx - mn > 2000 ? 10 : mx - mn > 200 ? 5 : mx - mn <= 2 ? 0.05 : mx - mn <= 10 ? 0.1 : mx - mn <= 30 ? 0.5 : 1;
       slider(card, label, { min: mn, max: mx, step, get: () => fxo[k], set: (v) => { fxo[k] = v; if (curve) drawEqCurve(curve, fxo); }, fmt: f, def: d, live: false });
     }
     s.appendChild(card);

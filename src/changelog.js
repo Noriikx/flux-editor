@@ -1,6 +1,11 @@
 /* Flux — changelog. Shown once after an update, and any time from Settings → About. */
 'use strict';
 const CHANGELOG = [
+  { v: '4.15.0', date: '2026-10-29', items: [
+    '19 new audio effects (select a clip with sound → Audio effects → + Add): Ultra loud (distorted), Distortion, Bitcrusher / 8-bit, Glitch, Pitch (chipmunk / deep voice), Robot, Telephone, Walkie-talkie, Megaphone, Underwater, Far away, Chorus, Flanger, Phaser, Tremolo, Wobble, Auto-pan, Bass boost and Lo-fi / vinyl',
+    'They play live while you edit and are in your export. All free',
+    'The audio effect menu is sorted into groups (Loud & broken, Voice changers, Movement, Tone, Space, Clean up)'
+  ] },
   { v: '4.14.0', date: '2026-10-29', items: [
     'Updates no longer reinstall Flux: most updates now just swap in the new version when Flux restarts (much smaller download), and your taskbar / desktop shortcuts stay',
     'New in the Music tab: "Free for YouTube" - 882 hand-checked songs (Komiku, Monplaisir, Loyalty Freak Music, Audionautix, Rolemusic). Original music only, commercial use OK, most need no credit at all',

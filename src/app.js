@@ -2848,7 +2848,7 @@ function contextMenu(x, y, items) {
   const menu = el('div', 'ctx-menu');
   Object.assign(menu.style, {
     position: 'fixed', zIndex: 90, background: '#1a1a25', border: '1px solid var(--line-2)', borderRadius: '10px',
-    padding: '5px', minWidth: '190px', boxShadow: '0 16px 40px rgba(0,0,0,.55)'
+    padding: '5px', minWidth: '190px', boxShadow: '0 16px 40px rgba(0,0,0,.55)', maxHeight: 'calc(100vh - 8px)', overflowY: 'auto'
   });
   for (const it of items) {
     const b = el('button');
