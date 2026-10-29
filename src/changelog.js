@@ -1,6 +1,11 @@
 /* Flux — changelog. Shown once after an update, and any time from Settings → About. */
 'use strict';
 const CHANGELOG = [
+  { v: '4.14.0', date: '2026-10-29', items: [
+    'Updates no longer reinstall Flux: most updates now just swap in the new version when Flux restarts (much smaller download), and your taskbar / desktop shortcuts stay',
+    'New in the Music tab: "Free for YouTube" - 882 hand-checked songs (Komiku, Monplaisir, Loyalty Freak Music, Audionautix, Rolemusic). Original music only, commercial use OK, most need no credit at all',
+    'Removed the old public domain search (it had odd recordings and book readings)'
+  ] },
   { v: '4.13.0', date: '2026-10-29', items: [
     'Zoom the timeline out much further - a 10-hour project fits on one screen',
     'Long videos (1 hour+) are smooth: no more mouse stutter while they import, optimize or get dragged around',

@@ -8,6 +8,7 @@ permissions:
 jobs:
   build:
     strategy:
+      fail-fast: false
       matrix:
         include:
           - os: windows-latest
@@ -24,9 +25,19 @@ jobs:
           node-version: 22
       - run: npm install
       - run: npx electron-builder ${{ matrix.args }} --publish never
+      # quick updates: just Flux's own code (app.asar) + what it needs to match, so updating doesn't reinstall
+      - name: Quick-update files (Windows)
+        if: runner.os == 'Windows'
+        shell: bash
+        run: |
+          cp dist/win-unpacked/resources/app.asar dist/Flux-app.asar
+          node -e "const fs=require('fs'),r='dist/win-unpacked/resources/app.asar.unpacked/node_modules/';const v=(n)=>{try{return JSON.parse(fs.readFileSync(r+n+'/package.json','utf8')).version}catch{return null}};fs.writeFileSync('dist/Flux-app.json',JSON.stringify({version:require('./package.json').version,electronMajor:require('electron/package.json').version.split('.')[0],unpacked:Object.fromEntries(['ffmpeg-static','onnxruntime-node','@huggingface/transformers','sharp'].map(n=>[n,v(n)]))}))"
+          cat dist/Flux-app.json
       - uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ github.event.release.tag_name }}
           files: |
             dist/*.exe
             dist/*.dmg
+            dist/Flux-app.asar
+            dist/Flux-app.json

@@ -1,12 +1,13 @@
 /* =====================================================================
    Flux — Music tab: free music you can use in videos.
    Sources: Kevin MacLeod / incompetech.com (CC BY 4.0, credit needed)
-            Internet Archive audio marked Public Domain / CC0 / CC BY
+            "Free for YouTube": hand-checked CC0 / CC BY originals (freemusic.js)
+            Sound effects made by Flux (sfx.js)
    ===================================================================== */
 'use strict';
 
 const music = {
-  source: 'km',          // 'km' = Kevin MacLeod, 'pd' = Internet Archive
+  source: 'km',          // 'km' = Kevin MacLeod, 'free' = checked free music, 'sfx' = sound effects
   catalog: null,         // Kevin MacLeod track list
   query: '',
   mood: '',
@@ -19,7 +20,6 @@ const music = {
   error: null
 };
 let musicPreview = null;
-const PD_PRESETS = ['Piano', 'Classical', 'Jazz', 'Ambient', 'Guitar', 'Orchestra', 'Electronic', 'Blues', 'Acoustic', 'Lofi', 'Cinematic', 'Folk'];
 const KM_MOODS = ['Happy', 'Calm', 'Epic', 'Dark', 'Funny', 'Action', 'Romantic', 'Mysterious', 'Bright', 'Relaxed', 'Suspense', 'Uplifting', 'Somber', 'Grooving'];
 
 function parseLen(v) {
@@ -68,54 +68,19 @@ async function loadKM() {
   renderMusic();
 }
 
-async function searchPD(reset = true) {
-  if (reset) { music.pdPage = 1; music.pdItems = []; music.pdOpen.clear(); }
-  music.loading = true; music.error = null; renderMusic();
-  const q = music.query || music.mood || 'music';
-  try {
-    let r;
-    if (api && api.musicArchiveSearch) r = await api.musicArchiveSearch({ q, page: music.pdPage });
-    else {
-      const query = `(${q}) AND mediatype:audio AND licenseurl:*publicdomain* AND collection:(musopen OR georgeblood OR 78rpm OR audio_music OR netlabels) AND -collection:(librivoxaudio OR audio_bookspoetry OR oldtimeradio OR podcasts OR radioprograms OR audio_religion) AND -subject:(audiobook OR librivox OR podcast OR poetry OR speech OR lecture OR radio OR story) AND -title:(chapter OR audiobook OR librivox OR episode)`;
-      const url = `https://archive.org/advancedsearch.php?q=${encodeURIComponent(query)}&fl[]=identifier&fl[]=title&fl[]=creator&fl[]=licenseurl&sort[]=downloads+desc&rows=30&page=${music.pdPage}&output=json`;
-      const j = await (await fetch(url)).json();
-      r = { total: j.response.numFound, items: j.response.docs.map((d) => ({ id: d.identifier, title: d.title, creator: Array.isArray(d.creator) ? d.creator.join(', ') : d.creator, license: d.licenseurl })) };
-    }
-    music.pdTotal = r.total || 0;
-    music.pdItems = music.pdItems.concat(r.items || []);
-  } catch (e) {
-    console.warn(e);
-    music.error = "Couldn't search the Internet Archive right now. Try again in a moment.";
-  }
-  music.loading = false;
-  renderMusic();
-}
-
-async function openPDItem(item) {
-  if (music.pdOpen.has(item.id)) { music.pdOpen.delete(item.id); renderMusic(); return; }
-  music.pdOpen.set(item.id, 'loading');
-  renderMusic();
-  try {
-    let tracks;
-    if (api && api.musicArchiveTracks) tracks = await api.musicArchiveTracks(item.id);
-    else {
-      const j = await (await fetch('https://archive.org/metadata/' + encodeURIComponent(item.id))).json();
-      tracks = (j.files || []).filter((f) => /mp3/i.test(f.format || '') || /\.mp3$/i.test(f.name)).map((f) => ({
-        name: f.name, title: f.title || f.name.replace(/\.mp3$/i, ''), length: parseLen(f.length),
-        url: `https://archive.org/download/${encodeURIComponent(item.id)}/${f.name.split('/').map(encodeURIComponent).join('/')}`
-      }));
-    }
-    const lic = licenseInfo(item.license);
-    music.pdOpen.set(item.id, (tracks || []).slice(0, 60).map((t) => ({
-      title: t.title, artist: item.creator || 'Unknown artist', url: t.url, fileName: t.name.split('/').pop(), length: parseLen(t.length),
-      license: lic.name,
-      credit: `"${t.title}" by ${item.creator || 'Unknown artist'} - Internet Archive (archive.org/details/${item.id}) - ${lic.name}`
-    })));
-  } catch (e) {
-    console.warn(e);
-    music.pdOpen.set(item.id, []);
-  }
-  renderMusic();
+// "Free for YouTube": a hand-checked list of CC0 / CC BY originals (see freemusic.js)
+const FREE_CHIPS = ['No credit needed', 'Komiku', 'Monplaisir', 'Loyalty Freak Music', 'Audionautix', 'Rolemusic'];
+let freeTracks = null;
+function freeMusicList() {
+  if (freeTracks) return freeTracks;
+  freeTracks = (typeof FREE_MUSIC !== 'undefined' ? FREE_MUSIC : []).map(([title, artist, len, p, album, cc0, lic, licUrl, group]) => ({
+    title, artist, length: len, album, group, cc0: !!cc0,
+    url: 'https://archive.org/download/' + p,
+    fileName: decodeURIComponent(p.split('/').pop()),
+    license: cc0 ? 'CC0 · no credit' : lic,
+    credit: cc0 ? '' : `"${title}" by ${artist} - ${group === 'Audionautix' ? 'audionautix.com' : 'archive.org/details/' + p.split('/')[0]}\nLicensed under ${lic}: ${licUrl}`
+  }));
+  return freeTracks;
 }
 
 function stopMusicPreview() {
@@ -188,8 +153,8 @@ function trackRow(t) {
   $('.mtitle', row).title = t.description || t.title;
   const lic = $('.mlic', row);
   lic.textContent = t.license;
-  lic.classList.toggle('free', /public domain|cc0/i.test(t.license));
-  lic.dataset.tip = /public domain|cc0/i.test(t.license) ? 'No credit needed' : 'Free to use - give credit in your video description';
+  lic.classList.toggle('free', /public domain|cc0|no credit/i.test(t.license));
+  lic.dataset.tip = /public domain|cc0|no credit/i.test(t.license) ? 'No credit needed' : 'Free to use - give credit in your video description';
   $('.mplay', row).onclick = () => previewTrack(t, row);
   $('.madd', row).onclick = () => addTrackToTimeline(t, row);
   row.addEventListener('dblclick', () => addTrackToTimeline(t, row));
@@ -203,12 +168,12 @@ function renderMusic() {
   $$('#musicSource button').forEach((b) => b.classList.toggle('active', b.dataset.src === music.source));
   const chipsBox = $('#musicMoods');
   chipsBox.innerHTML = '';
-  for (const m of music.source === 'km' ? KM_MOODS : music.source === 'sfx' ? SFX_CATS : PD_PRESETS) {
+  for (const m of music.source === 'km' ? KM_MOODS : music.source === 'sfx' ? SFX_CATS : FREE_CHIPS) {
     const b = el('button', 'chip' + (music.mood === m ? ' active' : ''));
     b.textContent = m;
     b.onclick = () => {
       music.mood = music.mood === m ? '' : m;
-      if (music.source === 'pd') { music.query = ''; $('#musicSearch').value = ''; searchPD(); } else renderMusic();
+      renderMusic();
     };
     chipsBox.appendChild(b);
   }
@@ -216,7 +181,7 @@ function renderMusic() {
   list.innerHTML = '';
   const status = $('#musicStatus');
   status.textContent = '';
-  if (music.error && music.source !== 'sfx') { status.textContent = music.error; const b = el('button', 'btn ghost', 'Try again'); b.onclick = () => (music.source === 'km' ? loadKM() : searchPD()); status.appendChild(el('br')); status.appendChild(b); }
+  if (music.error && music.source === 'km') { status.textContent = music.error; const b = el('button', 'btn ghost', 'Try again'); b.onclick = () => loadKM(); status.appendChild(el('br')); status.appendChild(b); }
 
   if (music.source === 'sfx') {
     $('#musicNote').textContent = 'Made by Flux - free for anything, no credit needed. Click ▶ to listen, + or drag to add.';
@@ -243,35 +208,16 @@ function renderMusic() {
     list.appendChild(frag);
     $('#musicCount').textContent = `${items.length} of ${music.catalog.length} songs`;
   } else {
-    $('#musicNote').textContent = 'Music only: classical, old jazz & 78rpm records and netlabel music marked public domain. Always check the license on the item page.';
-    if (!music.pdItems.length) {
-      if (music.loading) status.textContent = 'Searching the Internet Archive…';
-      else if (!music.error) status.textContent = 'Search for a style or instrument, or pick one above.';
-    }
-    for (const item of music.pdItems) {
-      const lic = licenseInfo(item.license);
-      const head = el('div', 'mitem' + (music.pdOpen.has(item.id) ? ' open' : ''));
-      head.innerHTML = `<span class="chev">›</span><div class="minfo"><div class="mtitle"></div><div class="msub"></div></div><span class="mlic"></span>`;
-      $('.mtitle', head).textContent = item.title || item.id;
-      $('.msub', head).textContent = item.creator || 'Unknown artist';
-      $('.mlic', head).textContent = lic.name;
-      $('.mlic', head).classList.toggle('free', !lic.credit);
-      head.onclick = () => openPDItem(item);
-      list.appendChild(head);
-      const open = music.pdOpen.get(item.id);
-      if (open === 'loading') list.appendChild(el('div', 'msub mindent', 'Loading tracks…'));
-      else if (Array.isArray(open)) {
-        if (!open.length) list.appendChild(el('div', 'msub mindent', 'No MP3 tracks in this item.'));
-        open.forEach((t) => { const r = trackRow(t); r.classList.add('nested'); list.appendChild(r); });
-      }
-    }
-    if (music.pdItems.length && music.pdItems.length < music.pdTotal) {
-      const more = el('button', 'btn ghost', music.loading ? 'Loading…' : 'Load more');
-      more.style.cssText = 'width:100%;justify-content:center;margin-top:8px';
-      more.onclick = () => { music.pdPage++; searchPD(false); };
-      list.appendChild(more);
-    }
-    $('#musicCount').textContent = music.pdTotal ? `${music.pdTotal.toLocaleString()} results` : '';
+    $('#musicNote').textContent = 'Checked for YouTube & TikTok: original music, CC0 (no credit) or CC BY (add the credit - Flux keeps it under Credits). Commercial use OK.';
+    const q = music.query.toLowerCase(), mood = music.mood;
+    const all = freeMusicList();
+    const items = all.filter((t) => (!q || (t.title + ' ' + t.artist + ' ' + t.album).toLowerCase().includes(q))
+      && (!mood || (mood === 'No credit needed' ? t.cc0 : t.group === mood)));
+    if (!items.length) status.textContent = 'No songs match. Try another word.';
+    const frag = document.createDocumentFragment();
+    items.slice(0, 400).forEach((t) => { const r = trackRow(t); $('.msub', r).textContent = [t.artist, t.length ? fmt(t.length, false) : '', t.album].filter(Boolean).join(' · '); frag.appendChild(r); });
+    list.appendChild(frag);
+    $('#musicCount').textContent = `${items.length} of ${all.length} songs`;
   }
 }
 
@@ -304,14 +250,13 @@ function setupMusic() {
     stopMusicPreview();
     if (music.source === 'sfx') renderMusic();
     else if (music.source === 'km') { if (!music.catalog) loadKM(); else renderMusic(); }
-    else if (!music.pdItems.length) { music.mood = 'Piano'; searchPD(); } else renderMusic();
+    else renderMusic();
   }));
   let timer = null;
   $('#musicSearch').addEventListener('input', (e) => {
     music.query = e.target.value.trim();
     clearTimeout(timer);
-    if (music.source === 'km' || music.source === 'sfx') renderMusic();
-    else timer = setTimeout(() => { music.mood = ''; searchPD(); }, 500);
+    timer = setTimeout(renderMusic, music.source === 'free' ? 120 : 0);
   });
   $('#musicCredits').onclick = showCredits;
 }

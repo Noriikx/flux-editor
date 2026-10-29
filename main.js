@@ -963,34 +963,83 @@ ipcMain.handle('update:check', async () => {
   } catch (err) { return { error: err.status ? err.message : 'No internet connection.' }; }
 });
 let updating = false;
+// ---- quick update (Windows): only Flux's own code (app.asar) is replaced - no reinstall, shortcuts stay ----
+const UNPACKED = ['ffmpeg-static', 'onnxruntime-node', '@huggingface/transformers', 'sharp'];
+function installedUnpacked() {
+  const ofs = require('original-fs'), out = {};
+  for (const n of UNPACKED) { try { out[n] = JSON.parse(ofs.readFileSync(path.join(process.resourcesPath, 'app.asar.unpacked', 'node_modules', n, 'package.json'), 'utf8')).version; } catch { out[n] = null; } }
+  return out;
+}
+async function quickUpdatePlan(rel) {
+  if (process.platform !== 'win32' || !app.isPackaged) return null;
+  const meta = (rel.assets || []).find((a) => a.name === 'Flux-app.json'), asar = (rel.assets || []).find((a) => a.name === 'Flux-app.asar');
+  if (!meta || !asar) return null;
+  try {
+    const r = await net.fetch(meta.browser_download_url); if (!r.ok) return null;
+    const j = await r.json();
+    if (String(j.electronMajor) !== String(process.versions.electron).split('.')[0]) return null;
+    const mine = installedUnpacked();
+    for (const n of UNPACKED) if ((j.unpacked || {})[n] !== mine[n]) return null;
+    // the install folder must be writable (it is for the normal per-user install)
+    const probe = path.join(process.resourcesPath, '.flux-write-test');
+    require('original-fs').writeFileSync(probe, '1'); require('original-fs').unlinkSync(probe);
+    return asar;
+  } catch { return null; }
+}
+async function download(url, file, total0, send) {
+  const dl = await net.fetch(url);
+  if (!dl.ok || !dl.body) throw new Error('Download failed (' + dl.status + ')');
+  const total = +dl.headers.get('content-length') || total0 || 0;
+  const out = require('original-fs').createWriteStream(file);
+  let got = 0;
+  const reader = dl.body.getReader();
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    got += value.length;
+    if (!out.write(Buffer.from(value))) await new Promise((r) => out.once('drain', r));
+    send({ value: total ? got / total : 0 });
+  }
+  await new Promise((r, j) => out.end((err) => (err ? j(err) : r())));
+  if (total && got < total) throw new Error('The download was cut off. Try again.');
+}
 ipcMain.handle('update:install', async (e) => {
   if (updating) return { error: 'Already updating' };
   updating = true;
   const send = (v) => { try { e.sender.send('update:progress', v); } catch {} };
   try {
     const rel = pendingRelease || (await findUpdate()).ready;
-    const asset = rel && updateAsset(rel);
-    if (!asset) throw new Error('No download for this computer yet. Try again later.');
-    const file = path.join(os.tmpdir(), asset.name.replace(/(\.\w+)$/, '-' + String(rel.tag_name).replace(/[^\w.-]/g, '') + '$1'));
-    const dl = await net.fetch(asset.browser_download_url);
-    if (!dl.ok || !dl.body) throw new Error('Download failed (' + dl.status + ')');
-    const total = +dl.headers.get('content-length') || asset.size || 0;
-    const out = fs.createWriteStream(file);
-    let got = 0;
-    const reader = dl.body.getReader();
-    for (;;) {
-      const { done, value } = await reader.read();
-      if (done) break;
-      got += value.length;
-      if (!out.write(Buffer.from(value))) await new Promise((r) => out.once('drain', r));
-      send({ value: total ? got / total : 0 });
+    const quick = rel && (await quickUpdatePlan(rel));
+    if (quick) {
+      const res = process.resourcesPath, next = path.join(res, 'app.asar.next');
+      await download(quick.browser_download_url, next, quick.size, send);
+      send({ value: 1, stage: 'install' });
+      // a tiny helper waits for Flux to close, swaps the file and starts Flux again
+      const bat = path.join(os.tmpdir(), 'flux-update-' + Date.now() + '.cmd');
+      const q = (x) => '"' + x + '"';
+      fs.writeFileSync(bat, [
+        '@echo off',
+        ':wait',
+        `tasklist /FI "PID eq ${process.pid}" 2>NUL | find "${process.pid}" >NUL && (ping -n 2 127.0.0.1 >NUL & goto wait)`,
+        'ping -n 2 127.0.0.1 >NUL',
+        `move /Y ${q(next)} ${q(path.join(res, 'app.asar'))} >NUL || (ping -n 3 127.0.0.1 >NUL & move /Y ${q(next)} ${q(path.join(res, 'app.asar'))} >NUL)`,
+        `start "" ${q(process.execPath)}`,
+        '(goto) 2>nul & del "%~f0"'
+      ].join('\r\n'));
+      spawn(process.env.ComSpec || 'cmd.exe', ['/c', bat], { detached: true, stdio: 'ignore', windowsHide: true }).unref();
+      setTimeout(() => app.quit(), 400);
+      return { ok: true, quick: true };
     }
-    await new Promise((r, j) => out.end((err) => (err ? j(err) : r())));
-    if (total && got < total) throw new Error('The download was cut off. Try again.');
+    const relX = rel;
+    const asset = relX && updateAsset(relX);
+    if (!asset) throw new Error('No download for this computer yet. Try again later.');
+    const file = path.join(os.tmpdir(), asset.name.replace(/(\.\w+)$/, '-' + String(relX.tag_name).replace(/[^\w.-]/g, '') + '$1'));
+    await download(asset.browser_download_url, file, asset.size, send);
     send({ value: 1, stage: 'install' });
     if (process.platform === 'win32') {
-      // Silent install over the current version, then start Flux again.
-      spawn(file, ['/S', '--force-run'], { detached: true, stdio: 'ignore' }).unref();
+      // Full update: silent install over the current version. --updated tells the installer it's an update,
+      // so it keeps your desktop / Start menu shortcuts and taskbar pin instead of removing and re-making them.
+      spawn(file, ['--updated', '/S', '--force-run'], { detached: true, stdio: 'ignore' }).unref();
       setTimeout(() => app.quit(), 600);
     } else {
       await shell.openPath(file);
