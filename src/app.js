@@ -1281,7 +1281,8 @@ function syncMedia(L = rt.layout || computeLayout()) {
       const b = c.beeps.find((x) => pos >= x.s - look && pos <= x.e);
       if (b) {
         bleep = c.beepSound === 'duck' ? 0.12 : 0;
-        if (c.beepSound !== 'mute' && c.beepSound !== 'duck') beepWant = c.beepSound === 'low' ? 400 : 1000;
+        if (typeof bleepIsShot === 'function' && bleepIsShot(c.beepSound)) bleepTrigger(c, b);
+        else if (c.beepSound !== 'mute' && c.beepSound !== 'duck') beepWant = c.beepSound === 'low' ? 400 : 1000;
       }
     }
     const duckTarget = c.audio && c.audio.duck && voiceActive ? 0.25 : 1;
@@ -2128,16 +2129,19 @@ function renderLanes() {
         }
         // bleeps: a red band where the word is covered, with a marker on top
         if (c.beeps && c.beeps.length) {
-          for (const b of c.beeps) {
-            if (b.e <= c.in || b.s >= c.out) continue;
+          c.beeps.forEach((b, bi) => {
+            if (b.e <= c.in || b.s >= c.out) return;
             const x0 = ((Math.max(b.s, c.in) - c.in) / c.speed) * z, x1 = ((Math.min(b.e, c.out) - c.in) / c.speed) * z;
             const band = el('div', 'bleep-band');
+            band.dataset.clip = c.id; band.dataset.bi = bi;
             band.style.left = x0 + 'px'; band.style.width = Math.max(2, x1 - x0) + 'px';
+            // drag the edges to make the bleep shorter / longer, drag the pin to move it, right-click to remove
+            band.innerHTML = '<i class="bl-h l"></i><i class="bl-h r"></i>';
             const pin = el('div', 'bleep-pin', '<svg viewBox="0 0 24 24"><path d="M11 5 6 9H2v6h4l5 4z"/><path d="M16 9l5 6M21 9l-5 6"/></svg>');
-            pin.dataset.tip = 'Bleeped: ' + (b.w || 'word');
+            pin.dataset.tip = 'Bleeped: ' + (b.w || 'word') + ' · drag the edges to resize, drag this to move, right-click to remove';
             band.appendChild(pin);
             ce.appendChild(band);
-          }
+          });
         }
         // level marks in dB (0 dB = original loudness)
         const grid = el('div', 'vol-grid');
@@ -2402,6 +2406,25 @@ function trySnap(values, excludeId) {
   tlLanes.addEventListener('mousedown', (e) => { if (e.button === 1) e.preventDefault(); }); // no auto-scroll on middle click
   tlLanes.addEventListener('pointerdown', (e) => {
     if (e.button === 2) return;
+    // middle mouse (scroll wheel held): ALWAYS just moves the view - never grabs a clip, a volume line or a transition
+    if (e.button === 1) {
+      e.preventDefault(); e.stopPropagation();
+      try { tlLanes.setPointerCapture(e.pointerId); } catch {}
+      drag = { mode: 'pan', x0: e.clientX, y0: e.clientY, sl: tlScroll.scrollLeft, st: tlScroll.scrollTop };
+      tlLanes.classList.add('panning');
+      return;
+    }
+    if (e.button !== 0 && e.pointerType === 'mouse') return;
+    const bh = e.target.closest('.bl-h, .bleep-pin');
+    if (bh) {
+      e.stopPropagation();
+      const band = bh.closest('.bleep-band'), c = getClip(band.dataset.clip), b = c && c.beeps && c.beeps[+band.dataset.bi];
+      if (!b) return;
+      if (state.playing) pause();
+      drag = { mode: 'bleep', c, b, side: bh.classList.contains('l') ? 'l' : bh.classList.contains('r') ? 'r' : 'move', x0: e.clientX, s0: b.s, e0: b.e, snap: snapshot(), moved: false };
+      tlLanes.setPointerCapture(e.pointerId);
+      return;
+    }
     const vline = e.target.closest('.vol-line');
     if (vline) {
       e.stopPropagation();
@@ -2491,6 +2514,16 @@ function trySnap(values, excludeId) {
   function onLanesMove(e) {
     if (!drag) return;
     if (drag.mode === 'scrub') { scrub(e); return; }
+    if (drag.mode === 'bleep') {
+      const { c, b } = drag, d = ((e.clientX - drag.x0) / state.zoom) * c.speed, MIN = 0.05;
+      if (Math.abs(e.clientX - drag.x0) > 1) drag.moved = true;
+      if (drag.side === 'l') b.s = clamp(drag.s0 + d, c.in, drag.e0 - MIN);
+      else if (drag.side === 'r') b.e = clamp(drag.e0 + d, drag.s0 + MIN, c.out);
+      else { const len = drag.e0 - drag.s0, ns = clamp(drag.s0 + d, c.in, c.out - len); b.s = ns; b.e = ns + len; }
+      seek(c.start + ((drag.side === 'r' ? b.e : b.s) - c.in) / c.speed);
+      renderLanes();
+      return;
+    }
     if (drag.mode === 'box') {
       const x1 = Math.min(drag.x0, e.clientX), x2 = Math.max(drag.x0, e.clientX), y1 = Math.min(drag.y0, e.clientY), y2 = Math.max(drag.y0, e.clientY);
       if (!drag.moved && x2 - x1 < 4 && y2 - y1 < 4) return;
@@ -2632,6 +2665,7 @@ function trySnap(values, excludeId) {
   const end = () => {
     if (lanesMoveEv) { cancelAnimationFrame(lanesMoveRaf); flushLanesMove(); }
     if (!drag) return;
+    if (drag.mode === 'bleep') { const d0 = drag; drag = null; if (d0.moved) { d0.c.beeps.sort((a, b) => a.s - b.s); if (snapshot() !== d0.snap) pushHistory(d0.snap); renderLanes(); } return; }
     showSnap(null);
     if (drag.mode === 'pan') { tlLanes.classList.remove('panning'); drag = null; return; }
     if (drag.mode === 'box') {
@@ -2687,6 +2721,12 @@ function trySnap(values, excludeId) {
 
   tlLanes.addEventListener('contextmenu', (e) => {
     e.preventDefault();
+    const bpin = e.target.closest('.bleep-pin, .bl-h');
+    if (bpin) {
+      const band = bpin.closest('.bleep-band'), c = getClip(band.dataset.clip), bi = +band.dataset.bi;
+      if (c && c.beeps && c.beeps[bi]) contextMenu(e.clientX, e.clientY, [{ label: 'Remove this bleep', danger: true, fn: () => commit(() => { c.beeps.splice(bi, 1); }) }]);
+      return;
+    }
     const tb = e.target.closest('.trans-band, .junction.has');
     if (tb) {
       const c = getClip(tb.dataset.id);
@@ -2723,6 +2763,8 @@ function trySnap(values, excludeId) {
       hasAudio(c) && !(c.kind === 'video' && partners(c).length) ? { label: 'Balance sound…', fn: () => openBalanceDialog(c) } : null,
       soundSource(c) ? { label: 'Auto captions…', fn: () => openCaptionsDialog(c) } : null,
       soundSource(c) ? { label: 'Bleep swear words…', pro: true, fn: () => openBleepDialog(c) } : null,
+      soundSource(c) ? { label: 'Bleep here (drag its edges to resize)', pro: true, fn: () => addBleepAt(soundSource(c), t) } : null,
+      soundSource(c) ? { label: 'Audio effects…', fn: () => { select(c.id); showLibTab('afx'); } } : null,
       soundSource(c) ? { label: 'Remove silences', pro: true, fn: () => removeSilences(c) } : null,
       hasAudio(c) ? { label: soundTarget(c).muted ? 'Unmute' : 'Mute', fn: () => commit(() => { const t = soundTarget(c); t.muted = !t.muted; }) } : null,
       c.kind === 'video' && !soundClipOf(c) ? { label: 'Separate sound', fn: () => detachAudio(c) } : null,
@@ -3805,7 +3847,8 @@ document.addEventListener('fullscreenchange', () => setTimeout(layoutStage, 50))
 
 // Resizable timeline (drag its top edge)
 (function setupTimelineResize() {
-  const handle = el('div');
+  const handle = el('div', 'tl-height-grip');
+  handle.dataset.tip = 'Drag to make the timeline taller or shorter';
   Object.assign(handle.style, { position: 'absolute', top: '-4px', left: 0, right: 0, height: '8px', cursor: 'ns-resize', zIndex: 10 });
   $('#timelinePanel').appendChild(handle);
   let saved = 330;

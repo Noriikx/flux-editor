@@ -34,10 +34,24 @@ function newAudioFx(type) {
   if (t.choice) e[t.choice[0]] = t.choice[3];
   return e;
 }
-function audioFxTarget(c) { return c && (c.kind === 'audio' || c.kind === 'video') ? c : null; }
+// the clip that really plays the sound: a video whose sound was split off -> its sound clip
+// (putting the effect on the muted video while its sound clip plays the normal voice gave you both voices)
+function audioFxTarget(c) {
+  if (!c) return null;
+  if (c.kind === 'video' && typeof soundClipOf === 'function') {
+    const s = soundClipOf(c);
+    if (s) {
+      // effects that ended up on the video earlier move over to its sound clip
+      if (c.audio && c.audio.fx && c.audio.fx.length) { s.audio = s.audio || {}; s.audio.fx = (s.audio.fx || []).concat(c.audio.fx); c.audio.fx = []; }
+      return s;
+    }
+  }
+  return c.kind === 'audio' || c.kind === 'video' ? c : null;
+}
 function addAudioFx(c, type) {
   const t = AFX_TYPES[type];
-  if (!audioFxTarget(c)) return toast('Select a clip with sound first');
+  c = audioFxTarget(c);
+  if (!c) return toast('Select a clip with sound first');
   if (t.pro && !requirePremium(t.name)) return;
   commit(() => { c.audio = c.audio || {}; c.audio.fx = c.audio.fx || []; c.audio.fx.push(newAudioFx(type)); });
   toast(t.name + ' added');
@@ -197,6 +211,7 @@ function drawEqCurve(cv, x) {
   g.lineTo(w, h / 2); g.lineTo(0, h / 2); g.closePath(); g.fillStyle = 'rgba(139,109,255,.15)'; g.fill();
 }
 function audioFxInspector(body, c) {
+  c = audioFxTarget(c) || c;
   const s = section(body, 'Audio effects', () => { if (c.audio) c.audio.fx = []; });
   const add = el('button', 'btn fx-add', '+ Add audio effect');
   add.onclick = (ev) => {

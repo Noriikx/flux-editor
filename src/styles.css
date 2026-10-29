@@ -342,6 +342,9 @@ input[type=color] { width: 30px; height: 26px; border: 1px solid var(--line-2); 
 .seg button small { display: block; font-size: 10.5px; font-weight: 500; opacity: .8; }
 .seg button.active { background: var(--panel-3); color: var(--text); box-shadow: 0 0 0 1px var(--line-2); }
 .seg.tall button { height: 46px; }
+/* Music sources: three buttons with a second line - let them grow instead of spilling over the search box */
+#musicSource button { height: auto; min-height: 44px; padding: 5px 4px; line-height: 1.2; white-space: normal; }
+#musicSource button small { margin-top: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .progress { height: 8px; border-radius: 8px; background: var(--panel-3); overflow: hidden; margin: 16px 0 8px; }
 .progress > div { height: 100%; width: 0; background: var(--grad); transition: width .2s; }
 .progress-label { display: flex; justify-content: space-between; color: var(--muted); font-size: 12px; }
@@ -1071,3 +1074,37 @@ body.fusion-open #timeline, body.fusion-open #tlToolbar .tl-tools > :not(.page-s
 .media-item.folder .f-count { position: absolute; right: 6px; bottom: 5px; font: 600 10px var(--mono); color: var(--muted); }
 .media-item.folder .f-up { position: absolute; font-size: 12px; color: var(--muted); }
 .media-item.drop { border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent) inset; }
+/* media pool (5.0): + and × together in the top-right corner of the picture, length bottom-right, badges bottom-left */
+.media-item .add, .media-item .remove { position: absolute; top: 5px; bottom: auto; left: auto; width: 22px; height: 22px; margin: 0; padding: 0; border-radius: 6px; transform: none; display: grid; place-items: center; opacity: 0; transition: opacity .12s, background .12s; box-shadow: 0 1px 4px rgba(0,0,0,.5); z-index: 2; }
+.media-item .add { right: 5px; background: var(--accent); color: #fff; }
+.media-item .remove { right: 31px; background: rgba(10,10,16,.82); color: #e6e6f0; }
+.media-item .add svg { width: 13px; height: 13px; stroke-width: 2.6; }
+.media-item .remove svg { width: 11px; height: 11px; stroke-width: 2.4; }
+.media-item .remove:hover { background: var(--danger); color: #fff; }
+.media-item:hover .add, .media-item:hover .remove, .media-item.picked .add, .media-item.picked .remove { opacity: 1; transform: none; }
+.media-item .dur { top: auto; bottom: 5px; right: 5px; }
+.media-item.folder .add, .media-item.folder .remove { display: none; }
+
+/* bleep window: sound choices */
+.bl-sounds { display: flex; flex-wrap: wrap; gap: 6px; }
+/* bleeps: grab the edges to resize, the pin to move */
+.bleep-band .bl-h { position: absolute; top: 0; bottom: 0; width: 7px; pointer-events: auto; cursor: ew-resize; z-index: 3; }
+.bleep-band .bl-h.l { left: -3px; } .bleep-band .bl-h.r { right: -3px; }
+.bleep-band .bl-h:hover { background: rgba(255,90,110,.7); }
+.bleep-pin { cursor: grab !important; }
+/* Audio FX tab */
+.afx-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(92px, 1fr)); gap: 6px; margin-bottom: 12px; }
+.afx-tile { position: relative; height: 64px; border-radius: 9px; border: 1px solid var(--line); background: var(--panel-2); color: var(--text); display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px; padding: 4px; cursor: pointer; font: 600 11px var(--font); text-align: center; }
+.afx-tile:hover { border-color: var(--accent); background: var(--accent-soft); }
+.afx-tile.active { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent) inset; }
+.afx-tile .afx-ico { font-size: 19px; line-height: 1; }
+.afx-tile .afx-name { line-height: 1.15; }
+.afx-tile .afx-pro { position: absolute; right: 4px; top: 3px; line-height: 0; }
+.afx-tile .afx-pro svg { width: 11px; height: 11px; }
+/* resizable panels */
+.panel-grip { position: absolute; top: 0; bottom: 0; width: 7px; z-index: 20; cursor: ew-resize; }
+.panel-grip:hover, body.resizing-panels .panel-grip { background: linear-gradient(90deg, transparent 2px, var(--accent) 2px, var(--accent) 5px, transparent 5px); }
+body.resizing-panels, body.resizing-panels * { cursor: ew-resize !important; user-select: none; }
+body.resizing-panels iframe, body.resizing-panels canvas { pointer-events: none; }
+.tl-height-grip:hover { background: linear-gradient(transparent 2px, var(--accent) 2px, var(--accent) 5px, transparent 5px); }
+#timelinePanel { position: relative; }

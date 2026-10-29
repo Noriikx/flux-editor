@@ -142,7 +142,18 @@ const CAPTION_STYLES = [
   { id: 'type', name: 'Typewriter', t: { font: 'Courier New', size: 58, bold: true, color: '#ffffff', bg: true, bgColor: '#000000', bgOpacity: 0.7, shadow: false, outline: false, anim: 'type' } },
   { id: 'karaoke', name: 'Karaoke', pro: true, t: { font: 'Arial Black', size: 74, bold: false, color: '#ffffff', dim: '#ffffff', hl: '#a59cff', outline: true, outlineColor: '#000000', shadow: false, bg: false, karaoke: true, anim: 'none' } },
   { id: 'pop', name: 'Word pop', pro: true, t: { font: 'Impact', size: 120, bold: false, color: '#ffffff', outline: true, outlineColor: '#000000', shadow: true, bg: false, wordByWord: true, anim: 'none' } },
-  { id: 'hype', name: 'Hype', pro: true, t: { font: 'Arial Black', size: 84, bold: false, color: '#ffffff', hl: '#4fd6a0', dim: '#ffffff', outline: true, outlineColor: '#111111', shadow: true, bg: false, karaoke: true, anim: 'pop' } }
+  { id: 'hype', name: 'Hype', pro: true, t: { font: 'Arial Black', size: 84, bold: false, color: '#ffffff', hl: '#4fd6a0', dim: '#ffffff', outline: true, outlineColor: '#111111', shadow: true, bg: false, karaoke: true, anim: 'pop' } },
+  // 5.0: ten more
+  { id: 'sticker', name: 'Sticker', t: { font: 'Segoe UI', size: 64, bold: true, color: '#111111', bg: true, bgColor: '#ffffff', bgOpacity: 1, shadow: false, outline: false, anim: 'pop' } },
+  { id: 'viral', name: 'Viral', t: { font: 'Impact', size: 104, bold: false, color: '#ffffff', outline: true, outlineColor: '#000000', shadow: true, bg: false, wordByWord: true, anim: 'pop' } },
+  { id: 'yellowpop', name: 'Yellow pop', t: { font: 'Arial Black', size: 96, bold: false, color: '#ffe14d', outline: true, outlineColor: '#000000', shadow: true, bg: false, wordByWord: true, anim: 'pop' } },
+  { id: 'gaming', name: 'Gaming', t: { font: 'Bebas Neue', size: 104, bold: false, color: '#7df9ff', glow: true, outline: true, outlineColor: '#001a33', shadow: false, bg: false, anim: 'pop' } },
+  { id: 'alert', name: 'Breaking', t: { font: 'Impact', size: 76, bold: false, color: '#ffffff', bg: true, bgColor: '#e5283c', bgOpacity: 0.95, shadow: false, outline: false, anim: 'slide' } },
+  { id: 'cinema', name: 'Cinematic', t: { font: 'Georgia', size: 58, bold: false, italic: true, color: '#f2f2f2', shadow: true, outline: false, bg: false, anim: 'fade' } },
+  { id: 'minimal', name: 'Minimal', t: { font: 'Segoe UI', size: 46, bold: false, color: '#e8e8ee', shadow: true, outline: false, bg: false, anim: 'fade' } },
+  { id: 'comic', name: 'Comic', t: { font: 'Comic Sans MS', size: 72, bold: true, color: '#ffd23f', outline: true, outlineColor: '#3a1d00', shadow: true, bg: false, anim: 'pop' } },
+  { id: 'slideup', name: 'Slide up', t: { font: 'Montserrat', size: 66, bold: true, color: '#ffffff', shadow: true, outline: false, bg: false, anim: 'slide' } },
+  { id: 'fire', name: 'Fire', pro: true, t: { font: 'Anton', size: 96, bold: false, color: '#ffffff', hl: '#ff7a1a', dim: '#ffffff', outline: true, outlineColor: '#2a0a00', shadow: true, bg: false, karaoke: true, anim: 'pop' } }
 ];
 let capOpts = { style: 'classic', font: '', size: 0, pos: 0.82, perLine: 5, upper: false, hl: '#a59cff' };
 try { Object.assign(capOpts, JSON.parse(localStorage.getItem('flux.capOpts') || '{}')); } catch {}
@@ -205,6 +216,7 @@ async function runCaptions(src, styleId) {
       P.clips = P.clips.filter((c) => !(c.caption && c.capFor === key));
       for (const c of caps) { c.trackId = tr.id; P.clips.push(c); }
     });
+    if (typeof ensureProjectFonts === 'function') ensureProjectFonts();
     toast(`Added ${caps.length} captions - click one to edit its words`);
     return true;
   } catch (e) {
@@ -222,6 +234,7 @@ function restyleCaptions() {
       c.text = Object.assign({}, props, keep);
     }
   });
+  if (typeof ensureProjectFonts === 'function') ensureProjectFonts();
   toast('Captions restyled');
 }
 
@@ -248,13 +261,14 @@ function openCaptionsDialog(clip) {
   const drawStyles = () => {
     grid.innerHTML = '';
     for (const st of CAPTION_STYLES) {
+      if (typeof ensureFont === 'function') ensureFont(capOpts.font || st.t.font);
       const b = el('button', 'cap-card' + (capOpts.style === st.id ? ' active' : ''));
       const t = st.t;
       const sample = el('span', 'cap-sample');
       if (t.karaoke) sample.innerHTML = `<i style="color:${capOpts.hl || t.hl}">HELLO</i> THERE`;
       else sample.textContent = t.wordByWord ? 'HELLO' : 'Hello there';
       Object.assign(sample.style, {
-        fontFamily: `"${capOpts.font || t.font}", sans-serif`, fontWeight: t.bold ? 700 : 400, color: t.color,
+        fontFamily: `"${capOpts.font || t.font}", sans-serif`, fontWeight: t.bold ? 700 : 400, fontStyle: t.italic ? 'italic' : 'normal', color: t.color,
         background: t.bg ? hexToRgba(t.bgColor, t.bgOpacity) : 'none', padding: t.bg ? '2px 7px' : 0, borderRadius: '4px',
         textShadow: t.glow ? `0 0 8px ${t.color}` : t.outline ? '-1px -1px 0 #000,1px -1px 0 #000,-1px 1px 0 #000,1px 1px 0 #000' : t.shadow ? '0 2px 4px #000' : 'none'
       });
@@ -366,21 +380,51 @@ function openBleepDialog(clip) {
   const box = modal(`<h2>Bleep swear words</h2><p class="sub">Flux listens to <b class="bl-src"></b> and covers the words you choose.</p>
     <div class="row"><label>How strict?</label><div class="seg tall bl-level">
       <button data-v="low">Low<small>Slurs only</small></button><button data-v="moderate">Moderate<small>+ strong swearing</small></button><button data-v="high">Strict<small>+ mild words</small></button></div></div>
-    <div class="row"><label>Cover with</label><div class="seg bl-sound">
-      <button data-v="beep">Beep</button><button data-v="low">Low beep</button><button data-v="mute">Silence</button><button data-v="duck">Quieter</button></div></div>
+    <div class="row"><label>Cover with <small style="color:var(--muted)">(click to hear it)</small></label><div class="bl-sounds"></div></div>
     <div class="footer">${src.beeps && src.beeps.length ? '<button class="btn ghost danger" data-a="remove">Remove bleeps</button>' : ''}<button class="btn ghost" data-a="cancel">Cancel</button><button class="btn primary" data-a="go">Find & bleep</button></div>`);
   $('.bl-src', box).textContent = clipLabel(src);
+  const grid = $('.bl-sounds', box);
+  for (const snd of (typeof BLEEP_SOUNDS !== 'undefined' ? BLEEP_SOUNDS : [{ id: 'beep', name: 'Beep' }, { id: 'low', name: 'Low beep' }, { id: 'mute', name: 'Silence' }, { id: 'duck', name: 'Quieter' }])) {
+    const b = el('button', 'chip', snd.name); b.dataset.v = snd.id;
+    b.onclick = () => { sound = snd.id; sync(); previewBleep(snd.id); };
+    grid.appendChild(b);
+  }
   const sync = () => {
     $$('.bl-level button', box).forEach((b) => b.classList.toggle('active', b.dataset.v === level));
-    $$('.bl-sound button', box).forEach((b) => b.classList.toggle('active', b.dataset.v === sound));
+    $$('.bl-sounds button', box).forEach((b) => b.classList.toggle('active', b.dataset.v === sound));
   };
   $$('.bl-level button', box).forEach((b) => (b.onclick = () => { level = b.dataset.v; sync(); }));
-  $$('.bl-sound button', box).forEach((b) => (b.onclick = () => { sound = b.dataset.v; sync(); }));
   sync();
   $('[data-a=cancel]', box).onclick = closeModal;
   const rm = $('[data-a=remove]', box);
   if (rm) rm.onclick = () => { closeModal(); commit(() => { src.beeps = []; }); toast('Bleeps removed'); };
   $('[data-a=go]', box).onclick = () => runBleep(src, level, sound);
+}
+
+// a bleep you place yourself (right-click a clip → Bleep here), 0.5s long, at that spot
+function addBleepAt(src, t) {
+  if (!src || !requirePremium('Auto-bleep swearing')) return;
+  const at = clamp(src.in + (t - src.start) * src.speed, src.in, src.out - 0.05);
+  commit(() => {
+    src.beeps = src.beeps || [];
+    src.beeps.push({ s: at, e: Math.min(src.out, at + 0.5), w: 'manual' });
+    src.beeps.sort((a, b) => a.s - b.s);
+    if (!src.beepSound) src.beepSound = 'beep';
+  });
+  toast('Bleep added - drag its edges to make it shorter or longer');
+}
+// hear a bleep sound in the bleep window
+async function previewBleep(id) {
+  ensureAudio(); if (!actx) return;
+  if (actx.state === 'suspended') try { await actx.resume(); } catch {}
+  const info = typeof bleepInfo === 'function' ? bleepInfo(id) : { tone: 1000 };
+  if (info.tone) {
+    const o = actx.createOscillator(), g = actx.createGain(); o.frequency.value = info.tone; g.gain.value = 0.18;
+    o.connect(g); g.connect(masterGain); o.start(); o.stop(actx.currentTime + 0.35); return;
+  }
+  if (!bleepIsShot(id)) return;
+  const buf = await bleepBuffer(id); if (!buf) return;
+  const s1 = actx.createBufferSource(), g = actx.createGain(); s1.buffer = buf; g.gain.value = 0.8; s1.connect(g); g.connect(masterGain); s1.start();
 }
 
 /* ============================ REMOVE SILENCES ============================ */

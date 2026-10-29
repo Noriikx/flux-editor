@@ -1,7 +1,7 @@
 {
   "name": "flux",
   "productName": "Flux",
-  "version": "4.15.0",
+  "version": "5.0.0",
   "description": "Flux - a simple, friendly video editor",
   "main": "main.js",
   "author": "Flux",

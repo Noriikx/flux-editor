@@ -1014,19 +1014,28 @@ ipcMain.handle('update:install', async (e) => {
       const res = process.resourcesPath, next = path.join(res, 'app.asar.next');
       await download(quick.browser_download_url, next, quick.size, send);
       send({ value: 1, stage: 'install' });
-      // a tiny helper waits for Flux to close, swaps the file and starts Flux again
-      const bat = path.join(os.tmpdir(), 'flux-update-' + Date.now() + '.cmd');
-      const q = (x) => '"' + x + '"';
-      fs.writeFileSync(bat, [
-        '@echo off',
-        ':wait',
-        `tasklist /FI "PID eq ${process.pid}" 2>NUL | find "${process.pid}" >NUL && (ping -n 2 127.0.0.1 >NUL & goto wait)`,
-        'ping -n 2 127.0.0.1 >NUL',
-        `move /Y ${q(next)} ${q(path.join(res, 'app.asar'))} >NUL || (ping -n 3 127.0.0.1 >NUL & move /Y ${q(next)} ${q(path.join(res, 'app.asar'))} >NUL)`,
-        `start "" ${q(process.execPath)}`,
-        '(goto) 2>nul & del "%~f0"'
-      ].join('\r\n'));
-      spawn(process.env.ComSpec || 'cmd.exe', ['/c', bat], { detached: true, stdio: 'ignore', windowsHide: true }).unref();
+      // a tiny helper waits for Flux to close, swaps the file and starts Flux again.
+      // It is Flux.exe itself running a script (no console window, nothing that looks scary).
+      const helper = path.join(os.tmpdir(), 'flux-update-' + Date.now() + '.js');
+      fs.writeFileSync(helper, `
+const fs = require('fs'), { spawn } = require('child_process');
+const [pid, next, target, exe] = process.argv.slice(2);
+const wait = (ms) => new Promise((r) => setTimeout(r, ms));
+const alive = () => { try { process.kill(+pid, 0); return true; } catch { return false; } };
+(async () => {
+  for (let i = 0; i < 300 && alive(); i++) await wait(200);
+  await wait(500);
+  for (let i = 0; i < 30; i++) { try { fs.renameSync(next, target); break; } catch { await wait(300); } }
+  const env = Object.assign({}, process.env); delete env.ELECTRON_RUN_AS_NODE; delete env.ELECTRON_NO_ASAR;
+  spawn(exe, [], { detached: true, stdio: 'ignore', env }).unref();
+  try { fs.unlinkSync(__filename); } catch {}
+  process.exit(0);
+})();
+`);
+      spawn(process.execPath, [helper, String(process.pid), next, path.join(res, 'app.asar'), process.execPath], {
+        detached: true, stdio: 'ignore', windowsHide: true,
+        env: Object.assign({}, process.env, { ELECTRON_RUN_AS_NODE: '1', ELECTRON_NO_ASAR: '1' })
+      }).unref();
       setTimeout(() => app.quit(), 400);
       return { ok: true, quick: true };
     }

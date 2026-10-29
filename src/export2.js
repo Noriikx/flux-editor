@@ -96,6 +96,7 @@ function soundGainAt(it, t) {
 }
 async function renderSound(r0, r1, onProgress, isCancelled) {
   const items = exportSoundItems();
+  if (typeof prepareBleeps === 'function') await prepareBleeps();
   const SEG = 40, PRE = 3;
   const total = Math.round((r1 - r0) * EXP_SR);
   const needWorklet = items.some((it) => activeAudioFx(it.c).some((e) => e.type === 'deess' || e.type === 'nr'));
@@ -150,6 +151,12 @@ async function renderSound(r0, r1, onProgress, isCancelled) {
         for (const bp of c.beeps) {
           const t0 = it.off + c.start + (bp.s - c.in) / c.speed, t1 = it.off + c.start + (bp.e - c.in) / c.speed;
           const x0 = Math.max(t0, ta, pa), x1 = Math.min(t1, tb, b);
+          if (typeof bleepIsShot === 'function' && bleepIsShot(c.beepSound)) {
+            // one-shot sound (anvil, bonk…): starts with the bleep, rings out even past it
+            const buf = bleepReady(c.beepSound);
+            if (buf && t0 >= pa && t0 < b && t0 >= ta - 1e-3 && t0 < tb) { const s1 = ctx.createBufferSource(), g1 = ctx.createGain(); s1.buffer = buf; g1.gain.value = 0.9; s1.connect(g1); g1.connect(ctx.destination); s1.start(Math.max(0, t0 - pa)); }
+            continue;
+          }
           if (x1 - x0 < 0.005) continue;
           const o = ctx.createOscillator(); o.frequency.value = c.beepSound === 'low' ? 400 : 1000;
           const og = ctx.createGain(); og.gain.value = 0.22;

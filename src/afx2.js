@@ -10,7 +10,7 @@ Object.assign(AFX_TYPES, {
   crush: { name: 'Bitcrusher / 8-bit', group: 'Loud & broken', params: [['bits', 'Bits', 2, 12, 5, (v) => Math.round(v) + '-bit'], ['tone', 'Tone', 1000, 16000, 6000, hz], ['mix', 'Mix', 0, 100, 100, pct]] },
   glitch: { name: 'Glitch', group: 'Loud & broken', params: [['amount', 'Strength', 0, 100, 70, pct], ['every', 'Pause between glitches', 0.3, 8, 1.5, (v) => (+v).toFixed(1) + 's'], ['length', 'Glitch length', 0.05, 1.5, 0.35, (v) => (+v).toFixed(2) + 's']] },
   pitch: { name: 'Pitch (chipmunk / deep)', group: 'Voice changers', params: [['semi', 'Pitch', -12, 12, 6, semis], ['mix', 'Mix', 0, 100, 100, pct]], presets: [['Chipmunk', { semi: 8 }], ['Higher', { semi: 4 }], ['Deep', { semi: -5 }], ['Demon', { semi: -10 }]] },
-  robot: { name: 'Robot', group: 'Voice changers', params: [['freq', 'Robot pitch', 20, 300, 60, hz], ['amount', 'Amount', 0, 100, 80, pct]] },
+  robot: { name: 'Robot', group: 'Voice changers', params: [['freq', 'Robot pitch', 20, 300, 60, hz], ['amount', 'Amount', 0, 100, 100, pct]] },
   phone: { name: 'Telephone', group: 'Voice changers', params: [['amount', 'Amount', 0, 100, 100, pct]] },
   radio: { name: 'Walkie-talkie / radio', group: 'Voice changers', params: [['amount', 'Amount', 0, 100, 100, pct], ['noise', 'Static', 0, 100, 25, pct]] },
   megaphone: { name: 'Megaphone', group: 'Voice changers', params: [['amount', 'Amount', 0, 100, 100, pct]] },
@@ -270,6 +270,7 @@ makeUnit = function (e, A = actx, workletOk = afxWorkletReady === true, instant 
 {
   const baseInspector = audioFxInspector;
   audioFxInspector = function (body, c) {
+    c = audioFxTarget(c) || c;
     baseInspector(body, c);
     const add = [...body.querySelectorAll('.fx-add')].pop();
     if (add) add.onclick = (ev) => {
@@ -295,3 +296,63 @@ makeUnit = function (e, A = actx, workletOk = afxWorkletReady === true, instant 
     if (hint) hint.textContent = 'Make it distorted, glitched, insanely loud, robotic, chipmunk, underwater… or clean it up with EQ and noise reduction. They play live and are in your export.';
   };
 }
+
+/* ---------- "Audio FX" tab in the library: the easy place to find sound effects ---------- */
+const AFX_ICONS = { loud: '📢', distort: '🔥', crush: '👾', glitch: '⚡', pitch: '🐿️', robot: '🤖', phone: '☎️', radio: '📻', megaphone: '📣', underwater: '🌊', faraway: '🚪', chorus: '🎶', flanger: '🌀', phaser: '🌗', tremolo: '〰️', vibrato: '🥴', autopan: '↔️', bassboost: '🔊', lofi: '📀', delay: '🔁', reverb: '⛪', limiter: '🧱', feq: '🎚️', deess: '🐍', nr: '🧹' };
+function renderAfxTab() {
+  const page = document.querySelector('[data-page=afx]');
+  if (!page) return;
+  const sel = getClip(state.selectedId), target = sel ? audioFxTarget(sel) : null;
+  const on = new Set(((target && target.audio && target.audio.fx) || []).map((e) => e.type));
+  page.innerHTML = `<p class="page-intro">${target ? `Click to add to <b></b> - or drag onto any clip with sound.` : 'Select a clip with sound (or a video), then click an effect - or drag one onto a clip.'}</p>`;
+  if (target) $('b', page).textContent = clipLabel(target);
+  for (const gname of AFX_GROUPS) {
+    const list = Object.entries(AFX_TYPES).filter(([, t]) => (t.group || 'Clean up') === gname);
+    if (!list.length) continue;
+    page.appendChild(el('div', 'help-title', gname));
+    const grid = el('div', 'afx-grid');
+    for (const [id, t] of list) {
+      const b = el('button', 'afx-tile' + (on.has(id) ? ' active' : ''), `<span class="afx-ico">${AFX_ICONS[id] || '🎵'}</span><span class="afx-name"></span>${t.pro && !isPremium() ? '<i class="afx-pro">' + CROWN + '</i>' : ''}`);
+      $('.afx-name', b).textContent = t.name;
+      b.dataset.tip = on.has(id) ? 'Already on this clip - click to add another one' : 'Add ' + t.name;
+      b.draggable = true;
+      b.addEventListener('dragstart', (ev) => { ev.dataTransfer.setData('text/flux-afx', id); ev.dataTransfer.effectAllowed = 'copy'; });
+      b.onclick = () => {
+        const c = getClip(state.selectedId);
+        if (!c || !audioFxTarget(c)) return toast('Select a clip with sound first');
+        addAudioFx(c, id);
+        renderAfxTab();
+      };
+      grid.appendChild(b);
+    }
+    page.appendChild(grid);
+  }
+}
+(function setupAfxTab() {
+  const tabs = document.getElementById('libTabs'), lib = document.getElementById('library');
+  if (!tabs || !lib || document.querySelector('[data-tab=afx]')) return;
+  const tab = el('button', 'tab', '<svg viewBox="0 0 24 24"><path d="M3 12h2l2-6 3 12 3-9 2 5 2-2h4"/></svg>Audio FX');
+  tab.dataset.tab = 'afx';
+  const filters = tabs.querySelector('[data-tab=filters]');
+  tabs.insertBefore(tab, filters ? filters.nextSibling : null);
+  const page = el('section', 'tab-page'); page.dataset.page = 'afx';
+  lib.appendChild(page);
+  tab.addEventListener('click', () => showLibTab('afx'));
+  const baseShow = showLibTab;
+  showLibTab = function (name) { const r = baseShow.apply(this, arguments); if (name === 'afx') renderAfxTab(); return r; };
+  // keep it in step with the selected clip
+  const baseInsp = renderInspector;
+  renderInspector = function () { const r = baseInsp.apply(this, arguments); if (currentLibTab === 'afx') renderAfxTab(); return r; };
+  // drop an effect onto a clip on the timeline
+  tlLanes.addEventListener('drop', (e) => {
+    const id = e.dataTransfer.getData('text/flux-afx');
+    if (!id) return;
+    e.preventDefault(); e.stopPropagation();
+    const ce = e.target.closest && e.target.closest('.clip');
+    let c = ce ? getClip(ce.dataset.id) : null;
+    if (!c) { const t = timeAtClientX(e.clientX); c = P.clips.find((x) => (x.kind === 'audio' || x.kind === 'video') && t >= x.start && t < endOf(x)); }
+    if (!c || !audioFxTarget(c)) return toast('Drop it onto a clip with sound');
+    select(c.id);
+    addAudioFx(c, id);
+  }, true);
+})();

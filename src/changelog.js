@@ -1,6 +1,18 @@
 /* Flux — changelog. Shown once after an update, and any time from Settings → About. */
 'use strict';
 const CHANGELOG = [
+  { v: '5.0.0', date: '2026-10-29', items: [
+    'New Audio FX tab next to Filters: every sound effect (ultra loud, distortion, chipmunk, robot, underwater…) in one place - click to add, or drag onto a clip. Also in the clip\u2019s right-click menu',
+    'Fixed: voice changers playing the normal voice and the changed voice at the same time - effects on a video now go on its sound clip',
+    'Make the editor your size: drag the border between the library, the preview and the inspector (and the top of the timeline). Double-click a border to reset',
+    'Holding the scroll wheel on the timeline now always moves the view - it never grabs a clip or the volume line',
+    '10 new caption styles: Sticker, Viral, Yellow pop, Gaming, Breaking, Cinematic, Minimal, Comic, Slide up and Fire',
+    'New bleep sounds: anvil clang, bonk, quack, air horn, car horn, dolphin, boing, whistle, record scratch, buzzer and more - click one to hear it',
+    'Bleeps can be dragged: pull the edges to make one shorter or longer, drag the pin to move it, right-click to remove. Right-click a clip → Bleep here to add your own',
+    'Updates run quietly in the background - no black window',
+    'Media library: the + and × buttons sit neatly together in the corner',
+    'Music tab: the source buttons no longer overlap the search box'
+  ] },
   { v: '4.15.0', date: '2026-10-29', items: [
     '19 new audio effects (select a clip with sound → Audio effects → + Add): Ultra loud (distorted), Distortion, Bitcrusher / 8-bit, Glitch, Pitch (chipmunk / deep voice), Robot, Telephone, Walkie-talkie, Megaphone, Underwater, Far away, Chorus, Flanger, Phaser, Tremolo, Wobble, Auto-pan, Bass boost and Lo-fi / vinyl',
     'They play live while you edit and are in your export. All free',
