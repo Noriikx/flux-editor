@@ -18,7 +18,7 @@ const PREMIUM_FEATURES = [
   ['Time machine', 'Jump your whole edit back to any earlier point in a couple of clicks'],
   ['Auto-bleep swearing', 'Finds swear words in speech and bleeps them, from slurs-only to strict'],
   ['Remove silences', 'Cuts out pauses and dead air automatically'],
-  ['Karaoke & word-pop captions', 'Animated caption styles that highlight each word as it\u2019s said'],
+  ['Auto captions', 'The animated caption styles: Karaoke, Word pop, Hype and Fire'],
   ['4K export', 'Export in Ultra HD (2160p)'],
   ['Green screen', 'Remove a green or blue background (chroma key)'],
   ['Pro transitions', '35+ extra: glitch, whip pan, heart, hexagon, wave, spiral, TV switch and more'],

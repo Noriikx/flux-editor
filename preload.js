@@ -64,6 +64,10 @@ contextBridge.exposeInMainWorld('flux', {
   aiChat: (opts) => ipcRenderer.invoke('ai:chat', opts),
   transcribe: (opts) => ipcRenderer.invoke('asr:transcribe', opts),
   onTranscribeProgress: (cb) => ipcRenderer.on('asr:progress', (_e, v) => cb(v)),
+  ttsStatus: () => ipcRenderer.invoke('tts:status'),
+  ttsInstall: () => ipcRenderer.invoke('tts:install'),
+  onTtsProgress: (cb) => ipcRenderer.on('tts:progress', (_e, v) => cb(v)),
+  ttsSpeak: (opts) => ipcRenderer.invoke('tts:speak', opts),
 
   // premium licence
   mediaStrip: (opts) => ipcRenderer.invoke('media:strip', opts),

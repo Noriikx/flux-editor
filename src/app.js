@@ -2753,32 +2753,44 @@ function trySnap(values, excludeId) {
     const c = getClip(clipEl.dataset.id);
     if (!(state.multi.size && (state.multi.has(c.id) || state.selectedId === c.id))) select(c.id);
     const nSel = selectedClips().length;
+    const snd = soundSource(c), vis = isVisual(c), noLinkedVideo = !(c.kind === 'video' && partners(c).length);
     contextMenu(e.clientX, e.clientY, [
-      { label: 'Split here', fn: () => { seek(t); splitAt(t); } },
+      { label: 'Split here', key: 'S', fn: () => { seek(t); splitAt(t); } },
+      { label: 'Copy', key: 'Ctrl+C', fn: copySel },
       { label: 'Duplicate', fn: duplicateSelected },
-      { label: 'Copy', fn: copySel },
-      { label: nSel > 1 ? `Make compound clip (${nSel} clips)` : 'Make compound clip', key: 'Alt+C', fn: makeCompound },
-      c.kind === 'compound' ? { label: 'Decompose (put clips back)', fn: () => decompose(c) } : null,
-      c.kind !== 'compound' ? { label: 'Quality & frame rate…', fn: () => openQualityDialog(c) } : null,
-      hasAudio(c) && !(c.kind === 'video' && partners(c).length) ? { label: 'Balance sound…', fn: () => openBalanceDialog(c) } : null,
-      soundSource(c) ? { label: 'Auto captions…', fn: () => openCaptionsDialog(c) } : null,
-      soundSource(c) ? { label: 'Bleep swear words…', pro: true, fn: () => openBleepDialog(c) } : null,
-      soundSource(c) ? { label: 'Bleep here (drag its edges to resize)', pro: true, fn: () => addBleepAt(soundSource(c), t) } : null,
-      soundSource(c) ? { label: 'Audio effects…', fn: () => { select(c.id); showLibTab('afx'); } } : null,
-      soundSource(c) ? { label: 'Remove silences', pro: true, fn: () => removeSilences(c) } : null,
-      hasAudio(c) ? { label: soundTarget(c).muted ? 'Unmute' : 'Mute', fn: () => commit(() => { const t = soundTarget(c); t.muted = !t.muted; }) } : null,
-      c.kind === 'video' && !soundClipOf(c) ? { label: 'Separate sound', fn: () => detachAudio(c) } : null,
-      partners(c).length ? { label: 'Unlink video & sound', fn: () => commit(() => { for (const p of partners(c)) p.linkId = null; c.linkId = null; }) } : null,
-      !c.linkId && (soundClipOf(c) || (c.kind === 'audio' && c.videoId && getClip(c.videoId))) ? { label: 'Link video & sound', fn: () => commit(() => { const v = c.kind === 'video' ? c : getClip(c.videoId), a = c.kind === 'video' ? soundClipOf(c) : c; const l = uid(); v.linkId = l; a.linkId = l; }) } : null,
-      isVisual(c) ? { label: 'Add keyframe here', fn: () => { seek(clamp(t, c.start, endOf(c))); addKeyframeAll(c); } } : null,
-      c.kind === 'video' ? { label: 'Freeze frame here', fn: () => { seek(clamp(t, c.start, endOf(c) - 0.05)); freezeFrame(); } } : null,
-      isVisual(c) ? { label: 'Add transition…', fn: () => openTransitionsFor(c) } : null,
-      hasAudio(c) ? { label: 'Normalize volume', fn: () => normalizeClip(c) } : null,
-      { label: c.disabled ? 'Turn clip on' : 'Turn clip off', key: 'V', fn: () => toggleClipEnabled(c) },
-      { label: 'Clip color…', fn: () => clipColorMenu(c, e.clientX, e.clientY) },
-      { label: 'Trim start to playhead', key: 'Q', fn: () => { seek(clamp(t, c.start, endOf(c))); trimToPlayhead('start', true); } },
-      { label: 'Trim end to playhead', key: 'W', fn: () => { seek(clamp(t, c.start, endOf(c))); trimToPlayhead('end', true); } },
-      { label: 'Delete', fn: () => deleteSelected(false), danger: true },
+      { sep: true },
+      { label: 'Edit', sub: [
+        { label: 'Trim start to playhead', key: 'Q', fn: () => { seek(clamp(t, c.start, endOf(c))); trimToPlayhead('start', true); } },
+        { label: 'Trim end to playhead', key: 'W', fn: () => { seek(clamp(t, c.start, endOf(c))); trimToPlayhead('end', true); } },
+        c.kind === 'video' ? { label: 'Freeze frame here', fn: () => { seek(clamp(t, c.start, endOf(c) - 0.05)); freezeFrame(); } } : null,
+        vis ? { label: 'Add transition…', fn: () => openTransitionsFor(c) } : null,
+        vis ? { label: 'Add keyframe here', fn: () => { seek(clamp(t, c.start, endOf(c))); addKeyframeAll(c); } } : null,
+        c.kind !== 'compound' && c.kind !== 'text' ? { label: 'Quality & frame rate…', fn: () => openQualityDialog(c) } : null,
+        { label: nSel > 1 ? `Make compound clip (${nSel} clips)` : 'Make compound clip', key: 'Alt+C', fn: makeCompound },
+        c.kind === 'compound' ? { label: 'Decompose (put clips back)', fn: () => decompose(c) } : null
+      ] },
+      hasAudio(c) || snd ? { label: 'Sound', sub: [
+        hasAudio(c) ? { label: soundTarget(c).muted ? 'Unmute' : 'Mute', fn: () => commit(() => { const st = soundTarget(c); st.muted = !st.muted; }) } : null,
+        snd ? { label: 'Audio effects…', fn: () => { select(c.id); showLibTab('afx'); } } : null,
+        hasAudio(c) && noLinkedVideo ? { label: 'Balance, EQ & ducking…', fn: () => openBalanceDialog(c) } : null,
+        hasAudio(c) ? { label: 'Normalize volume', fn: () => normalizeClip(c) } : null,
+        c.kind === 'video' && !soundClipOf(c) ? { label: 'Separate sound', fn: () => detachAudio(c) } : null,
+        partners(c).length ? { label: 'Unlink video & sound', fn: () => commit(() => { for (const p of partners(c)) p.linkId = null; c.linkId = null; }) } : null,
+        !c.linkId && (soundClipOf(c) || (c.kind === 'audio' && c.videoId && getClip(c.videoId))) ? { label: 'Link video & sound', fn: () => commit(() => { const v = c.kind === 'video' ? c : getClip(c.videoId), a = c.kind === 'video' ? soundClipOf(c) : c; const l = uid(); v.linkId = l; a.linkId = l; }) } : null
+      ] } : null,
+      snd || (c.kind === 'text' && !c.caption) ? { label: 'Smart', sub: [
+        snd ? { label: 'Auto captions…', fn: () => openCaptionsDialog(c) } : null,
+        c.kind === 'text' && !c.caption ? { label: 'Read this text out loud', fn: () => ttsReadTextClip(c) } : null,
+        snd ? { label: 'Bleep swear words…', pro: true, fn: () => openBleepDialog(c) } : null,
+        snd ? { label: 'Bleep here (drag its edges to resize)', pro: true, fn: () => addBleepAt(snd, t) } : null,
+        snd ? { label: 'Remove silences', pro: true, fn: () => removeSilences(c) } : null
+      ] } : null,
+      { label: 'Clip', sub: [
+        { label: c.disabled ? 'Turn clip on' : 'Turn clip off', key: 'V', fn: () => toggleClipEnabled(c) },
+        { label: 'Clip color…', fn: () => clipColorMenu(c, e.clientX, e.clientY) }
+      ] },
+      { sep: true },
+      { label: 'Delete', key: 'Del', fn: () => deleteSelected(false), danger: true },
       { label: 'Delete & close gap', fn: () => deleteSelected(true), danger: true }
     ].filter(Boolean));
   });
@@ -2885,33 +2897,53 @@ function paste() {
     state.selectedId = b.id;
   });
 }
-function contextMenu(x, y, items) {
-  closeContextMenu();
-  const menu = el('div', 'ctx-menu');
+function contextMenu(x, y, items, parent) {
+  if (!parent) closeContextMenu();
+  const menu = el('div', 'ctx-menu' + (parent ? ' ctx-sub' : ''));
   Object.assign(menu.style, {
-    position: 'fixed', zIndex: 90, background: '#1a1a25', border: '1px solid var(--line-2)', borderRadius: '10px',
+    position: 'fixed', zIndex: parent ? 91 : 90, background: '#1a1a25', border: '1px solid var(--line-2)', borderRadius: '10px',
     padding: '5px', minWidth: '190px', boxShadow: '0 16px 40px rgba(0,0,0,.55)', maxHeight: 'calc(100vh - 8px)', overflowY: 'auto'
   });
+  let openSub = null, subTimer = 0;
+  const closeSub = () => { if (openSub) { openSub.remove(); openSub = null; } menu.querySelectorAll('.ctx-has-sub').forEach((b) => (b.style.background = 'transparent')); };
   for (const it of items) {
-    const b = el('button');
-    b.innerHTML = '<span></span>' + (it.key ? '<kbd class="ctx-key"></kbd>' : '');
+    if (it.sep) { const hr = el('div'); Object.assign(hr.style, { height: '1px', background: 'var(--line)', margin: '4px 6px' }); menu.appendChild(hr); continue; }
+    const subItems = it.sub ? it.sub.filter(Boolean) : null;
+    if (subItems && !subItems.length) continue;
+    const b = el('button', subItems ? 'ctx-has-sub' : '');
+    b.innerHTML = '<span></span>' + (subItems ? '<span class="ctx-arrow">›</span>' : it.key ? '<kbd class="ctx-key"></kbd>' : '');
     b.firstChild.textContent = it.label;
     if (it.pro) b.firstChild.insertAdjacentHTML('beforeend', ' ' + CROWN);
-    if (it.key) b.lastChild.textContent = it.key;
+    if (it.key && !subItems) b.lastChild.textContent = it.key;
     Object.assign(b.style, {
       display: 'flex', justifyContent: 'space-between', gap: '24px', width: '100%', textAlign: 'left', background: 'transparent', border: 'none', padding: '7px 10px',
       borderRadius: '6px', fontSize: '12.5px', color: it.danger ? 'var(--danger)' : 'var(--text)', opacity: it.disabled ? 0.4 : 1
     });
-    b.onmouseenter = () => (b.style.background = 'var(--panel-3)');
-    b.onmouseleave = () => (b.style.background = 'transparent');
-    b.onclick = () => { closeContextMenu(); if (!it.disabled) it.fn(); };
+    const showSub = () => {
+      if (openSub && openSub._for === b) return;
+      closeSub();
+      b.style.background = 'var(--panel-3)';
+      const r = b.getBoundingClientRect();
+      contextMenu(r.right + 2, r.top - 5, subItems, menu);
+      openSub = document.body.lastElementChild; openSub._for = b;
+      const sr = openSub.getBoundingClientRect();
+      if (r.right + 2 + sr.width > window.innerWidth - 4) openSub.style.left = Math.max(4, r.left - sr.width - 2) + 'px';
+    };
+    b.onmouseenter = () => {
+      clearTimeout(subTimer);
+      if (subItems) { subTimer = setTimeout(showSub, 90); return; }
+      subTimer = setTimeout(closeSub, 150);
+      b.style.background = 'var(--panel-3)';
+    };
+    b.onmouseleave = () => { if (!subItems) b.style.background = 'transparent'; };
+    b.onclick = () => { if (subItems) { clearTimeout(subTimer); showSub(); return; } closeContextMenu(); if (!it.disabled) it.fn(); };
     menu.appendChild(b);
   }
   document.body.appendChild(menu);
   const r = menu.getBoundingClientRect();
   menu.style.left = clamp(x, 4, window.innerWidth - r.width - 4) + 'px';
   menu.style.top = clamp(y, 4, window.innerHeight - r.height - 4) + 'px';
-  setTimeout(() => document.addEventListener('pointerdown', onCtxOutside), 0);
+  if (!parent) setTimeout(() => document.addEventListener('pointerdown', onCtxOutside), 0);
 }
 function onCtxOutside(e) { if (!e.target.closest('.ctx-menu')) closeContextMenu(); }
 function closeContextMenu() {

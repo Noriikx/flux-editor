@@ -865,6 +865,150 @@ ipcMain.handle('asr:transcribe', async (e, { file, start, end, model, language }
   }
 });
 
+// ---------- Text to speech (Piper, runs on this computer) ----------
+// The engine (Piper, MIT) and the voices (LibriTTS "high", CC BY 4.0 - free to use in your videos) are downloaded
+// once from their official GitHub releases and checked against a fixed SHA-256 before use. Nothing is sent anywhere.
+const TTS_ENGINES = {
+  'win32-x64': { url: 'https://github.com/rhasspy/piper/releases/download/2023.11.14-2/piper_windows_amd64.zip', sha: 'f3c58906402b24f3a96d92145f58acba6d86c9b5db896d207f78dc80811efcea', size: 22477236, exe: 'piper.exe' },
+  'darwin-arm64': { url: 'https://github.com/rhasspy/piper/releases/download/2023.11.14-2/piper_macos_aarch64.tar.gz', sha: '6b1eb03b3735946cb35216e063e7eebcc33a6bbf5dd96ec0217959bf1cdcb0cc', size: 19146957, exe: 'piper' },
+  'darwin-x64': { url: 'https://github.com/rhasspy/piper/releases/download/2023.11.14-2/piper_macos_x64.tar.gz', sha: 'ced85c0a3df13945b1e623b878a48fdc2854d5c485b4b67f62857cf551deaf8b', size: 19146927, exe: 'piper' },
+  'linux-x64': { url: 'https://github.com/rhasspy/piper/releases/download/2023.11.14-2/piper_linux_x86_64.tar.gz', sha: 'a50cb45f355b7af1f6d758c1b360717877ba0a398cc8cbe6d2a7a3a26e225992', size: 26460462, exe: 'piper' }
+};
+const TTS_VOICE = { url: 'https://github.com/rhasspy/piper/releases/download/v0.0.2/voice-en-us-libritts-high.tar.gz', sha: '328e3e9cb573a43a6c5e1aeca386e971232bdb1418a74d4674cf726c973a0ea8', size: 120620366, model: 'en-us-libritts-high.onnx' };
+const ttsDir = () => ensureDir(path.join(dataDir(), 'tts'));
+const ttsEngine = () => TTS_ENGINES[process.platform + '-' + process.arch] || (process.platform === 'win32' ? TTS_ENGINES['win32-x64'] : null);
+const ttsExe = () => { const e = ttsEngine(); return e ? path.join(ttsDir(), 'piper', e.exe) : null; };
+const ttsModel = () => path.join(ttsDir(), 'voice', TTS_VOICE.model);
+const ttsReady = () => { const x = ttsExe(); return !!(x && fs.existsSync(x) && fs.existsSync(ttsModel()) && fs.existsSync(ttsModel() + '.json')); };
+function sha256File(file) {
+  return new Promise((resolve, reject) => {
+    const h = crypto.createHash('sha256');
+    require('original-fs').createReadStream(file).on('data', (d) => h.update(d)).on('error', reject).on('end', () => resolve(h.digest('hex')));
+  });
+}
+function untar(archive, dest) {
+  return new Promise((resolve, reject) => {
+    ensureDir(dest);
+    // tar.exe ships with Windows 10/11 and also opens .zip files; it runs hidden (no console window)
+    const cmd = process.platform === 'win32' ? path.join(process.env.SystemRoot || 'C:\\Windows', 'System32', 'tar.exe') : 'tar';
+    const p = spawn(cmd, ['-xf', archive, '-C', dest], { windowsHide: true });
+    let err = '';
+    p.stderr.on('data', (d) => { err += d; });
+    p.on('error', reject);
+    p.on('close', (code) => (code === 0 ? resolve() : reject(new Error('Could not unpack the voice files. ' + err.slice(-200)))));
+  });
+}
+let ttsInstalling = null;
+async function ttsInstall(send) {
+  const eng = ttsEngine();
+  if (!eng) throw new Error('Voices aren\u2019t available on this computer yet.');
+  const dir = ttsDir(), tmp = os.tmpdir();
+  const parts = [[eng, 'engine', dir], [TTS_VOICE, 'voice', path.join(dir, 'voice')]];
+  const total = eng.size + TTS_VOICE.size;
+  let doneBytes = 0;
+  for (const [item, what, dest] of parts) {
+    if (what === 'engine' && ttsExe() && fs.existsSync(ttsExe())) { doneBytes += item.size; continue; }
+    if (what === 'voice' && fs.existsSync(ttsModel()) && fs.existsSync(ttsModel() + '.json')) { doneBytes += item.size; continue; }
+    const file = path.join(tmp, 'flux-tts-' + path.basename(item.url));
+    await download(item.url, file, item.size, (v) => send({ stage: 'download', value: (doneBytes + (v.value || 0) * item.size) / total }));
+    send({ stage: 'check', value: (doneBytes + item.size) / total });
+    const sum = await sha256File(file);
+    if (sum !== item.sha) { try { fs.unlinkSync(file); } catch {} throw new Error('The download was damaged. Please try again.'); }
+    await untar(file, dest);
+    try { fs.unlinkSync(file); } catch {}
+    doneBytes += item.size;
+  }
+  if (process.platform !== 'win32') { try { fs.chmodSync(ttsExe(), 0o755); } catch {} }
+  if (!ttsReady()) throw new Error('The voices could not be installed.');
+  send({ stage: 'done', value: 1 });
+  return true;
+}
+// Word timings for captions: find the pauses in the voice and spread each phrase's words across its speech.
+function ttsWordTimes(buf, text) {
+  // 16-bit mono PCM WAV from Piper
+  let off = 12, sr = 22050, data = null;
+  while (off + 8 <= buf.length) {
+    const id = buf.toString('ascii', off, off + 4), size = buf.readUInt32LE(off + 4);
+    if (id === 'fmt ') sr = buf.readUInt32LE(off + 12);
+    if (id === 'data') { data = buf.subarray(off + 8, Math.min(buf.length, off + 8 + size)); break; }
+    off += 8 + size + (size & 1);
+  }
+  if (!data) return { words: [], duration: 0 };
+  const n = Math.floor(data.length / 2), hop = Math.round(sr * 0.01), frames = Math.floor(n / hop);
+  const env = new Float32Array(frames);
+  for (let f = 0; f < frames; f++) { let a = 0; for (let i = f * hop; i < (f + 1) * hop; i++) { const v = data.readInt16LE(i * 2) / 32768; a += v * v; } env[f] = Math.sqrt(a / hop); }
+  const sm = new Float32Array(frames);
+  for (let f = 0; f < frames; f++) { let a = 0, c = 0; for (let k = -2; k <= 2; k++) { const j = f + k; if (j >= 0 && j < frames) { a += env[j]; c++; } } sm[f] = a / c; }
+  const peak = Math.max(...sm), th = Math.max(0.006, peak * 0.06);
+  let a0 = 0, b0 = frames - 1;
+  while (a0 < frames && sm[a0] < th) a0++;
+  while (b0 > a0 && sm[b0] < th) b0--;
+  const pauses = [];
+  for (let f = a0; f <= b0; f++) {
+    if (sm[f] >= th) continue;
+    let g = f; while (g <= b0 && sm[g] < th) g++;
+    if (g - f >= 12) pauses.push([f, g]);
+    f = g;
+  }
+  const toks = text.split(/\s+/).filter(Boolean);
+  if (!toks.length) return { words: [], duration: n / sr };
+  // where each word would fall if speech were even; punctuation marks are the places a pause can go
+  const wl = toks.map((w) => w.replace(/[^\p{L}\p{N}]/gu, '').length + 2), totC = wl.reduce((x, y) => x + y, 0);
+  let acc = 0;
+  const cand = [];
+  toks.forEach((w, i) => { acc += wl[i]; if (i < toks.length - 1 && /[,.!?;:…-]["'”)]*$/.test(w)) cand.push({ i, e: a0 + ((b0 + 1 - a0) * acc) / totC, strong: /[.!?…]["'”)]*$/.test(w) }); });
+  const cuts = [];
+  let last = -1;
+  for (const [p0, p1] of pauses) {
+    const c = (p0 + p1) / 2;
+    let best = null, bd = 90;
+    for (let k = last + 1; k < cand.length; k++) { const d = Math.abs(cand[k].e - c) - (cand[k].strong ? 15 : 0); if (d < bd) { bd = d; best = k; } }
+    if (best != null) { cuts.push({ i: cand[best].i, p0, p1 }); last = best; }
+  }
+  const phrases = [], spans = [];
+  let from = 0, t0 = a0;
+  for (const cu of cuts) { phrases.push(toks.slice(from, cu.i + 1)); spans.push([t0, cu.p0]); from = cu.i + 1; t0 = cu.p1; }
+  phrases.push(toks.slice(from)); spans.push([t0, b0 + 1]);
+  const words = [];
+  phrases.forEach((p, i) => {
+    const [s0, s1] = spans[i];
+    const wt = p.map((w) => w.replace(/[^\p{L}\p{N}]/gu, '').length + 2), tot = wt.reduce((x, y) => x + y, 0) || 1;
+    let c = s0;
+    p.forEach((w, k) => { const l = ((s1 - s0) * wt[k]) / tot; words.push({ w, s: c / 100, e: (c + l) / 100 }); c += l; });
+  });
+  return { words, duration: n / sr };
+}
+ipcMain.handle('tts:status', () => ({ ready: ttsReady(), supported: !!ttsEngine(), size: (ttsEngine() ? ttsEngine().size : 0) + TTS_VOICE.size }));
+ipcMain.handle('tts:install', async (e) => {
+  const send = (v) => { try { e.sender.send('tts:progress', v); } catch {} };
+  try {
+    if (!ttsInstalling) ttsInstalling = ttsInstall(send).finally(() => { ttsInstalling = null; });
+    await ttsInstalling;
+    return { ok: true };
+  } catch (err) { return { error: err.message || String(err) }; }
+});
+ipcMain.handle('tts:speak', (_e, { text, speaker, rate, preview }) => new Promise((resolve) => {
+  if (!ttsReady()) return resolve({ error: 'Voices are not installed yet' });
+  const clean = String(text || '').replace(/[\r\n\t]+/g, ' ').replace(/\s{2,}/g, ' ').trim().slice(0, 5000);
+  if (!clean) return resolve({ error: 'Type something first' });
+  const out = preview ? path.join(cacheDir(), 'tts-preview-' + safeId(String(speaker)) + '.wav')
+    : uniquePath(mediaDir('voices'), safeName('Voice - ' + clean.slice(0, 40)) + '.wav');
+  const len = 1 / Math.max(0.5, Math.min(2, +rate || 1));
+  const exe = ttsExe();
+  const p = spawn(exe, ['-m', ttsModel(), '-s', String(Math.max(0, Math.min(903, parseInt(speaker, 10) || 0))), '--length_scale', len.toFixed(3),
+    '--sentence_silence', '0.3', '-f', out], { cwd: path.dirname(exe), windowsHide: true });
+  let err = '';
+  p.stderr.on('data', (d) => { err += d; });
+  p.on('error', (x) => resolve({ error: x.message }));
+  p.on('close', (code) => {
+    if (code !== 0 || !fs.existsSync(out)) return resolve({ error: 'The voice could not be made. ' + err.slice(-200) });
+    let words = [], duration = 0;
+    try { ({ words, duration } = ttsWordTimes(fs.readFileSync(out), clean)); } catch (x) { console.warn('tts timing', x); }
+    resolve({ path: out, words, duration });
+  });
+  p.stdin.end(clean + '\n', 'utf8');
+}));
+
 // ---------- Premium licence keys (Lemon Squeezy) ----------
 async function lsCall(endpoint, fields) {
   const res = await net.fetch('https://api.lemonsqueezy.com/v1/licenses/' + endpoint, {

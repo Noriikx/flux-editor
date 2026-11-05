@@ -346,8 +346,8 @@ function settingsPerf(body) {
 }
 function settingsAi(body) {
   body.innerHTML = `<h3>AI Editor</h3>
-    <p class="sub">The AI Editor is included with Premium - nothing to set up.</p>
-    <div class="set-row col"><b>Your own Anthropic API key (optional, advanced)</b><small>Only if you want the AI to run on your own key instead. Leave empty to use the one included with Premium.</small>
+    <p class="sub">The AI Editor runs right on your computer - no account, key or internet needed. Just tell it what to do.</p>
+    <div class="set-row col"><b>Your own Anthropic API key (optional, advanced)</b><small>Only if you want Claude to answer instead of Flux's built-in AI. Leave empty to use the built-in one.</small>
       <input class="num-input" id="aiKey" type="password" placeholder="sk-ant-…"></div>
     <div class="set-row col"><b>Model</b><input class="num-input" id="aiModel"></div>
     <div class="set-row col"><b>Captions accuracy</b><small>Bigger models are more accurate but slower and download once.</small><select class="dev-select" id="asrModel"></select></div>`;
@@ -362,7 +362,8 @@ function settingsAi(body) {
 function settingsAbout(body) {
   body.innerHTML = `<h3>About Flux</h3>
     <div style="display:flex;gap:14px;align-items:center;margin-bottom:14px"><img src="logo.png" style="width:56px;height:56px;border-radius:14px"><div><b style="font-size:16px" class="about-ver">Flux</b><br><small style="color:var(--muted)">A simple, friendly video editor</small></div><span style="flex:1"></span><button class="btn" id="btnCheckUpd">Check for updates</button></div>
-    <p class="sub">Projects are saved automatically on this computer. Music from the Music tab comes from Kevin MacLeod (incompetech.com, CC BY 4.0) and the Internet Archive. Check each song's license and add the credit when it asks for one.</p>`;
+    <p class="sub">Projects are saved automatically on this computer. Music from the Music tab comes from Kevin MacLeod (incompetech.com, CC BY 4.0) and the Internet Archive. Check each song's license and add the credit when it asks for one.</p>
+    <p class="sub">Text to speech uses Piper (MIT license) and voices trained on LibriTTS by Heiga Zen et al. (CC BY 4.0).</p>`;
   if (typeof legalLinks === 'function') { const lp = el('p', 'sub acct-legal'); lp.innerHTML = 'Legal: ' + legalLinks() + ' · <a href="#" data-legal-mail>flux.editing.app@gmail.com</a>'; body.appendChild(lp); wireLegal(lp); $('[data-legal-mail]', lp).onclick = (e) => { e.preventDefault(); openLink('mailto:flux.editing.app@gmail.com'); }; }
   if (api && api.appVersion) api.appVersion().then((v) => { const e = $('.about-ver', body); if (e) e.textContent = 'Flux ' + v; });
   $('#btnCheckUpd', body).onclick = async (e) => { e.target.disabled = true; e.target.textContent = 'Checking…'; await checkForUpdates(false); e.target.disabled = false; e.target.textContent = 'Check for updates'; };

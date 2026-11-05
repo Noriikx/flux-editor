@@ -17,28 +17,32 @@ const TOOL_ICONS = {
   fit: '<path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/>',
   graph: '<path d="M3 3v18h18"/><path d="M6 16c3 0 4-9 7-9s3 6 7 6"/>',
   kprev: '<path d="M15 6l-6 6 6 6"/><path d="M19 12h-1"/>',
-  knext: '<path d="M9 6l6 6-6 6"/><path d="M5 12h1"/>'
+  knext: '<path d="M9 6l6 6-6 6"/><path d="M5 12h1"/>',
+  afx: '<path d="M3 12h2l2-6 3 12 3-9 2 5 2-2h4"/>',
+  tts: '<path d="M4 6h10M9 6v12"/><path d="M15 11a3 3 0 0 1 0 4M18 9a6 6 0 0 1 0 8"/>'
 };
 function clipTools(c) {
   const vis = c && isVisual(c), snd = c && soundSource(c);
   const inside = c && state.time >= c.start && state.time <= endOf(c);
   return [
-    { id: 'key', tip: 'Add keyframe at the playhead (animate size, position, rotation, opacity)', on: vis && inside, fn: () => { addKeyframeAll(c); renderInspector(); } },
-    { id: 'kprev', tip: 'Previous keyframe ([)', on: c && c.keys && Object.keys(c.keys).length, fn: () => jumpKeyframe(c, -1) },
-    { id: 'knext', tip: 'Next keyframe (])', on: c && c.keys && Object.keys(c.keys).length, fn: () => jumpKeyframe(c, 1) },
-    { id: 'graph', tip: 'Graph editor - shape the animation curves (G)', on: !!c, fn: () => toggleGraphEditor() },
-    { id: 'split', tip: 'Split at the playhead (S)', on: c && inside, fn: () => splitAt(state.time) },
-    { id: 'speed', tip: 'Change speed (up to 10x)', on: c && (c.kind === 'video' || c.kind === 'audio'), fn: (b) => speedMenu(c, b) },
-    { id: 'freeze', tip: 'Freeze this frame for 2 seconds', on: c && c.kind === 'video' && inside, fn: () => freezeFrame() },
-    { id: 'trans', tip: 'Add a transition', on: vis, fn: () => openTransitionsFor(c) },
-    { id: 'fit', tip: 'Fill the frame / show the whole picture', on: c && (c.kind === 'video' || c.kind === 'image'), fn: () => commit(() => { c.fit = c.fit === 'cover' ? 'contain' : 'cover'; }) },
-    { id: 'quality', tip: 'Quality & frame rate', on: c && (c.kind === 'video' || c.kind === 'image'), fn: () => openQualityDialog(c) },
-    { id: 'detach', tip: 'Separate the sound from the video', on: c && c.kind === 'video' && !partners(c).length, fn: () => detachAudio(c) },
-    { id: c && soundTarget(c).muted ? 'mute' : 'unmute', tip: c && soundTarget(c).muted ? 'Unmute' : 'Mute', on: c && hasAudio(c), fn: () => commit(() => { const t = soundTarget(c); t.muted = !t.muted; }) },
-    { id: 'balance', tip: 'Balance, EQ & ducking', on: c && hasAudio(c) && !(c.kind === 'video' && partners(c).length), fn: () => openBalanceDialog(c) },
-    { id: 'captions', tip: 'Auto captions', on: snd, fn: () => openCaptionsDialog(c) },
-    { id: 'bleep', tip: 'Bleep swear words', pro: true, on: snd, fn: () => openBleepDialog(c) },
-    { id: 'silence', tip: 'Remove silences', pro: true, on: snd, fn: () => removeSilences(c) }
+    { id: 'key', g: 'anim', label: 'Keyframe', tip: 'Add keyframe at the playhead (animate size, position, rotation, opacity)', on: vis && inside, fn: () => { addKeyframeAll(c); renderInspector(); } },
+    { id: 'kprev', g: 'anim', label: 'Prev key', tip: 'Previous keyframe ([)', on: c && c.keys && Object.keys(c.keys).length, fn: () => jumpKeyframe(c, -1) },
+    { id: 'knext', g: 'anim', label: 'Next key', tip: 'Next keyframe (])', on: c && c.keys && Object.keys(c.keys).length, fn: () => jumpKeyframe(c, 1) },
+    { id: 'graph', g: 'anim', label: 'Curves', tip: 'Graph editor - shape the animation curves (G)', on: !!c, fn: () => toggleGraphEditor() },
+    { id: 'split', g: 'edit', label: 'Split', tip: 'Split at the playhead (S)', on: c && inside, fn: () => splitAt(state.time) },
+    { id: 'speed', g: 'edit', label: 'Speed', tip: 'Change speed (up to 10x)', on: c && (c.kind === 'video' || c.kind === 'audio'), fn: (b) => speedMenu(c, b) },
+    { id: 'freeze', g: 'edit', label: 'Freeze', tip: 'Freeze this frame for 2 seconds', on: c && c.kind === 'video' && inside, fn: () => freezeFrame() },
+    { id: 'trans', g: 'edit', label: 'Transition', tip: 'Add a transition', on: vis, fn: () => openTransitionsFor(c) },
+    { id: 'fit', g: 'edit', label: c && c.fit === 'cover' ? 'Fit' : 'Fill', tip: 'Fill the frame / show the whole picture', on: c && (c.kind === 'video' || c.kind === 'image'), fn: () => commit(() => { c.fit = c.fit === 'cover' ? 'contain' : 'cover'; }) },
+    { id: 'quality', g: 'edit', label: 'Quality', tip: 'Quality & frame rate', on: c && (c.kind === 'video' || c.kind === 'image'), fn: () => openQualityDialog(c) },
+    { id: 'detach', g: 'sound', label: 'Separate', tip: 'Separate the sound from the video', on: c && c.kind === 'video' && !partners(c).length, fn: () => detachAudio(c) },
+    { id: c && soundTarget(c).muted ? 'mute' : 'unmute', g: 'sound', label: c && soundTarget(c).muted ? 'Unmute' : 'Mute', tip: c && soundTarget(c).muted ? 'Unmute' : 'Mute', on: c && hasAudio(c), fn: () => commit(() => { const t = soundTarget(c); t.muted = !t.muted; }) },
+    { id: 'balance', g: 'sound', label: 'Balance', tip: 'Balance, EQ & ducking', on: c && hasAudio(c) && !(c.kind === 'video' && partners(c).length), fn: () => openBalanceDialog(c) },
+    { id: 'captions', g: 'smart', label: 'Captions', tip: 'Auto captions', on: snd, fn: () => openCaptionsDialog(c) },
+    { id: 'bleep', g: 'smart', label: 'Bleep', tip: 'Bleep swear words', pro: true, on: snd, fn: () => openBleepDialog(c) },
+    { id: 'silence', g: 'smart', label: 'Silences', tip: 'Remove silences', pro: true, on: snd, fn: () => removeSilences(c) },
+    { id: 'afx', g: 'sound', label: 'Effects', tip: 'Audio effects (robot, echo, distortion…)', on: c && !!audioFxTarget(c), fn: () => showLibTab('afx') },
+    { id: 'tts', g: 'smart', label: 'Voice', tip: c && c.kind === 'text' && !c.caption ? 'Read this text out loud (text to speech)' : 'Text to speech - type something and a voice reads it', on: true, fn: () => { if (c && c.kind === 'text' && !c.caption) ttsReadTextClip(c); else { showLibTab('voice'); const sw = $('.v-switch [data-m=tts]'); if (sw) sw.click(); } } }
   ];
 }
 function speedMenu(c, btn) {
@@ -48,17 +52,29 @@ function speedMenu(c, btn) {
     fn: () => commit(() => setSpeed(c, v))
   })));
 }
+const CT_GROUPS = [['edit', 'Edit'], ['anim', 'Animate'], ['sound', 'Sound'], ['smart', 'Smart']];
+let ctGroup = 'edit';
+try { ctGroup = localStorage.getItem('flux.ctGroup') || 'edit'; } catch {}
 function updateClipTools() {
   const box = $('#clipTools');
   if (!box) return;
   const c = getClip(state.selectedId);
   const name = c ? clipLabel(c) : '';
   $('.ct-name', box).textContent = c ? name : 'Click a clip on the timeline';
+  const tools = clipTools(c);
+  const tabs = $('.ct-tabs', box);
+  tabs.innerHTML = '';
+  for (const [id, label] of CT_GROUPS) {
+    const on = tools.some((t) => t.g === id && t.on);
+    const b = el('button', 'ct-tab' + (id === ctGroup ? ' active' : '') + (on ? '' : ' dim'), label);
+    b.onclick = () => { ctGroup = id; try { localStorage.setItem('flux.ctGroup', id); } catch {} updateClipTools(); };
+    tabs.appendChild(b);
+  }
   const row = $('.ct-row', box);
   row.innerHTML = '';
-  for (const t of clipTools(c)) {
-    const b = el('button', 'ct-btn' + (t.pro && !isPremium() ? ' pro' : ''));
-    b.innerHTML = `<svg viewBox="0 0 24 24">${TOOL_ICONS[t.id]}</svg>${t.pro ? '<i class="ct-crown">' + CROWN + '</i>' : ''}`;
+  for (const t of tools.filter((x) => x.g === ctGroup)) {
+    const b = el('button', 'ct-btn' + (t.id === 'key' ? ' ct-key' : '') + (t.pro && !isPremium() ? ' pro' : ''));
+    b.innerHTML = `<svg viewBox="0 0 24 24">${TOOL_ICONS[t.id]}</svg><span class="ct-lbl">${t.label}</span>${t.pro ? '<i class="ct-crown">' + CROWN + '</i>' : ''}`;
     b.dataset.tip = t.tip + (t.pro && !isPremium() ? ' (Premium)' : '');
     b.disabled = !t.on;
     b.onclick = () => t.fn(b);
@@ -70,7 +86,7 @@ function setupClipTools() {
   if (!lib || $('#clipTools')) return;
   const box = el('div', '');
   box.id = 'clipTools';
-  box.innerHTML = '<div class="ct-head"><b>Clip tools</b><span class="ct-name"></span></div><div class="ct-row"></div>';
+  box.innerHTML = '<div class="ct-head"><b>Clip tools</b><span class="ct-name"></span></div><div class="ct-tabs"></div><div class="ct-row"></div>';
   lib.appendChild(box);
   // keep the buttons in step with the selected clip and the playhead
   const baseRender = renderInspector;
