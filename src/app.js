@@ -1265,7 +1265,11 @@ function syncMedia(L = rt.layout || computeLayout()) {
     }
     const track = getTrack(c.trackId);
     const maxSrc = m.duration ? m.duration - 0.03 : Infinity;
-    const src = clamp(c.in + (t - s) * c.speed, 0, maxSrc);
+    const rawSrc = c.in + (t - s) * c.speed;
+    const src = clamp(rawSrc, 0, maxSrc);
+    // During a transition a clip can be shown a moment before its first frame or after its last one
+    // (when it uses the whole video). Hold that frame still instead of making the player chase it.
+    const held = c.kind === 'video' && !rt.exp2 && (rawSrc < -0.01 || rawSrc > maxSrc + 0.01);
     // a video with its sound on a separate (linked) clip never plays its own sound - that would double it
     const linkedSound = c.kind === 'video' && !!soundClipOf(c);
     const silent = (track && track.muted) || c.muted || linkedSound || c.disabled;
@@ -1290,6 +1294,11 @@ function syncMedia(L = rt.layout || computeLayout()) {
     setGain(p, silent ? 0 : kv(c, 'volume', t - s) * fadeEnv(c, t - s) * tg * p.duck * bleep);
     applyAudioFx(p, c);
     if (rt.exp2) { setGain(p, 0); exp2SyncPlayer(p, c, src); continue; }
+    if (held) {
+      if (!el.paused) el.pause();
+      if (el.readyState >= 1 && !el.seeking && Math.abs(el.currentTime - src) > 0.05) el.currentTime = src;
+      continue;
+    }
     if (state.playing) {
       // waiting for the picture? hold the clock a moment instead of stuttering (see frame())
       const waiting = c.kind === 'video' && !state.exporting && (el.seeking || el.readyState < 3) && t >= w.vs + 0.02;

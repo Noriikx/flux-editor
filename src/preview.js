@@ -47,10 +47,11 @@ function startPreview(o) {
   restart();
   pv.timer = setInterval(() => {
     if (!pv.on || pv.looping || pv.token !== token) return;
-    if (state.time >= end || state.time < start - 0.05 || !state.playing) { pv.looping = true; restart(); }
+    if (!state.playing || state.time < start - 0.3) { endPreview(true); return; } // they paused or jumped somewhere: stop previewing
+    if (state.time >= end) { pv.looping = true; restart(); }
   }, 30);
 }
-function endPreview() {
+function endPreview(keepPlace) {
   if (!pv.on) return;
   pv.on = false;
   pv.key = null;
@@ -60,6 +61,7 @@ function endPreview() {
   rt.previewTrans = false;
   if (pv.restore) pv.restore();
   pv.restore = null;
+  if (keepPlace) { rt.layout = computeLayout(); requestDraw(); return; }
   if (!pv.wasPlaying) pause();
   seek(pv.t0);
   rt.layout = computeLayout();
@@ -67,14 +69,16 @@ function endPreview() {
 }
 // hover = preview, leaving or pressing = back to normal (the click then applies it for real).
 // A short delay means sweeping the mouse over the grid doesn't start a preview on every tile.
-let pvHoverTimer = null, pvLeaveTimer = null;
+let pvHoverTimer = null, pvLeaveTimer = null, pvBlock = null;
+document.addEventListener('mousemove', (e) => { if (pvBlock && Math.hypot(e.clientX - pvBlock.x, e.clientY - pvBlock.y) > 6) pvBlock = null; }, true);
 function hoverPreview(elm, getOpts) {
   elm.addEventListener('mouseenter', () => {
     clearTimeout(pvHoverTimer); clearTimeout(pvLeaveTimer);
+    if (pvBlock) return; // just clicked: the list redrew under the mouse, that's not a new hover
     pvHoverTimer = setTimeout(() => { const o = getOpts(); if (o) startPreview(o); else endPreview(); }, pv.on ? 60 : 160);
   });
   elm.addEventListener('mouseleave', () => { clearTimeout(pvHoverTimer); clearTimeout(pvLeaveTimer); pvLeaveTimer = setTimeout(endPreview, 180); });
-  elm.addEventListener('pointerdown', () => { clearTimeout(pvHoverTimer); clearTimeout(pvLeaveTimer); endPreview(); });
+  elm.addEventListener('pointerdown', (e) => { clearTimeout(pvHoverTimer); clearTimeout(pvLeaveTimer); pvBlock = { x: e.clientX, y: e.clientY }; endPreview(); });
 }
 
 function transitionPreviewOpts(type) {

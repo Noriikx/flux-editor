@@ -1,6 +1,10 @@
 /* Flux — changelog. Shown once after an update, and any time from Settings → About. */
 'use strict';
 const CHANGELOG = [
+  { v: '5.1.1', date: '2026-11-08', items: [
+    'Fixed transitions: hovering a transition previews it properly again, and after you apply one the video no longer jumps back or gets stuck around the cut',
+    'Playing through a transition no longer freezes for a moment when a clip uses its whole video'
+  ] },
   { v: '5.1.0', date: '2026-11-05', items: [
     'Text to speech: type anything and one of 10 natural AI voices reads it out loud (Voice tab → Text to speech). Auto captions are added for it right away. The voices run on your computer, work offline and are free to use in your videos',
     'A much smarter AI Editor that works without any account or key: say several things at once (“cut the first 3s, add a title and make it warmer”), point at clips (“the music”, “the 2nd clip”, “intro.mp4”) and times (“at 0:05”, “from 3 to 8s”, “every cut”). It does 40+ kinds of edits and answers “how do I…” questions',
