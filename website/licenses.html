@@ -1,0 +1,97 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Licenses & credits · Flux</title>
+<meta name="description" content="Open-source software, music, fonts and voices used in Flux, and their licences.">
+<link rel="icon" href="logo.png">
+<style>
+:root { --ink:#09080f; --panel:#12111b; --line:#2a2738; --text:#eeedf7; --muted:#9a97b0; --lav:#c3bfff; --violet:#7c5cff;
+  --f-display:"Segoe UI Variable Display","Segoe UI",system-ui,-apple-system,sans-serif; --f-body:"Segoe UI",system-ui,-apple-system,sans-serif; color-scheme:dark; }
+* { box-sizing:border-box; }
+html,body { margin:0; background:var(--ink); color:var(--text); font:16px/1.65 var(--f-body); }
+a { color:var(--lav); }
+header { border-bottom:1px solid var(--line); }
+.wrap { max-width:780px; margin:0 auto; padding:0 20px; }
+header .wrap { display:flex; align-items:center; justify-content:space-between; gap:12px; height:64px; }
+.brand { display:flex; align-items:center; gap:10px; color:var(--text); text-decoration:none; font-weight:800; font-size:18px; }
+.brand img { width:30px; height:30px; border-radius:8px; }
+nav a { color:var(--muted); text-decoration:none; margin-left:18px; font-size:14px; }
+nav a.on, nav a:hover { color:var(--text); }
+main { padding:44px 0 70px; }
+h1 { font:800 38px/1.15 var(--f-display); margin:0 0 6px; letter-spacing:-.02em; }
+.eff { color:var(--muted); font-size:14px; margin:0 0 26px; }
+.tldr { background:var(--panel); border:1px solid var(--line); border-left:3px solid var(--violet); border-radius:12px; padding:16px 20px; margin:0 0 30px; }
+.tldr b { color:var(--lav); }
+.tldr ul { margin:8px 0 0; padding-left:20px; }
+h2 { font:700 21px/1.3 var(--f-display); margin:34px 0 8px; }
+h3 { font-size:16px; margin:20px 0 4px; }
+p, li { color:#d9d8e6; }
+li { margin:4px 0; }
+table { width:100%; border-collapse:collapse; font-size:14px; margin:10px 0; }
+th, td { text-align:left; vertical-align:top; padding:9px 10px; border-bottom:1px solid var(--line); }
+th { color:var(--muted); font-weight:600; }
+.table-wrap { overflow-x:auto; }
+footer { border-top:1px solid var(--line); color:var(--muted); font-size:13.5px; padding:24px 0; }
+footer .wrap { display:flex; gap:18px; flex-wrap:wrap; }
+@media (max-width:560px) { h1 { font-size:30px; } nav a { margin-left:12px; } }
+</style>
+</head>
+<body>
+<header><div class="wrap"><a class="brand" href="/"><img src="logo.png" alt="">Flux</a>
+<nav><a href="/terms.html">Terms</a><a href="/privacy.html">Privacy</a><a href="/">Home</a></nav></div></header>
+<main><div class="wrap">
+<h1>Licenses &amp; credits</h1>
+<p class="eff">Updated 11 November 2026. Flux is built on great open-source work. Thank you to everyone below.</p>
+
+<div class="tldr"><b>In short:</b>
+<ul>
+<li>Flux uses open-source software, each under its own licence. You keep all your rights under those licences.</li>
+<li>Music in the Music tab is free to use. Some songs need a credit, and Flux writes it for you (see Credits in the app).</li>
+<li>Sound effects, transitions, effects and text styles are made by Flux and free to use without credit.</li>
+</ul></div>
+
+<h2>Software inside the app</h2>
+<div class="table-wrap"><table>
+<tr><th>Software</th><th>What it does in Flux</th><th>Licence</th></tr>
+<tr><td><b>FFmpeg</b> (<a href="https://ffmpeg.org" rel="noopener">ffmpeg.org</a>), via ffmpeg-static</td><td>Reads and writes video and audio, and exports</td><td>GNU GPL v3 (this build includes GPL parts such as x264)</td></tr>
+<tr><td><b>Electron</b> (<a href="https://www.electronjs.org" rel="noopener">electronjs.org</a>)</td><td>Runs the app window</td><td>MIT</td></tr>
+<tr><td><b>Chromium</b>, part of Electron</td><td>Draws the app and plays media</td><td>BSD-3-Clause and others (<a href="https://www.chromium.org/chromium-projects/" rel="noopener">details</a>)</td></tr>
+<tr><td><b>Transformers.js</b> by Hugging Face</td><td>Runs the speech model for captions on your computer</td><td>Apache 2.0</td></tr>
+<tr><td><b>ONNX Runtime</b> by Microsoft</td><td>Runs AI models on your computer</td><td>MIT</td></tr>
+<tr><td><b>Whisper</b> speech models by OpenAI (ONNX versions by Xenova)</td><td>Speech-to-text for captions, bleeping and silence removal</td><td>MIT</td></tr>
+<tr><td><b>Piper</b> by Rhasspy / Michael Hansen</td><td>Text to speech (downloaded when you turn it on)</td><td>MIT</td></tr>
+<tr><td><b>espeak-ng</b>, part of the Piper download</td><td>Turns words into sounds for Piper</td><td>GNU GPL v3</td></tr>
+</table></div>
+
+<h3>Getting the source code (GPL)</h3>
+<p>FFmpeg and espeak-ng are licensed under the GNU General Public License version 3. You can get their full source code from <a href="https://ffmpeg.org/download.html" rel="noopener">ffmpeg.org</a> and <a href="https://github.com/espeak-ng/espeak-ng" rel="noopener">github.com/espeak-ng/espeak-ng</a>. The FFmpeg builds come from the <a href="https://github.com/eugeneware/ffmpeg-static" rel="noopener">ffmpeg-static</a> project, and Piper from <a href="https://github.com/rhasspy/piper" rel="noopener">github.com/rhasspy/piper</a>. If you'd like us to send you the exact source code for the versions in Flux, email <a href="mailto:flux.editing.app@gmail.com">flux.editing.app@gmail.com</a> and we'll send it free of charge. This offer is valid for at least three years from each release. Full licence text: <a href="https://www.gnu.org/licenses/gpl-3.0.html" rel="noopener">GPL v3</a>.</p>
+
+<h2>Voices</h2>
+<p>The text to speech voices use the Piper "en_US libritts high" model, trained on the <b>LibriTTS</b> dataset by Heiga Zen, Viet Dang, Rob Clark, Yu Zhang, Ron J. Weiss, Ye Jia, Zhifeng Chen and Yonghui Wu, licensed under <a href="https://creativecommons.org/licenses/by/4.0/" rel="noopener">CC BY 4.0</a>. LibriTTS is based on LibriVox public-domain audiobook recordings. The voice names in Flux (Ava, Max and so on) are our own labels, not real people.</p>
+
+<h2>Music</h2>
+<ul>
+<li><b>Kevin MacLeod</b> (<a href="https://incompetech.com" rel="noopener">incompetech.com</a>): licensed under <a href="https://creativecommons.org/licenses/by/4.0/" rel="noopener">CC BY 4.0</a>. Credit is required; Flux writes the credit line for you.</li>
+<li><b>Komiku, Monplaisir, Loyalty Freak Music, Audionautix and Rolemusic</b>: original music under CC0 (no credit needed) or CC BY (credit needed). Flux shows the licence of each song and keeps its credit text.</li>
+<li>Other songs from the <a href="https://archive.org" rel="noopener">Internet Archive</a> show their own licence in Flux. Please check it before you publish.</li>
+</ul>
+<p>If you think a song in Flux shouldn't be there, email us and we'll look at it quickly.</p>
+
+<h2>Fonts</h2>
+<ul>
+<li><b>Fonts in the app</b> come from <a href="https://fonts.google.com" rel="noopener">Google Fonts</a> and are used under their open licences, mostly the <a href="https://openfontlicense.org" rel="noopener">SIL Open Font License 1.1</a>. You can use them in your videos, including commercial ones. Fonts already on your computer keep their own licences.</li>
+<li><b>Fonts on this website:</b> Bricolage Grotesque (by Mathieu Triay), Figtree (by Erik Kennedy) and JetBrains Mono (by JetBrains), all under the SIL Open Font License 1.1. We host them ourselves.</li>
+</ul>
+
+<h2>Made by Flux</h2>
+<p>Sound effects, transitions, effects, filters, looks, caption styles, text styles and templates are made by Flux. You can use them in your videos for anything, including commercial use, without credit. The Flux name, logo and app icons belong to Flux.</p>
+
+<h2>Something missing?</h2>
+<p>If you made something that's in Flux and we forgot to credit you, or got a licence wrong, please email <a href="mailto:flux.editing.app@gmail.com">flux.editing.app@gmail.com</a> and we'll fix it.</p>
+
+</div></main>
+<footer><div class="wrap"><span>© 2026 Flux · Made by an independent developer in Romania</span><a href="/terms.html">Terms of Service</a><a href="/privacy.html">Privacy Policy</a><a href="/licenses.html">Licenses &amp; credits</a><a href="mailto:flux.editing.app@gmail.com">flux.editing.app@gmail.com</a></div></footer>
+</body>
+</html>

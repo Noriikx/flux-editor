@@ -1066,11 +1066,12 @@ ipcMain.handle('license:validate', async (_e, { key, instanceId }) => {
 // ---------- Fonts (downloaded from Google Fonts once, then kept offline) ----------
 const fontJobs = new Map();
 const CHROME_UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/138.0.0.0 Safari/537.36';
-async function downloadFont(family, weights) {
+async function downloadFont(family, weights, cacheOnly) {
   const dir = ensureDir(path.join(dataDir(), 'fonts'));
   const slug = family.toLowerCase().replace(/[^a-z0-9]+/g, '-');
   const manifest = path.join(dir, slug + '.json');
   try { const m = JSON.parse(fs.readFileSync(manifest, 'utf8')); if (m.length && m.every((f) => fs.existsSync(f.file))) return m; } catch {}
+  if (cacheOnly) throw new Error('not downloaded');
   const faces = [];
   for (const w of weights) {
     const url = `https://fonts.googleapis.com/css2?family=${encodeURIComponent(family).replace(/%20/g, '+')}:wght@${w}&display=swap`;
@@ -1099,9 +1100,9 @@ async function downloadFont(family, weights) {
   fs.writeFileSync(manifest, JSON.stringify(faces));
   return faces;
 }
-ipcMain.handle('font:get', async (_e, { family, weights }) => {
-  const key = family + '|' + (weights || []).join(',');
-  if (!fontJobs.has(key)) fontJobs.set(key, downloadFont(String(family), (weights && weights.length ? weights : [400]).map(Number)).finally(() => setTimeout(() => fontJobs.delete(key), 1000)));
+ipcMain.handle('font:get', async (_e, { family, weights, cacheOnly }) => {
+  const key = family + '|' + (weights || []).join(',') + (cacheOnly ? '|c' : '');
+  if (!fontJobs.has(key)) fontJobs.set(key, downloadFont(String(family), (weights && weights.length ? weights : [400]).map(Number), !!cacheOnly).finally(() => setTimeout(() => fontJobs.delete(key), 1000)));
   try { return { faces: await fontJobs.get(key) }; } catch (err) { return { error: err.message || String(err) }; }
 });
 

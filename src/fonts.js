@@ -103,6 +103,27 @@ const FONT_CATS = ['All', 'Clean', 'Bold', 'Fun', 'Script', 'Handwritten', 'Eleg
 const fontInfo = (name) => ALL_FONTS.find((f) => f.name === name);
 const fontState = new Map(); // name -> 'loading' | 'ready' | 'error'
 
+// Fonts come from Google Fonts. Ask once before Flux connects to Google for them.
+// Uses its own small overlay so it never closes a dialog that's already open.
+let fontAsk = null;
+function fontsOnlineOk() {
+  if (settings.fontsOnline === true) return Promise.resolve(true);
+  if (settings.fontsOnline === false || state.exporting) return Promise.resolve(false);
+  if (fontAsk) return fontAsk;
+  fontAsk = new Promise((resolve) => {
+    const bd = document.createElement('div');
+    bd.className = 'font-ask';
+    bd.innerHTML = `<div class="modal"><h2>Download fonts?</h2>
+      <p class="sub">This font comes from <b>Google Fonts</b>. To get it, Flux downloads it once from Google, which can see your IP address. Nothing else is sent. After that it works offline.</p>
+      <p class="hint">You can change this any time in Settings → General.</p>
+      <div class="footer"><button class="btn ghost" data-a="no">Don't allow</button><button class="btn primary" data-a="yes">Allow downloads</button></div></div>`;
+    const finish = (v) => { settings.fontsOnline = v; saveSettings(); bd.remove(); fontAsk = null; resolve(v); };
+    $('[data-a=yes]', bd).onclick = () => finish(true);
+    $('[data-a=no]', bd).onclick = () => finish(false);
+    document.body.appendChild(bd);
+  });
+  return fontAsk;
+}
 async function ensureFont(name) {
   const f = fontInfo(name);
   if (!f || !f.web) return true;
@@ -111,7 +132,11 @@ async function ensureFont(name) {
   if (st && st.then) return st;
   if (!api || !api.fontGet) return false;
   const job = (async () => {
-    const r = await api.fontGet({ family: f.name, weights: f.w });
+    let r = await api.fontGet({ family: f.name, weights: f.w, cacheOnly: true });
+    if (!r.faces) {
+      if (!(await fontsOnlineOk())) { fontState.delete(name); return false; }
+      r = await api.fontGet({ family: f.name, weights: f.w });
+    }
     if (r.error || !r.faces) { fontState.set(name, 'error'); return false; }
     await Promise.all(r.faces.map(async (x) => {
       const desc = { weight: String(x.weight) };

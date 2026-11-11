@@ -15,6 +15,7 @@ const DEFAULT_SETTINGS = {
   previewQuality: 'auto',
   proxies: true,             // make light copies of long / .mkv videos for smooth editing
   aiKey: '',
+  fontsOnline: null,         // null = ask the first time a Google font is needed
   aiModel: 'claude-sonnet-5-5',
   asrModel: '',
   asrLang: 'auto',
@@ -181,6 +182,8 @@ function settingsGeneral(body) {
     () => settings.autoAspect, (v) => { settings.autoAspect = v; });
   toggleRow(body, 'Keep video & sound linked', 'When on, a video and its sound move and trim together. Off: you can move them separately (right-click a clip to link).',
     () => settings.linkAV, (v) => { settings.linkAV = v; });
+  toggleRow(body, 'Download fonts from Google Fonts', 'Lets Flux download extra fonts from Google the first time you use them. Off: only fonts already on this computer are used.',
+    () => settings.fontsOnline === true, (v) => { settings.fontsOnline = v; });
   toggleRow(body, 'Show tips', 'Show the “How Flux works” guide when you open a new project.',
     () => settings.showTips, (v) => { settings.showTips = v; });
   const r = el('div', 'set-row');
@@ -363,8 +366,10 @@ function settingsAbout(body) {
   body.innerHTML = `<h3>About Flux</h3>
     <div style="display:flex;gap:14px;align-items:center;margin-bottom:14px"><img src="logo.png" style="width:56px;height:56px;border-radius:14px"><div><b style="font-size:16px" class="about-ver">Flux</b><br><small style="color:var(--muted)">A simple, friendly video editor</small></div><span style="flex:1"></span><button class="btn" id="btnCheckUpd">Check for updates</button></div>
     <p class="sub">Projects are saved automatically on this computer. Music from the Music tab comes from Kevin MacLeod (incompetech.com, CC BY 4.0) and the Internet Archive. Check each song's license and add the credit when it asks for one.</p>
-    <p class="sub">Text to speech uses Piper (MIT license) and voices trained on LibriTTS by Heiga Zen et al. (CC BY 4.0).</p>`;
+    <p class="sub">Text to speech uses Piper (MIT license) and voices trained on LibriTTS by Heiga Zen et al. (CC BY 4.0).</p>
+    <p class="sub">Flux is built with open-source software, including FFmpeg (GPL), Electron and Chromium. <a href="#" data-lic>See all licenses & credits</a></p>`;
   if (typeof legalLinks === 'function') { const lp = el('p', 'sub acct-legal'); lp.innerHTML = 'Legal: ' + legalLinks() + ' · <a href="#" data-legal-mail>flux.editing.app@gmail.com</a>'; body.appendChild(lp); wireLegal(lp); $('[data-legal-mail]', lp).onclick = (e) => { e.preventDefault(); openLink('mailto:flux.editing.app@gmail.com'); }; }
+  $('[data-lic]', body).onclick = (e) => { e.preventDefault(); openLink('https://flux-editor.netlify.app/licenses.html'); };
   if (api && api.appVersion) api.appVersion().then((v) => { const e = $('.about-ver', body); if (e) e.textContent = 'Flux ' + v; });
   $('#btnCheckUpd', body).onclick = async (e) => { e.target.disabled = true; e.target.textContent = 'Checking…'; await checkForUpdates(false); e.target.disabled = false; e.target.textContent = 'Check for updates'; };
 }

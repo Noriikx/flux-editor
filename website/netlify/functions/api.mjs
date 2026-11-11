@@ -85,8 +85,8 @@ async function sendCode(u, purpose) {
   await t.sendMail({
     from: `"Flux" <${MAIL_FROM}>`, to: u.email,
     subject: `${code} is your Flux code`,
-    text: `Your code to ${what} is: ${code}\n\nIt works for 15 minutes. If you didn't ask for this, ignore this email.`,
-    html: `<div style="font-family:Segoe UI,Arial,sans-serif;max-width:420px;margin:auto;padding:24px;text-align:center"><h2 style="margin:0 0 8px">Flux</h2><p style="color:#555">Your code to ${what}:</p><div style="font-size:34px;letter-spacing:8px;font-weight:700;background:#f2f0ff;border-radius:12px;padding:16px;margin:16px 0">${code}</div><p style="color:#888;font-size:13px">It works for 15 minutes. If you didn't ask for this, ignore this email.</p></div>`
+    text: `Your code to ${what} is: ${code}\n\nIt works for 15 minutes. If you didn't ask for this, ignore this email.\n\n--\nFlux, a free video editor by an independent developer in Romania\nhttps://flux-editor.netlify.app · Privacy: https://flux-editor.netlify.app/privacy.html\nThis is a one-time account email. We never send marketing emails.`,
+    html: `<div style="font-family:Segoe UI,Arial,sans-serif;max-width:420px;margin:auto;padding:24px;text-align:center"><h2 style="margin:0 0 8px">Flux</h2><p style="color:#555">Your code to ${what}:</p><div style="font-size:34px;letter-spacing:8px;font-weight:700;background:#f2f0ff;border-radius:12px;padding:16px;margin:16px 0">${code}</div><p style="color:#888;font-size:13px">It works for 15 minutes. If you didn't ask for this, ignore this email.</p><p style="color:#aaa;font-size:11.5px;margin-top:22px;border-top:1px solid #eee;padding-top:12px">Flux, a free video editor by an independent developer in Romania · <a href="https://flux-editor.netlify.app" style="color:#888">flux-editor.netlify.app</a> · <a href="https://flux-editor.netlify.app/privacy.html" style="color:#888">Privacy</a><br>This is a one-time account email. We never send marketing emails.</p></div>`
   });
 }
 function checkCode(u, code, purpose) {

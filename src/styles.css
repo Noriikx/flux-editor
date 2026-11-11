@@ -329,6 +329,7 @@ input[type=color] { width: 30px; height: 26px; border: 1px solid var(--line-2); 
 .drop-card { display: flex; flex-direction: column; align-items: center; gap: 12px; padding: 36px 60px; border-radius: 18px; border: 2px dashed var(--accent); background: rgba(141,125,255,.08); font-size: 18px; font-weight: 700; }
 .drop-card svg { width: 40px; height: 40px; color: var(--accent-2); }
 
+.font-ask { position: fixed; inset: 0; background: rgba(4,4,8,.7); display: grid; place-items: center; z-index: 400; animation: fadeIn .15s; }
 #modalRoot .backdrop { position: fixed; inset: 0; background: rgba(4,4,8,.7); display: grid; place-items: center; z-index: 60; animation: fadeIn .15s; }
 .modal { width: 460px; max-width: calc(100vw - 32px); max-height: calc(100vh - 60px); overflow: auto; background: var(--panel); border: 1px solid var(--line-2); border-radius: 14px; box-shadow: 0 30px 80px rgba(0,0,0,.6); padding: 22px; animation: pop .18s ease-out; }
 .modal.wide { width: 640px; }

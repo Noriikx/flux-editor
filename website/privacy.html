@@ -43,13 +43,14 @@ footer .wrap { display:flex; gap:18px; flex-wrap:wrap; }
 <nav><a href="/terms.html">Terms</a><a href="/privacy.html" class="on">Privacy</a><a href="/">Home</a></nav></div></header>
 <main><div class="wrap">
 <h1>Privacy Policy</h1>
-<p class="eff">Effective 25 October 2026. This explains what data Flux uses, why, and your rights.</p>
+<p class="eff">Effective 11 November 2026. This explains what data Flux uses, why, and your rights.</p>
 
 <div class="tldr"><b>The short version:</b>
 <ul>
 <li>Your videos, projects and recordings stay on your computer. We never upload them.</li>
 <li>For your account we keep your email, a scrambled (hashed) password and a few account details.</li>
-<li>No ads, no tracking, no analytics, and we never sell your data.</li>
+<li>No ads, no tracking, no analytics, no session recording, and we never sell your data.</li>
+<li>The AI Editor, captions and voices run on your own computer.</li>
 <li>You can delete your account and its data at any time, in the app or by email.</li>
 </ul></div>
 
@@ -61,7 +62,9 @@ footer .wrap { display:flex; gap:18px; flex-wrap:wrap; }
 <ul>
 <li>your projects, imported media, voice recordings and exports;</li>
 <li>project version history (the Time machine) and your settings;</li>
-<li>speech-to-text for captions, bleeping and silence removal. The model runs locally, so your audio isn't sent anywhere.</li>
+<li>speech-to-text for captions, bleeping and silence removal. The model runs locally, so your audio isn't sent anywhere;</li>
+<li>text to speech voices. They are made on your computer, so your text isn't sent anywhere;</li>
+<li>the AI Editor, unless you add your own Anthropic key (see section 4).</li>
 </ul>
 
 <h2>3. Data we collect and why</h2>
@@ -71,19 +74,18 @@ footer .wrap { display:flex; gap:18px; flex-wrap:wrap; }
 <tr><td><b>Password</b> (stored only as a salted scrypt hash, never in plain text)</td><td>To sign you in securely</td><td>Contract</td></tr>
 <tr><td><b>Account details:</b> sign-up date, whether your email is confirmed, Premium status and gift dates, the date you accepted the terms</td><td>To run your account and show the right features</td><td>Contract</td></tr>
 <tr><td><b>Security data:</b> one-time codes (hashed, valid 15 minutes), code attempt counters, the time a code was last sent</td><td>To stop abuse and guessing of codes</td><td>Legitimate interests (Art. 6(1)(f)): keeping accounts safe</td></tr>
-<tr><td><b>AI Editor usage:</b> how many times you used it today</td><td>For the daily limit</td><td>Contract</td></tr>
 </table></div>
 <p>On your computer, Flux keeps a sign-in token so you stay signed in. It's removed when you sign out.</p>
 
 <h2>4. AI Editor</h2>
-<p>When you use the AI Editor, your typed request and a text summary of your project (such as clip names, lengths, positions, text and caption words) are sent through our server to <b>Anthropic</b>, which runs the AI model. Your video and audio files are not sent. We don't store the request or the answer. We only count how many times you used it that day. If you use your own Anthropic API key, the request goes directly from your computer to Anthropic. Anthropic handles that data under its own privacy policy.</p>
+<p>The AI Editor works on your computer. Your requests and your project are not sent to us or to anyone else.</p>
+<p>Optional: if you add your own Anthropic API key in Settings → AI, your typed request and a text summary of your project (such as clip names, lengths, positions, text and caption words) go directly from your computer to <b>Anthropic</b>, which runs the AI model. Your video and audio files are never sent. This happens only with your own key, under your own agreement with Anthropic and its privacy policy. We don't see or store any of it.</p>
 
 <h2>5. Services we use (processors)</h2>
 <div class="table-wrap"><table>
 <tr><th>Service</th><th>What for</th><th>Data involved</th></tr>
 <tr><td>Netlify, Inc.</td><td>Hosting the website and the account server, and storing account data (Netlify Blobs)</td><td>Account data from section 3, plus technical request data such as IP addresses in server logs</td></tr>
 <tr><td>Google (Gmail)</td><td>Sending the emails with your sign-in and reset codes</td><td>Your email address and the email itself</td></tr>
-<tr><td>Anthropic, PBC</td><td>The AI Editor (only when you use it)</td><td>See section 4</td></tr>
 </table></div>
 <p>Some of these companies are based in the United States, so your data may be processed there. They protect it with safeguards the EU recognises, such as the EU–US Data Privacy Framework or the EU Standard Contractual Clauses.</p>
 
@@ -91,20 +93,26 @@ footer .wrap { display:flex; gap:18px; flex-wrap:wrap; }
 <p>To give you free content, Flux downloads files from other websites. Like any web request, these sites can see your IP address and that a download happened, but we don't send them your email or your projects:</p>
 <ul>
 <li><b>Music</b> from incompetech.com and the Internet Archive (archive.org), where the free songs are stored;</li>
-<li><b>Fonts</b> from Google Fonts;</li>
-<li><b>The speech model</b> for captions from Hugging Face (once);</li>
+<li><b>Extra fonts</b> from Google Fonts, only after you allow it (Flux asks the first time; change it any time in Settings → General);</li>
+<li><b>The speech model</b> for captions from Hugging Face (once, when you first make captions);</li>
+<li><b>The text to speech voices</b> from GitHub (once, when you turn them on);</li>
 <li><b>Update checks</b> and downloads from GitHub.</li>
 </ul>
-<p>The website also loads its fonts from Google Fonts.</p>
+<p>Downloads are checked with secure hashes where possible. The website doesn't load anything from other companies: its fonts are stored on our own site.</p>
+<p>While you export, Flux runs a small local server that only your own computer can reach (127.0.0.1). It never accepts connections from the internet.</p>
 
-<h2>7. What we don't do</h2>
+<h2>7. Cookies and local storage</h2>
+<p>The website uses <b>no cookies</b> and no tracking. That's why there's no cookie banner. The app stores your settings, projects and sign-in token in files on your computer. This is strictly needed for the app to work and is never used for tracking. See the <a href="/licenses.html">Licenses &amp; credits</a> page for the open-source parts of Flux.</p>
+
+<h2>8. What we don't do</h2>
 <ul>
 <li>No advertising, no analytics or tracking tools, and no tracking cookies on the website or in the app.</li>
+<li>No session recording or screen replay tools. We don't record what you click or type.</li>
 <li>We never sell or rent your data, and we don't share it except with the services listed above or when the law requires it.</li>
 <li>We take no payments, so we have no payment or card data.</li>
 </ul>
 
-<h2>8. How long we keep data</h2>
+<h2>9. How long we keep data</h2>
 <ul>
 <li>Account data: until you delete your account. Then it's removed from our account database straight away.</li>
 <li>One-time codes: until used or after 15 minutes.</li>
@@ -112,7 +120,7 @@ footer .wrap { display:flex; gap:18px; flex-wrap:wrap; }
 <li>Email copies: emails we send may stay in the sending Gmail account's "Sent" folder. We delete them on request.</li>
 </ul>
 
-<h2>9. Your rights</h2>
+<h2>10. Your rights</h2>
 <p>Under the GDPR you have the right to:</p>
 <ul>
 <li>access your data and get a copy of it;</li>
@@ -123,16 +131,16 @@ footer .wrap { display:flex; gap:18px; flex-wrap:wrap; }
 </ul>
 <p>Email <a href="mailto:flux.editing.app@gmail.com">flux.editing.app@gmail.com</a> for any of these and we'll answer within one month. You can also complain to the Romanian data protection authority, ANSPDCP (<a href="https://www.dataprotection.ro" rel="noopener">dataprotection.ro</a>), or to the authority in your own country.</p>
 
-<h2>10. Children</h2>
+<h2>11. Children</h2>
 <p>Flux accounts are for people aged 16 and over. Younger users need a parent or guardian to agree for them. If you think a child under 16 created an account without permission, email us and we'll delete it.</p>
 
-<h2>11. Security</h2>
+<h2>12. Security</h2>
 <p>All connections to our server use HTTPS, and passwords are stored only as salted hashes. Sign-in codes are also stored hashed and are rate-limited. No system is 100% secure, so use a password you don't use anywhere else.</p>
 
-<h2>12. Changes to this policy</h2>
+<h2>13. Changes to this policy</h2>
 <p>If we change how we use your data, we'll update this page and its "Effective" date. If the change is important, we'll also tell you in the app before it applies.</p>
 
 </div></main>
-<footer><div class="wrap"><span>© 2026 Flux</span><a href="/terms.html">Terms of Service</a><a href="/privacy.html">Privacy Policy</a><a href="mailto:flux.editing.app@gmail.com">flux.editing.app@gmail.com</a></div></footer>
+<footer><div class="wrap"><span>© 2026 Flux · Made by an independent developer in Romania</span><a href="/terms.html">Terms of Service</a><a href="/privacy.html">Privacy Policy</a><a href="/licenses.html">Licenses &amp; credits</a><a href="mailto:flux.editing.app@gmail.com">flux.editing.app@gmail.com</a></div></footer>
 </body>
 </html>
