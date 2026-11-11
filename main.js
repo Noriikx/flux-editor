@@ -91,6 +91,7 @@ function startMediaServer() {
       const cors = { 'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Headers': 'Range', 'Access-Control-Expose-Headers': 'Content-Range, Content-Length, Accept-Ranges' };
       if (req.method === 'OPTIONS') { res.writeHead(204, cors); return res.end(); }
       const prefix = '/' + mediaToken + '/';
+      if (req.url.startsWith('/xf/')) return xfServe(req, res, cors);
       if (!req.url.startsWith(prefix)) { res.writeHead(403); return res.end(); }
       let filePath;
       try { filePath = decodeURIComponent(req.url.slice(prefix.length).split('?')[0]); } catch { res.writeHead(400); return res.end(); }
@@ -498,7 +499,42 @@ ipcMain.handle('exp2:begin', () => {
 });
 ipcMain.handle('exp2:video', (_e, buf) => { if (exp2) fs.writeSync(exp2.vfd, Buffer.from(buf)); return true; });
 ipcMain.handle('exp2:audio', (_e, buf) => { if (exp2) fs.writeSync(exp2.afd, Buffer.from(buf)); return true; });
-ipcMain.handle('exp2:cancel', () => { exp2Clean(); return true; });
+// Export frames straight from ffmpeg: each video is decoded at exactly the export frame rate and size
+// (raw YUV 4:2:0), so every frame is the right one and nothing has to play in real time.
+const xfStreams = new Map();
+let xfNext = 1;
+ipcMain.handle('xf:open', (_e, { file, start, dur, speed, fps, w, h }) => {
+  const ff = ffmpegPath();
+  if (!ff || !fs.existsSync(file)) return { error: 'no file' };
+  w = Math.max(2, Math.round(w / 2) * 2); h = Math.max(2, Math.round(h / 2) * 2);
+  const sp = Math.max(0.01, +speed || 1);
+  const vf = [`setpts=(PTS-STARTPTS)/${sp.toFixed(6)}`, `fps=${fps}`, `scale=${w}:${h}:flags=bicubic`, 'format=yuv420p'].join(',');
+  // (if the graphics card can't decode this file, ffmpeg quietly uses the processor instead)
+  const args = ['-v', 'error', '-nostdin', '-hwaccel', 'auto', '-ss', Math.max(0, start).toFixed(4), '-i', file, '-t', Math.max(0.02, dur * sp).toFixed(4),
+    '-an', '-sn', '-dn', '-vf', vf, '-f', 'rawvideo', '-pix_fmt', 'yuv420p', 'pipe:1'];
+  const p = spawn(ff, args, { windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'] });
+  const st = { p, w, h, err: '', token: crypto.randomBytes(12).toString('hex') };
+  p.stderr.on('data', (d) => { st.err = (st.err + d).slice(-400); });
+  const id = xfNext++;
+  xfStreams.set(id, st);
+  return { id, w, h, url: `http://127.0.0.1:${mediaPort}/xf/${id}/${st.token}` };
+});
+// the frames themselves are read as a stream from the private local server (much faster than messages)
+function xfServe(req, res, cors) {
+  const [, , id, token] = req.url.split('?')[0].split('/');
+  const st = xfStreams.get(+id);
+  if (!st || st.token !== token || st.served) { res.writeHead(404, cors); return res.end(); }
+  st.served = true;
+  res.writeHead(200, Object.assign({ 'Content-Type': 'application/octet-stream', 'Cache-Control': 'no-store' }, cors));
+  st.p.stdout.pipe(res);
+  res.on('close', () => { try { st.p.kill('SIGKILL'); } catch {} });
+}
+ipcMain.handle('xf:close', (_e, { id }) => {
+  const st = xfStreams.get(id);
+  if (st) { try { st.p.kill('SIGKILL'); } catch {} xfStreams.delete(id); }
+  return true;
+});
+ipcMain.handle('exp2:cancel', () => { exp2Clean(); for (const [k, st] of xfStreams) { try { st.p.kill('SIGKILL'); } catch {} xfStreams.delete(k); } return true; });
 // Sound from part of a file, at a speed (pitch kept), as 48 kHz stereo float samples
 function atempoChain(speed) {
   const out = [];

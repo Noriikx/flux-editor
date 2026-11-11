@@ -1473,8 +1473,10 @@ function drawMedia(g, c, local, W, H, k, fx) {
     sw = src.naturalWidth; sh = src.naturalHeight;
   } else {
     const p = rt.players.get(c.id);
-    const ready = p && p.el.readyState >= 2 && !p.el.seeking && p.el.videoWidth;
-    if (ready) {
+    const xs = rt.exp2 && !rt.inCompound && typeof xfSource === 'function' ? xfSource(c) : null;
+    const ready = !xs && p && p.el.readyState >= 2 && !p.el.seeking && p.el.videoWidth;
+    if (xs) { src = xs; sw = xs.width; sh = xs.height; }
+    else if (ready) {
       src = p.el; sw = src.videoWidth; sh = src.videoHeight;
       if (!state.exporting) keepLastFrame(p, m);
     } else {

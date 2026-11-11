@@ -184,6 +184,8 @@ async function renderSound(r0, r1, onProgress, isCancelled) {
 function exp2SyncPlayer(p, c, src) {
   const el = p.el;
   if (c.kind !== 'video') { if (!el.paused) el.pause(); return; }
+  const xs = rt.exp2 && rt.exp2.xf && rt.exp2.xf.get(c.id);
+  if (xs && !xs.failed && !rt.inCompound) { if (!el.paused) el.pause(); return; } // ffmpeg brings this clip's frames
   if (!p.vfc && el.requestVideoFrameCallback) {
     p.vfc = true;
     const cb = (now, md) => { p.presented = md.mediaTime; p.presentedAt = performance.now(); try { el.requestVideoFrameCallback(cb); } catch {} };
@@ -208,6 +210,116 @@ function exp2SyncPlayer(p, c, src) {
     return wait();
   }
   if (pr > src + 0.15 && !el.paused) el.pause(); // ahead of the clock: wait for it
+}
+/* ---------- 3b. exact frames from ffmpeg (fast, never a wrong frame) ----------
+   For each video on the timeline ffmpeg decodes just the part that's used, at the export frame rate, and
+   hands the frames over in order. The video players aren't used at all for those clips. */
+function xfNeed(c, W, H) {
+  // how big the decoded picture must be so zooms / crops / "fill" still look sharp (never bigger than the file)
+  const m = getMedia(c.mediaId);
+  const sw = m.width || 1920, sh = m.height || 1080;
+  let scl = c.scale || 1;
+  for (const k of (c.keys && c.keys.scale) || []) scl = Math.max(scl, k.v || 1);
+  const cr = c.crop || {};
+  const cropF = 1 / Math.max(0.2, Math.min(1 - (cr.l || 0) - (cr.r || 0), 1 - (cr.t || 0) - (cr.b || 0)));
+  const fitS = c.fit === 'cover' ? Math.max(W / sw, H / sh) : Math.min(W / sw, H / sh);
+  const f = Math.min(1, fitS * Math.min(3, Math.max(1, scl) * cropF) * 1.02);
+  return [Math.max(2, Math.round((sw * f) / 2) * 2), Math.max(2, Math.round((sh * f) / 2) * 2)];
+}
+async function xfOpen(job, c, w, t) {
+  const m = getMedia(c.mediaId);
+  const sp = c.speed || 1;
+  let srcStart = c.in + (t - c.start) * sp, tS = t;
+  if (srcStart < 0) { tS = c.start - c.in / sp; srcStart = 0; }
+  const mdur = m.duration || Infinity;
+  const tEnd = Math.min(w.ve, job.r1 + 1 / job.fps);
+  const dur = Math.max(1 / job.fps, Math.min(tEnd - tS, (mdur - srcStart) / sp));
+  const [dw, dh] = xfNeed(c, job.w, job.h);
+  const r = await api.xfOpen({ file: m.path, start: srcStart, dur, speed: sp, fps: job.fps, w: dw, h: dh });
+  if (!r || r.error || !r.id) return { failed: true };
+  const cv = document.createElement('canvas'); cv.width = r.w; cv.height = r.h;
+  const st = { id: r.id, w: r.w, h: r.h, size: (r.w * r.h * 3) / 2, tS, cur: -1, queue: [], eof: false, canvas: cv, g: cv.getContext('2d'), has: false, failed: false, wake: null, room: null };
+  try { st.reader = (await fetch(r.url)).body.getReader(); } catch { return { failed: true, id: r.id }; }
+  xfPump(st);
+  return st;
+}
+// keeps reading ffmpeg's output into whole frames, a few ahead of the export (then waits, so memory stays small)
+async function xfPump(st) {
+  const AHEAD = Math.max(4, Math.min(24, Math.floor(120e6 / st.size)));
+  let part = null, pos = 0;
+  const signal = () => { const f = st.wake; st.wake = null; if (f) f(); };
+  try {
+    for (;;) {
+      while (st.queue.length >= AHEAD && !st.closed) await new Promise((r) => (st.room = r));
+      if (st.closed) break;
+      const { value, done } = await st.reader.read();
+      if (done) break;
+      let o = 0;
+      while (o < value.length) {
+        if (!part) { part = new Uint8Array(st.size); pos = 0; }
+        const n = Math.min(st.size - pos, value.length - o);
+        part.set(value.subarray(o, o + n), pos); pos += n; o += n;
+        if (pos === st.size) { st.queue.push(part); st.got = true; part = null; signal(); }
+      }
+    }
+  } catch {}
+  if (!st.got && !st.closed) st.failed = true; // ffmpeg couldn't read it: the normal player takes over
+  st.eof = true; signal();
+}
+async function xfFrame(st, k) {
+  let data = null;
+  while (st.cur < k) {
+    if (!st.queue.length) { if (st.eof) break; await new Promise((r) => (st.wake = r)); continue; }
+    data = st.queue.shift(); st.cur++;
+    if (st.room) { const f = st.room; st.room = null; f(); }
+  }
+  if (!data) return;
+  const vf = new VideoFrame(data, { format: 'I420', codedWidth: st.w, codedHeight: st.h, timestamp: 0 });
+  st.g.drawImage(vf, 0, 0);
+  vf.close();
+  st.has = true;
+}
+// get every video on screen at time t to the right frame
+async function xfPrepare(job, t) {
+  if (!job.xf) return;
+  const L = rt.layout || computeLayout();
+  const live = new Set();
+  for (const c of P.clips) {
+    if (c.kind !== 'video' || c.disabled) continue;
+    const tr = getTrack(c.trackId); if (tr && tr.hidden) continue;
+    const m = getMedia(c.mediaId); if (!m || !m.path || m.missing || m.error) continue;
+    const w = L.get(c.id) || { vs: c.start, ve: endOf(c) };
+    if (t < w.vs - 1e-6 || t >= w.ve) continue;
+    let st = job.xf.get(c.id);
+    if (st && st.failed) continue;
+    if (!st) { st = await xfOpen(job, c, w, t); job.xf.set(c.id, st); if (st.failed) continue; }
+    live.add(c.id);
+    await xfFrame(st, Math.max(0, Math.round((t - st.tS) * job.fps)));
+    if (st.failed) xfStop(st);
+  }
+  for (const [id, st] of job.xf) if (!live.has(id) && !st.failed && !st.closed) {
+    // gone for good (we only move forward)? then stop its ffmpeg
+    const c = getClip(id), w = c && L.get(id);
+    if (!c || !w || t >= w.ve) xfStop(st);
+  }
+}
+function xfStop(st) {
+  if (st.closed) return;
+  st.closed = true;
+  try { st.reader && st.reader.cancel(); } catch {}
+  if (st.room) { const f = st.room; st.room = null; f(); }
+  if (st.id) api.xfClose({ id: st.id });
+}
+function xfCloseAll(job) {
+  if (!job || !job.xf) return;
+  for (const st of job.xf.values()) xfStop(st);
+}
+// drawMedia asks this first while exporting
+function xfSource(c) {
+  const job = rt.exp2;
+  if (!job || !job.xf) return null;
+  const st = job.xf.get(c.id);
+  return st && st.has && !st.failed ? st.canvas : null;
 }
 const nextTick = () => new Promise((r) => setTimeout(r, 2));
 async function prepareFrame(t) {
@@ -257,6 +369,8 @@ async function renderFrames(job, onProgress) {
     if (failed) throw failed;
     const t = r0 + i / fps;
     state.time = t;
+    rt.layout = computeLayout();
+    await xfPrepare(job, t);
     await prepareFrame(t);
     render();
     const vf = new VideoFrame(canvas, { timestamp: Math.round((i * 1e6) / fps), duration: Math.round(1e6 / fps) });
@@ -268,6 +382,7 @@ async function renderFrames(job, onProgress) {
       if (pv) { try { pv.drawImage(canvas, 0, 0, job.pv.width, job.pv.height); } catch {} }
     }
   }
+  xfCloseAll(job);
   await enc.flush();
   enc.close();
   flush();
@@ -299,7 +414,7 @@ async function runExport(opts) {
   const pv = $('#exPreview', box);
   pv.width = 400; pv.height = Math.round(400 * (H / W));
   if (H > W) { pv.style.width = '50%'; pv.style.margin = '0 auto'; pv.style.display = 'block'; }
-  const job = exp2Job = { r0, r1, total, fps, w, h, quality: opts.quality, format: opts.format, frames: Math.max(1, Math.round(total * fps)), pv, cancelled: false, started: performance.now(), wait: [], rate: fps > 30 || opts.quality === 'high' ? 1 : opts.quality === 'small' ? 2 : 1.5 };
+  const job = exp2Job = { r0, r1, total, fps, w, h, quality: opts.quality, format: opts.format, frames: Math.max(1, Math.round(total * fps)), pv, cancelled: false, xf: api.xfOpen && typeof VideoFrame !== 'undefined' ? new Map() : null, started: performance.now(), wait: [], rate: fps > 30 || opts.quality === 'high' ? 1 : opts.quality === 'small' ? 2 : 1.5 };
   const setP = (p, label) => {
     p = clamp(p, 0, 1);
     const bar = $('#exBar'); if (bar) bar.style.width = (p * 100).toFixed(1) + '%';
@@ -352,6 +467,7 @@ async function runExport(opts) {
     state.selectedId = prevSel;
     exportDone(res);
   } catch (e) {
+    xfCloseAll(exp2Job);
     rt.exp2 = null;
     exp2Progress = null;
     if (state.exporting) endExportMode();

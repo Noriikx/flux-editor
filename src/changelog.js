@@ -1,6 +1,11 @@
 /* Flux — changelog. Shown once after an update, and any time from Settings → About. */
 'use strict';
 const CHANGELOG = [
+  { v: '5.2.0', date: '2026-11-10', items: [
+    'A new export engine: your videos are now read straight from the files frame by frame, instead of being played back in the background. Exports are much faster, especially longer videos',
+    'Exported videos are smooth: every frame is exactly the right one (before, frames could be repeated or skipped, which made exports look laggy)',
+    'Trimmed clips, sped-up clips and transitions all export frame-perfect'
+  ] },
   { v: '5.1.1', date: '2026-11-08', items: [
     'Fixed transitions: hovering a transition previews it properly again, and after you apply one the video no longer jumps back or gets stuck around the cut',
     'Playing through a transition no longer freezes for a moment when a clip uses its whole video'
