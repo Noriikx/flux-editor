@@ -1,6 +1,17 @@
 /* Flux — changelog. Shown once after an update, and any time from Settings → About. */
 'use strict';
 const CHANGELOG = [
+  { v: '6.0.0', date: '2026-11-22', items: [
+    'Viral Shorts (new tab): drop in a long video or podcast - or paste a link to a video file or podcast feed - and Flux finds the best 30-60 second moments. It looks for a strong first line, a complete thought, emotion, energy and no dead air, then gives each moment a score',
+    'One click turns a moment into a ready vertical Short: cut, reframed to 9:16, captions and the hook as a title. "Make all" makes every Short at once. Podcasts without video become captioned audiograms',
+    'Studio sound: removes background noise, hum and echo and makes voices clear and even (right-click a clip → Enhance, or Clip tools → Smart)',
+    'Improve quality: cleans up grain and blocky compression, sharpens details and livens up colors',
+    'AI upscale: makes videos and photos 2× or 4× bigger and sharper, using the Real-ESRGAN AI on your graphics card',
+    'AI slow motion: 2×, 4× or 8× slower and still perfectly smooth - AI (RIFE) creates the in-between frames',
+    'Zooming the timeline is now smooth, even with lots of clips',
+    '6 new themes: Nordic, Mocha, Neon, Forest, Sakura and Paper (Settings → Appearance)',
+    'Springier, smoother buttons, switches and menus everywhere'
+  ] },
   { v: '5.3.0', date: '2026-11-22', items: [
     'A fresh new look: the panels now float with rounded corners and soft shadows, and buttons, cards and sliders are cleaner',
     'Themes: pick Midnight, Ocean, Aurora, Ember, Rose, Graphite or the new light mode, Daylight (Settings → Appearance)',

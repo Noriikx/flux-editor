@@ -1045,6 +1045,304 @@ ipcMain.handle('tts:speak', (_e, { text, speaker, rate, preview }) => new Promis
   p.stdin.end(clean + '\n', 'utf8');
 }));
 
+// ---------- Enhance: studio sound, better quality, AI upscale, AI slow motion ----------
+// Everything runs on this computer. The two AI engines (Real-ESRGAN by Xintao Wang et al., BSD-3; RIFE by
+// hzwer, ncnn port by nihui, MIT) are downloaded once from their official GitHub releases and checked against a
+// fixed SHA-256 before use. They run on the graphics card (Vulkan); if that doesn't work Flux uses a standard
+// method instead, so the result is never "nothing".
+const AI_ENGINES = {
+  upscale: {
+    name: 'AI upscaler', exe: 'realesrgan-ncnn-vulkan',
+    builds: {
+      win32: { url: 'https://github.com/xinntao/Real-ESRGAN/releases/download/v0.2.5.0/realesrgan-ncnn-vulkan-20220424-windows.zip', sha: 'abc02804e17982a3be33675e4d471e91ea374e65b70167abc09e31acb412802d', size: 45474481 },
+      darwin: { url: 'https://github.com/xinntao/Real-ESRGAN/releases/download/v0.2.5.0/realesrgan-ncnn-vulkan-20220424-macos.zip', sha: 'e0ad05580abfeb25f8d8fb55aaf7bedf552c375b5b4d9bd3c8d59764d2cc333a', size: 51817124 },
+      linux: { url: 'https://github.com/xinntao/Real-ESRGAN/releases/download/v0.2.5.0/realesrgan-ncnn-vulkan-20220424-ubuntu.zip', sha: 'e5aa6eb131234b87c0c51f82b89390f5e3e642b7b70f2b9bbe95b6a285a40c96', size: 46931474 }
+    }
+  },
+  slowmo: {
+    name: 'AI slow motion', exe: 'rife-ncnn-vulkan', keep: 'rife-v4.6',
+    builds: {
+      win32: { url: 'https://github.com/nihui/rife-ncnn-vulkan/releases/download/20221029/rife-ncnn-vulkan-20221029-windows.zip', sha: 'd8e4d772d26cd8006ef0ad0bc82eb191b53c68677d1ae2f42506d74cbbbea606', size: 431540241 },
+      darwin: { url: 'https://github.com/nihui/rife-ncnn-vulkan/releases/download/20221029/rife-ncnn-vulkan-20221029-macos.zip', sha: '4a63a1f3c9c715773c57d2ee51df1b315ed20cd6c63103e45c483ecc4400b595', size: 436537917 },
+      linux: { url: 'https://github.com/nihui/rife-ncnn-vulkan/releases/download/20221029/rife-ncnn-vulkan-20221029-ubuntu.zip', sha: '1e2c7ee7fa7daa326542d50622f0afedc80cf6f1858bda411d16385ffa5cdf68', size: 431302796 }
+    }
+  }
+};
+const aiDir = (k) => ensureDir(path.join(dataDir(), 'ai', k));
+const enhDir = () => ensureDir(path.join(dataDir(), 'enhanced'));
+function findFile(dir, name, depth = 3) {
+  try {
+    for (const f of fs.readdirSync(dir, { withFileTypes: true })) {
+      const p = path.join(dir, f.name);
+      if (f.isFile() && (f.name === name || f.name === name + '.exe')) return p;
+      if (f.isDirectory() && depth > 0) { const r = findFile(p, name, depth - 1); if (r) return r; }
+    }
+  } catch {}
+  return null;
+}
+const aiExe = (k) => findFile(aiDir(k), AI_ENGINES[k].exe);
+const aiBuild = (k) => AI_ENGINES[k].builds[process.platform === 'win32' ? 'win32' : process.platform === 'darwin' ? 'darwin' : 'linux'];
+function unzipTo(archive, dest) {
+  // Windows 10/11 and macOS tar can open .zip; on Linux use unzip
+  if (process.platform === 'linux') return new Promise((resolve, reject) => {
+    ensureDir(dest);
+    const p = spawn('unzip', ['-q', '-o', archive, '-d', dest]);
+    p.on('error', reject); p.on('close', (c) => (c === 0 ? resolve() : reject(new Error('Could not unpack the download.'))));
+  });
+  return untar(archive, dest);
+}
+// remove the bits of an engine Flux doesn't use (RIFE ships 12 models; only one is needed)
+function pruneEngine(k) {
+  const keep = AI_ENGINES[k].keep, exe = aiExe(k);
+  if (!keep || !exe) return;
+  const dir = path.dirname(exe);
+  for (const f of fs.readdirSync(dir, { withFileTypes: true })) {
+    if (f.isDirectory() && /^rife/.test(f.name) && f.name !== keep) { try { fs.rmSync(path.join(dir, f.name), { recursive: true, force: true }); } catch {} }
+  }
+}
+const aiInstalling = {};
+async function aiInstall(k, prog) {
+  const b = aiBuild(k);
+  if (!b) throw new Error('Not available on this computer.');
+  if (aiExe(k)) return true;
+  const file = path.join(os.tmpdir(), 'flux-' + k + '-' + path.basename(b.url));
+  await download(b.url, file, b.size, (v) => prog({ stage: 'download', value: v.value || 0 }));
+  prog({ stage: 'check', value: 1 });
+  const sum = await sha256File(file);
+  if (sum !== b.sha) { try { fs.unlinkSync(file); } catch {} throw new Error('The download was damaged. Please try again.'); }
+  await unzipTo(file, aiDir(k));
+  try { fs.unlinkSync(file); } catch {}
+  const exe = aiExe(k);
+  if (!exe) throw new Error('The engine could not be installed.');
+  if (process.platform !== 'win32') { try { fs.chmodSync(exe, 0o755); } catch {} }
+  pruneEngine(k);
+  return true;
+}
+ipcMain.handle('enh:status', () => {
+  const o = {};
+  for (const k of Object.keys(AI_ENGINES)) { const b = aiBuild(k); o[k] = { ready: !!aiExe(k), size: b ? b.size : 0, supported: !!b }; }
+  return o;
+});
+ipcMain.handle('enh:install', async (e, k) => {
+  if (!AI_ENGINES[k]) return { error: 'Unknown engine' };
+  const prog = (v) => { try { e.sender.send('enh:progress', { install: k, ...v }); } catch {} };
+  try { if (!aiInstalling[k]) aiInstalling[k] = aiInstall(k, prog).finally(() => { aiInstalling[k] = null; }); await aiInstalling[k]; return { ok: true }; }
+  catch (err) { return { error: err.message || String(err) }; }
+});
+
+// one running job at a time per id; every process it starts can be stopped
+const enhJobs = new Map();
+function enhSpawn(job, cmd, args, onLine) {
+  return new Promise((resolve) => {
+    if (job.cancelled) return resolve({ code: -1, err: 'cancelled' });
+    const p = lowPri(spawn(cmd, args, { windowsHide: true }));
+    job.procs.add(p);
+    let err = '';
+    const read = (d) => { const s = d.toString(); err = (err + s).slice(-4000); if (onLine) onLine(s); };
+    p.stderr.on('data', read); p.stdout.on('data', read);
+    p.on('error', (x) => { job.procs.delete(p); resolve({ code: -1, err: String(x.message || x) }); });
+    p.on('close', (code) => { job.procs.delete(p); resolve({ code, err }); });
+  });
+}
+// run ffmpeg and report how far it got (0..1) for a known output length
+function enhFf(job, args, len, prog) {
+  return enhSpawn(job, ffmpegPath(), ['-y', '-hide_banner', '-nostdin', ...args], (s) => {
+    const m = /time=(\d+):(\d+):(\d+\.\d+)/.exec(s);
+    if (m && len > 0 && prog) prog(Math.min(1, ((+m[1]) * 3600 + (+m[2]) * 60 + parseFloat(m[3])) / len));
+  });
+}
+async function probeFps(file) {
+  const r = await enhSpawn({ procs: new Set() }, ffmpegPath(), ['-hide_banner', '-i', file]);
+  const m = /(\d+(?:\.\d+)?) fps/.exec(r.err || '');
+  const v = m ? parseFloat(m[1]) : 30;
+  return v > 1 && v < 241 ? v : 30;
+}
+function countFiles(dir) { try { return fs.readdirSync(dir).filter((f) => /\.(png|jpg)$/i.test(f)).length; } catch { return 0; } }
+const VOICE_PRESETS = {
+  light: 'highpass=f=70,afftdn=nr=8:nf=-35:tn=1,equalizer=f=3200:t=q:w=1.2:g=2,acompressor=threshold=-22dB:ratio=2:attack=12:release=180:makeup=1.5,loudnorm=I=-16:TP=-1.5:LRA=11',
+  medium: 'highpass=f=80,afftdn=nr=14:nf=-30:tn=1,deesser=i=0.4,equalizer=f=180:t=q:w=1:g=-2,equalizer=f=3200:t=q:w=1.2:g=3,equalizer=f=9000:t=q:w=1:g=1.5,acompressor=threshold=-20dB:ratio=3:attack=10:release=150:makeup=2,loudnorm=I=-16:TP=-1.5:LRA=9',
+  strong: 'highpass=f=90,afftdn=nr=24:nf=-26:tn=1,afftdn=nr=10:nf=-30,deesser=i=0.5,equalizer=f=200:t=q:w=1:g=-3,equalizer=f=3000:t=q:w=1.2:g=4,equalizer=f=9500:t=q:w=1:g=2,lowpass=f=15000,acompressor=threshold=-22dB:ratio=4:attack=8:release=120:makeup=3,loudnorm=I=-16:TP=-1.5:LRA=7'
+};
+const QUALITY_PRESETS = {
+  light: 'hqdn3d=1.5:1.5:3:3,cas=0.35,eq=contrast=1.02:saturation=1.05',
+  medium: 'hqdn3d=3:2.5:5:4,cas=0.55,eq=contrast=1.04:saturation=1.08:gamma=1.01',
+  strong: 'hqdn3d=5:4:8:6,deband,cas=0.75,eq=contrast=1.06:saturation=1.12:gamma=1.02'
+};
+const enc264 = (crf) => ['-c:v', 'libx264', '-preset', 'medium', '-crf', String(crf), '-pix_fmt', 'yuv420p', '-movflags', '+faststart'];
+async function runEnhance(job, o, prog) {
+  const { kind, file } = o;
+  const start = Math.max(0, +o.start || 0), len = Math.max(0.05, +o.len || 0);
+  const tag = crypto.createHash('sha1').update([file, start, len, kind, o.level, o.factor, o.scale, Date.now()].join('|')).digest('hex').slice(0, 10);
+  const base = path.join(enhDir(), path.basename(file).replace(/\.[^.]+$/, '').slice(0, 40) + '-' + kind + '-' + tag);
+  const cut = ['-ss', String(start), '-t', String(len), '-i', file];
+  if (kind === 'voice') {
+    const out = base + '.m4a';
+    prog({ stage: 'work', value: 0 });
+    const r = await enhFf(job, [...cut, '-vn', '-af', VOICE_PRESETS[o.level] || VOICE_PRESETS.medium, '-ar', '48000', '-c:a', 'aac', '-b:a', '256k', out], len, (v) => prog({ stage: 'work', value: v }));
+    if (r.code !== 0) throw new Error(job.cancelled ? 'cancelled' : 'Could not improve the sound. ' + r.err.slice(-200));
+    return { path: out, len };
+  }
+  if (kind === 'quality') {
+    const out = base + '.mp4';
+    const r = await enhFf(job, [...cut, '-map', '0:v:0', '-map', '0:a:0?', '-vf', (QUALITY_PRESETS[o.level] || QUALITY_PRESETS.medium) + ',format=yuv420p', ...enc264(16), '-c:a', 'aac', '-b:a', '256k', out], len, (v) => prog({ stage: 'work', value: v }));
+    if (r.code !== 0) throw new Error(job.cancelled ? 'cancelled' : 'Could not improve the video. ' + r.err.slice(-200));
+    return { path: out, len };
+  }
+  if (kind === 'image-upscale') {
+    // a photo: one frame through the AI upscaler (or a sharp resize)
+    const out = base + '.png', exe = aiExe('upscale');
+    let ai = false;
+    if (exe && !o.standard) {
+      prog({ stage: 'ai', value: 0.2 });
+      const r = await enhSpawn(job, exe, ['-i', file, '-o', out, '-n', o.scale === 4 ? 'realesrgan-x4plus' : 'realesr-animevideov3', '-s', String(o.scale === 4 ? 4 : 2), '-f', 'png', '-g', '0'], null);
+      ai = r.code === 0 && fs.existsSync(out) && fs.statSync(out).size > 1000;
+    }
+    if (!ai) {
+      const r = await enhFf(job, ['-i', file, '-vf', `scale=iw*${o.scale || 2}:ih*${o.scale || 2}:flags=lanczos,cas=0.6`, '-frames:v', '1', out], 1, null);
+      if (r.code !== 0) throw new Error(job.cancelled ? 'cancelled' : 'Could not upscale the photo.');
+    }
+    return { path: out, ai };
+  }
+  if (kind === 'upscale' || kind === 'slowmo') {
+    const fps = await probeFps(file);
+    const work = ensureDir(base + '-frames'), inDir = ensureDir(path.join(work, 'in')), outDir = ensureDir(path.join(work, 'out'));
+    const cleanup = () => { try { fs.rmSync(work, { recursive: true, force: true }); } catch {} };
+    try {
+      const out = base + '.mp4';
+      const factor = Math.max(2, Math.min(8, Math.round(+o.factor || 2)));
+      const scale = o.scale === 4 ? 4 : 2;
+      // keep the result sensible: at most 4K wide for upscales
+      const maxW = 3840;
+      const exe = aiExe(kind === 'upscale' ? 'upscale' : 'slowmo');
+      let ai = false;
+      if (exe && !o.standard) {
+        // 1) the frames of the clip
+        prog({ stage: 'frames', value: 0 });
+        const r1 = await enhFf(job, [...cut, '-map', '0:v:0', '-vsync', '0', '-q:v', '2', path.join(inDir, '%08d.jpg')], len, (v) => prog({ stage: 'frames', value: v }));
+        const n = countFiles(inDir);
+        if (r1.code === 0 && n > 0) {
+          // 2) the AI makes the new frames (progress = how many files it has written)
+          const target = kind === 'slowmo' ? n * factor : n;
+          const args = kind === 'upscale'
+            ? ['-i', inDir, '-o', outDir, '-n', scale === 4 ? 'realesrgan-x4plus' : 'realesr-animevideov3', '-s', String(scale), '-f', 'jpg', '-g', '0']
+            : ['-i', inDir, '-o', outDir, '-m', path.join(path.dirname(exe), 'rife-v4.6'), '-n', String(target), '-f', '%08d.jpg', '-g', '0'];
+          // -g 0 = the graphics card only: without one it stops right away (the CPU would take hours) and the standard method is used
+          const tick = setInterval(() => prog({ stage: 'ai', value: Math.min(0.99, countFiles(outDir) / target) }), 700);
+          const r2 = await enhSpawn(job, exe, args, null);
+          clearInterval(tick);
+          if (job.cancelled) throw new Error('cancelled');
+          const got = countFiles(outDir);
+          if (r2.code === 0 && got >= target * 0.98) {
+            // 3) back into a video (upscale keeps the sound; slow motion has none - the original sound stays on its own clip)
+            prog({ stage: 'encode', value: 0 });
+            const pattern = kind === 'upscale' ? path.join(outDir, '%08d.jpg') : path.join(outDir, '%08d.jpg');
+            const rate = kind === 'slowmo' ? fps * factor : fps;
+            const vf = kind === 'upscale' ? `scale='min(${maxW},iw)':-2:flags=lanczos,format=yuv420p` : 'format=yuv420p';
+            const audio = kind === 'upscale' ? ['-ss', String(start), '-t', String(len), '-i', file, '-map', '0:v:0', '-map', '1:a:0?', '-c:a', 'aac', '-b:a', '256k', '-shortest'] : ['-map', '0:v:0'];
+            const r3 = await enhFf(job, ['-framerate', String(rate), '-i', pattern, ...audio, '-vf', vf, ...enc264(15), '-r', String(rate), out], len, (v) => prog({ stage: 'encode', value: v }));
+            ai = r3.code === 0 && fs.existsSync(out);
+          }
+        }
+        if (job.cancelled) throw new Error('cancelled');
+      }
+      if (!ai) {
+        // standard method: motion-based in-between frames / sharp resize, all done by ffmpeg
+        prog({ stage: 'work', value: 0 });
+        const vf = kind === 'upscale'
+          ? `scale='min(${maxW},iw*${scale})':-2:flags=lanczos,cas=0.6,format=yuv420p`
+          : `minterpolate=fps=${Math.round(fps * factor * 1000) / 1000}:mi_mode=mci:mc_mode=aobmc:me_mode=bidir:vsbmc=1,format=yuv420p`;
+        const audio = kind === 'upscale' ? ['-map', '0:v:0', '-map', '0:a:0?', '-c:a', 'aac', '-b:a', '256k'] : ['-map', '0:v:0', '-an'];
+        const r = await enhFf(job, [...cut, ...audio, '-vf', vf, ...enc264(15), out], len, (v) => prog({ stage: 'work', value: v }));
+        if (r.code !== 0) throw new Error(job.cancelled ? 'cancelled' : 'Could not process the video. ' + r.err.slice(-200));
+      }
+      return { path: out, ai, fps, factor, len };
+    } finally { cleanup(); }
+  }
+  throw new Error('Unknown job');
+}
+ipcMain.handle('enh:run', async (e, o) => {
+  const id = String(o.id || Date.now());
+  const job = { procs: new Set(), cancelled: false };
+  enhJobs.set(id, job);
+  const prog = (v) => { try { e.sender.send('enh:progress', { id, ...v }); } catch {} };
+  try { return await runEnhance(job, o, prog); }
+  catch (err) { return { error: job.cancelled ? 'cancelled' : (err.message || String(err)) }; }
+  finally { enhJobs.delete(id); }
+});
+ipcMain.handle('enh:cancel', (_e, id) => {
+  const job = enhJobs.get(String(id));
+  if (job) { job.cancelled = true; for (const p of job.procs) { try { p.kill(); } catch {} } }
+  return true;
+});
+
+// ---------- Viral Shorts: get a long video / podcast from a link ----------
+// Only direct links to video / audio files and podcast feeds (RSS). Sites like YouTube, TikTok or Instagram
+// don't allow downloading in their terms, so Flux doesn't do it - people use their own files from there instead.
+const BLOCKED_HOSTS = /(^|\.)(youtube\.com|youtu\.be|tiktok\.com|instagram\.com|facebook\.com|fb\.watch|twitter\.com|x\.com|twitch\.tv|vimeo\.com|dailymotion\.com|spotify\.com|soundcloud\.com|netflix\.com|kick\.com|snapchat\.com|reddit\.com)$/i;
+const LINK_MEDIA_EXT = /\.(mp4|m4v|mov|mkv|webm|avi|mp3|m4a|aac|wav|ogg|opus|flac)(\?|#|$)/i;
+function checkLink(raw) {
+  let u;
+  try { u = new URL(String(raw || '').trim()); } catch { return { error: 'That doesn’t look like a link.' }; }
+  if (!/^https?:$/.test(u.protocol)) return { error: 'Only https:// links work.' };
+  if (BLOCKED_HOSTS.test(u.hostname)) return { error: 'platform', host: u.hostname.replace(/^www\./, '') };
+  return { url: u.href };
+}
+const shortsDir = () => ensureDir(path.join(dataDir(), 'shorts'));
+ipcMain.handle('shorts:link', async (e, raw) => {
+  const chk = checkLink(raw);
+  if (chk.error) return chk;
+  const prog = (v) => { try { e.sender.send('shorts:progress', v); } catch {} };
+  try {
+    const res = await net.fetch(chk.url, { headers: { 'User-Agent': 'Flux video editor' } });
+    if (!res.ok) return { error: 'The link didn’t work (' + res.status + ').' };
+    const type = (res.headers.get('content-type') || '').toLowerCase();
+    // a podcast feed: list its episodes
+    if (/xml|rss|atom/.test(type) || (/text\/plain/.test(type) && /\.(xml|rss)(\?|$)/i.test(chk.url))) {
+      const xml = (await res.text()).slice(0, 8e6);
+      const pick = (s, re) => { const m = re.exec(s); return m ? m[1].replace(/<!\[CDATA\[([\s\S]*?)\]\]>/g, '$1').replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"').replace(/&#39;/g, "'").trim() : ''; };
+      const show = pick(xml, /<channel>[\s\S]*?<title>([\s\S]*?)<\/title>/i);
+      const items = [];
+      for (const m of xml.matchAll(/<item[\s>][\s\S]*?<\/item>/gi)) {
+        const it = m[0];
+        const enc = /<enclosure[^>]*url="([^"]+)"[^>]*>/i.exec(it) || /<enclosure[^>]*url='([^']+)'[^>]*>/i.exec(it);
+        if (!enc) continue;
+        const durS = pick(it, /<itunes:duration>([\s\S]*?)<\/itunes:duration>/i);
+        let secs = 0;
+        if (durS) secs = durS.split(':').reduce((a, x) => a * 60 + (parseFloat(x) || 0), 0);
+        items.push({ title: pick(it, /<title>([\s\S]*?)<\/title>/i) || 'Episode', url: enc[1].replace(/&amp;/g, '&'), date: pick(it, /<pubDate>([\s\S]*?)<\/pubDate>/i), duration: secs });
+        if (items.length >= 40) break;
+      }
+      if (!items.length) return { error: 'No episodes were found in that feed.' };
+      return { feed: { title: show, items } };
+    }
+    if (/text\/html/.test(type)) return { error: 'page' };
+    if (!/^(video|audio)\//.test(type) && !LINK_MEDIA_EXT.test(chk.url) && !/octet-stream/.test(type)) return { error: 'That link isn’t a video or audio file.' };
+    // a media file: download it (once)
+    const ext = (LINK_MEDIA_EXT.exec(new URL(chk.url).pathname) || [])[1] || (/audio\/mpeg/.test(type) ? 'mp3' : /audio/.test(type) ? 'm4a' : 'mp4');
+    const name = decodeURIComponent(path.basename(new URL(chk.url).pathname)).replace(/[^\w .()-]+/g, '').slice(0, 80) || 'download.' + ext;
+    const file = path.join(shortsDir(), crypto.createHash('sha1').update(chk.url).digest('hex').slice(0, 12) + '-' + (/\.\w+$/.test(name) ? name : name + '.' + ext));
+    if (fs.existsSync(file) && fs.statSync(file).size > 10000) { try { res.body && res.body.cancel(); } catch {} return { path: file, name }; }
+    const total = +res.headers.get('content-length') || 0;
+    const tmp = file + '.part';
+    const out = require('original-fs').createWriteStream(tmp);
+    let got = 0, last = 0;
+    const reader = res.body.getReader();
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      got += value.length;
+      if (!out.write(Buffer.from(value))) await new Promise((r) => out.once('drain', r));
+      if (Date.now() - last > 250) { last = Date.now(); prog({ stage: 'download', value: total ? got / total : null, got }); }
+    }
+    await new Promise((r, j) => out.end((err) => (err ? j(err) : r())));
+    if (total && got < total) { try { fs.unlinkSync(tmp); } catch {} return { error: 'The download was cut off. Try again.' }; }
+    fs.renameSync(tmp, file);
+    return { path: file, name };
+  } catch (err) {
+    return { error: 'Couldn’t get that link: ' + (err.message || err) };
+  }
+});
+
 // ---------- Premium licence keys (Lemon Squeezy) ----------
 async function lsCall(endpoint, fields) {
   const res = await net.fetch('https://api.lemonsqueezy.com/v1/licenses/' + endpoint, {

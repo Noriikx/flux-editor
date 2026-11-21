@@ -2060,7 +2060,11 @@ function fillFilmstrips() {
     const sig = `${tw}|${h}|${c.in}|${c.out}|${w}|${st.n}|${dpr}`;
     let cv = filmCache.get(c.id);
     const fits = cv && cv._sig === sig && visL >= cv._range[0] && visR <= cv._range[1] && !cv._stale;
-    if (!fits) {
+    if (!fits && cv && rt.zoomLive && cv._z && cv._h === h) {
+      // zooming: stretch what's already drawn; it's redrawn sharp as soon as the zoom stops
+      const k = state.zoom / cv._z;
+      cv.style.left = cv._left * k + 'px'; cv.style.width = cv._W * k + 'px';
+    } else if (!fits) {
       const k0 = Math.max(0, Math.floor((visL - vw) / tw)), k1 = Math.max(k0, Math.min(nTiles, Math.ceil((visR + vw) / tw)));
       if (!cv) { cv = document.createElement('canvas'); cv.className = 'film frames'; filmCache.set(c.id, cv); }
       cv._sig = sig; cv._stale = false;
@@ -2068,6 +2072,7 @@ function fillFilmstrips() {
       const W = Math.max(1, Math.round((k1 - k0) * tw));
       cv.width = Math.round(W * dpr); cv.height = Math.round(h * dpr);
       cv.style.left = k0 * tw + 'px'; cv.style.width = W + 'px';
+      cv._z = state.zoom; cv._left = k0 * tw; cv._W = W; cv._h = h;
       const g = cv.getContext('2d');
       g.setTransform(dpr, 0, 0, dpr, 0, 0);
       g.fillStyle = '#0b0b12'; g.fillRect(0, 0, W, h);
@@ -2110,8 +2115,14 @@ function clipLabel(c) {
 }
 
 function renderLanes() {
-  tlLanes.innerHTML = '';
   const z = state.zoom;
+  // while zooming, reuse the waveforms already drawn (stretched) instead of drawing new ones
+  const oldWaves = new Map();
+  if (rt.zoomLive) for (const wv of tlLanes.querySelectorAll('.clip.kind-audio canvas.wave')) { if (wv._z) oldWaves.set(wv.closest('.clip').dataset.id, wv); }
+  tlLanes.innerHTML = '';
+  // remember what depends on the zoom (in seconds), so zooming can just move things instead of rebuilding them
+  const zEls = rt.zEls = [];
+  const zp = (e, l, w, min, rgt) => { e._zl = l; e._zw = w; e._zmin = min || 0; e._zr = rgt; zEls.push(e); };
   for (const tr of P.tracks) {
     const lane = el('div', 'lane t-' + tr.type + (tr.hidden ? ' hidden-track' : '') + (tr.locked ? ' locked-track' : ''));
     if (tr.h) { lane.style.height = tr.h + 'px'; lane.style.setProperty('--lane-h', tr.h + 'px'); }
@@ -2125,18 +2136,27 @@ function renderLanes() {
       ce.dataset.id = c.id;
       ce.style.left = c.start * z + 'px';
       ce.style.width = Math.max(4, w) + 'px';
+      zp(ce, c.start, dur(c), 4);
       if (c.kind === 'video' || c.kind === 'image') {
         const th = rt.thumbs.get(c.mediaId);
         if (th) { const f = el('div', 'film'); f.style.backgroundImage = `url('${th}')`; ce.appendChild(f); }
       }
       if (c.kind === 'audio') {
         const vol = kv(c, 'volume', clamp(state.time - c.start, 0, dur(c)));
+        const old = oldWaves.get(c.id);
+        if (old && old._vol === vol && old._w0) {
+          const k = z / old._z;
+          old.style.left = old._x0 * k + 'px'; old.style.width = (old._x1 - old._x0) * k + 'px';
+          old.dataset.x0 = old._x0 * k; old.dataset.x1 = old._x1 * k;
+          ce.appendChild(old);
+        } else {
         const [wx0, wx1] = waveRange(c, w);
         const wc = waveCanvas(c, w, vol, wx0, wx1);
-        if (wc) { wc.className = 'wave'; wc.style.left = wx0 + 'px'; wc.style.width = wx1 - wx0 + 'px'; wc.dataset.x0 = wx0; wc.dataset.x1 = wx1; ce.appendChild(wc); }
+        if (wc) { wc.className = 'wave'; wc.style.left = wx0 + 'px'; wc.style.width = wx1 - wx0 + 'px'; wc.dataset.x0 = wx0; wc.dataset.x1 = wx1; wc._z = z; wc._x0 = wx0; wc._x1 = wx1; wc._vol = vol; wc._w0 = w; ce.appendChild(wc); }
         else {
           const m0 = getMedia(c.mediaId);
           if (m0 && !m0.missing && !m0.error) { loadPeaks(m0); ce.appendChild(el('div', 'wave-loading', 'Reading sound…')); }
+        }
         }
         // bleeps: a red band where the word is covered, with a marker on top
         if (c.beeps && c.beeps.length) {
@@ -2146,6 +2166,7 @@ function renderLanes() {
             const band = el('div', 'bleep-band');
             band.dataset.clip = c.id; band.dataset.bi = bi;
             band.style.left = x0 + 'px'; band.style.width = Math.max(2, x1 - x0) + 'px';
+            zp(band, x0 / z, (x1 - x0) / z, 2);
             // drag the edges to make the bleep shorter / longer, drag the pin to move it, right-click to remove
             band.innerHTML = '<i class="bl-h l"></i><i class="bl-h r"></i>';
             const pin = el('div', 'bleep-pin', '<svg viewBox="0 0 24 24"><path d="M11 5 6 9H2v6h4l5 4z"/><path d="M16 9l5 6M21 9l-5 6"/></svg>');
@@ -2165,8 +2186,8 @@ function renderLanes() {
         vl.dataset.tip = 'Drag up or down to change volume (hold Shift for fine steps) · double-click for 0 dB';
         ce.appendChild(vl);
       }
-      if (c.fadeIn > 0) { const f = el('div', 'fade in'); f.style.width = c.fadeIn * z + 'px'; ce.appendChild(f); }
-      if (c.fadeOut > 0) { const f = el('div', 'fade out'); f.style.width = c.fadeOut * z + 'px'; ce.appendChild(f); }
+      if (c.fadeIn > 0) { const f = el('div', 'fade in'); f.style.width = c.fadeIn * z + 'px'; zp(f, null, c.fadeIn); ce.appendChild(f); }
+      if (c.fadeOut > 0) { const f = el('div', 'fade out'); f.style.width = c.fadeOut * z + 'px'; zp(f, null, c.fadeOut); ce.appendChild(f); }
       // DaVinci-style fade handles: drag the little squares at the top corners
       if (w > 24) {
         const fi = c.fadeIn || 0, fo = c.fadeOut || 0;
@@ -2182,6 +2203,7 @@ function renderLanes() {
         }
         const hl = el('div', 'fade-h l'); hl.style.left = fi * z + 'px'; hl.dataset.tip = 'Drag to fade in' + (fi ? ` (${fi.toFixed(1)}s)` : '');
         const hr = el('div', 'fade-h r'); hr.style.right = fo * z + 'px'; hr.dataset.tip = 'Drag to fade out' + (fo ? ` (${fo.toFixed(1)}s)` : '');
+        zp(hl, fi); zp(hr, null, null, 0, fo);
         ce.append(hl, hr);
       }
       // text: in / out transitions shown on the clip, with a × to remove
@@ -2192,6 +2214,7 @@ function renderLanes() {
           const td = Math.min(tr0.duration || 0.5, dur(c) * 0.5);
           const b = el('div', 'trans-band text-' + side);
           b.style.width = Math.max(14, td * z) + 'px';
+          zp(b, null, td, 14);
           b.dataset.id = c.id; b.dataset.which = side;
           b.innerHTML = `<span>${transById(tr0.type).name}</span><button class="tb-x" data-tip="Remove transition">×</button><i class="tb-h ${side === 'in' ? 'r' : 'l'}"></i>`;
           ce.appendChild(b);
@@ -2214,7 +2237,7 @@ function renderLanes() {
         const times = new Set();
         const dd = dur(c);
         for (const arr of Object.values(c.keys)) for (const kf of arr || []) if (kf.t >= -1e-4 && kf.t <= dd + 1e-4) times.add(kf.t.toFixed(3));
-        for (const tt of times) { const d = el('div', 'kf'); d.style.left = (+tt) * z + 'px'; ce.appendChild(d); }
+        for (const tt of times) { const d = el('div', 'kf'); d.style.left = (+tt) * z + 'px'; zp(d, +tt); ce.appendChild(d); }
       }
       ce.appendChild(el('div', 'handle l'));
       ce.appendChild(el('div', 'handle r'));
@@ -2230,6 +2253,7 @@ function renderLanes() {
           const st = prev ? c.start - td / 2 : c.start;
           band.style.left = st * z + 'px';
           band.style.width = Math.max(14, td * z) + 'px';
+          zp(band, st, td, 14);
           band.dataset.id = c.id; band.dataset.which = 'in';
           band.dataset.tip = `${transById(c.transition.type).name} · ${td.toFixed(1)}s · drag the edges to make it longer or shorter`;
           band.innerHTML = `<i class="tb-h l"></i><span>${td * z > 70 ? transById(c.transition.type).name : ''}</span><button class="tb-x" data-tip="Remove transition">×</button><i class="tb-h r"></i>`;
@@ -2238,6 +2262,7 @@ function renderLanes() {
         if (!prev && !td) continue;
         const j = el('button', 'junction' + (td ? ' has' : ''));
         j.style.left = c.start * z + 'px';
+        zp(j, c.start);
         j.dataset.id = c.id;
         j.dataset.tip = td ? `${transById(c.transition.type).name} · click to change` : 'Add a transition here';
         j.innerHTML = td ? '<svg viewBox="0 0 24 24"><path d="M4 4l16 16M20 4 4 20"/></svg>' : '<svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>';
@@ -2274,6 +2299,7 @@ tlScroll.addEventListener('scroll', () => {
     // ruler + filmstrips only hold what's near the screen: refresh when scrolled away from it
     const dr = tlRuler._drawn;
     if (!dr || tlScroll.scrollLeft < dr[0] || tlScroll.scrollLeft > dr[1]) renderRuler();
+    if (rt.zoomLive) return; // zooming: the sharp redraw comes when it stops
     fillFilmstrips();
     for (const wv of tlLanes.querySelectorAll('.clip.kind-audio .wave')) {
       const ce = wv.closest('.clip'), c = getClip(ce.dataset.id);
@@ -2319,6 +2345,49 @@ function setZoom(z, anchorTime) {
   setRangeFill($('#zoomSlider'));
   renderTimeline();
   tlScroll.scrollLeft = Math.max(0, at * state.zoom - screenX);
+}
+// Smooth zooming (wheel / slider / buttons): at most one redraw per frame, and while the zoom is
+// still changing the waveforms + filmstrips are stretched instead of redrawn. When it settles they're redrawn sharp.
+let zoomPend = null, zoomRaf = 0, zoomIdle = 0;
+function relayoutLanes() {
+  const z = state.zoom;
+  for (const e of rt.zEls || []) {
+    if (e._zl != null) e.style.left = e._zl * z + 'px';
+    if (e._zw != null) e.style.width = Math.max(e._zmin, e._zw * z) + 'px';
+    if (e._zr != null) e.style.right = e._zr * z + 'px';
+  }
+  for (const wv of tlLanes.querySelectorAll('.clip canvas.wave')) {
+    if (!wv._z) continue; const k = z / wv._z;
+    wv.style.left = wv._x0 * k + 'px'; wv.style.width = (wv._x1 - wv._x0) * k + 'px';
+  }
+  for (const cv of filmCache.values()) {
+    if (!cv._z || !cv.isConnected) continue; const k = z / cv._z;
+    cv.style.left = cv._left * k + 'px'; cv.style.width = cv._W * k + 'px';
+  }
+}
+function liveZoom(z, anchorTime) {
+  if (!zoomPend) {
+    const at = anchorTime ?? state.time;
+    zoomPend = { at, screenX: at * state.zoom - tlScroll.scrollLeft };
+  }
+  const nz = clamp(z, ZOOM_MIN, ZOOM_MAX);
+  if (nz === state.zoom && !zoomRaf) { zoomPend = null; return; }
+  state.zoom = nz;
+  $('#zoomSlider').value = sliderFromZoom(state.zoom);
+  setRangeFill($('#zoomSlider'));
+  rt.zoomLive = true;
+  if (!zoomRaf) zoomRaf = requestAnimationFrame(() => {
+    zoomRaf = 0;
+    const p = zoomPend; zoomPend = null;
+    renderRuler(); if (rt.zEls) relayoutLanes(); else renderLanes(); updatePlayhead();
+    if (p) tlScroll.scrollLeft = Math.max(0, p.at * state.zoom - p.screenX);
+  });
+  clearTimeout(zoomIdle);
+  zoomIdle = setTimeout(() => {
+    rt.zoomLive = false;
+    const sl = tlScroll.scrollLeft;
+    renderLanes(); tlScroll.scrollLeft = sl;
+  }, 170);
 }
 function fitZoom() {
   const d = Math.max(projectDuration(), 5);
@@ -2796,6 +2865,12 @@ function trySnap(values, excludeId) {
         snd ? { label: 'Bleep here (drag its edges to resize)', pro: true, fn: () => addBleepAt(snd, t) } : null,
         snd ? { label: 'Remove silences', pro: true, fn: () => removeSilences(c) } : null
       ] } : null,
+      typeof enhTargets === 'function' && (c.kind === 'video' || c.kind === 'image' || snd) ? { label: 'Enhance', sub: [
+        enhTargets(c).voice ? { label: 'Studio sound…', fn: () => openEnhanceDialog('voice', c) } : null,
+        enhTargets(c).quality ? { label: 'Improve quality…', fn: () => openEnhanceDialog('quality', c) } : null,
+        enhTargets(c).upscale ? { label: 'AI upscale…', fn: () => openEnhanceDialog('upscale', c) } : null,
+        enhTargets(c).slowmo ? { label: 'AI slow motion…', fn: () => openEnhanceDialog('slowmo', c) } : null
+      ] } : null,
       { label: 'Clip', sub: [
         { label: c.disabled ? 'Turn clip on' : 'Turn clip off', key: 'V', fn: () => toggleClipEnabled(c) },
         { label: 'Clip color…', fn: () => clipColorMenu(c, e.clientX, e.clientY) }
@@ -2810,7 +2885,9 @@ function trySnap(values, excludeId) {
   tlScroll.addEventListener('wheel', (e) => {
     if (e.ctrlKey) {
       e.preventDefault();
-      setZoom(state.zoom * (e.deltaY < 0 ? 1.15 : 1 / 1.15), timeAtClientX(e.clientX));
+      // trackpads send many small steps, mouse wheels a few big ones: zoom by how far it scrolled
+      const k = Math.pow(1.0016, -clamp(e.deltaY * (e.deltaMode === 1 ? 33 : 1), -300, 300));
+      liveZoom(state.zoom * k, timeAtClientX(e.clientX));
     } else if (!e.shiftKey && Math.abs(e.deltaY) > Math.abs(e.deltaX) && tlScroll.scrollHeight <= tlScroll.clientHeight + 2) {
       e.preventDefault();
       tlScroll.scrollLeft += e.deltaY;
@@ -3869,10 +3946,10 @@ $('#btnDuplicate').onclick = duplicateSelected;
 $('#btnAddText').onclick = () => addText();
 $('#btnSnap').onclick = (e) => { state.snap = !state.snap; e.currentTarget.classList.toggle('on', state.snap); };
 $('#btnRipple').onclick = (e) => { state.ripple = !state.ripple; e.currentTarget.classList.toggle('on', state.ripple); toast(state.ripple ? 'Deleting a clip will now close the gap' : 'Deleting a clip will leave a gap'); };
-$('#btnZoomIn').onclick = () => setZoom(state.zoom * 1.4);
-$('#btnZoomOut').onclick = () => setZoom(state.zoom / 1.4);
+$('#btnZoomIn').onclick = () => liveZoom(state.zoom * 1.4);
+$('#btnZoomOut').onclick = () => liveZoom(state.zoom / 1.4);
 $('#btnFit').onclick = fitZoom;
-$('#zoomSlider').addEventListener('input', (e) => setZoom(zoomFromSlider(+e.target.value)));
+$('#zoomSlider').addEventListener('input', (e) => liveZoom(zoomFromSlider(+e.target.value)));
 $('#btnUndo').onclick = undo;
 $('#btnRedo').onclick = redo;
 $('#btnExport').onclick = openExportDialog;
