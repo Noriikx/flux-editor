@@ -1,6 +1,13 @@
 /* Flux — changelog. Shown once after an update, and any time from Settings → About. */
 'use strict';
 const CHANGELOG = [
+  { v: '5.3.0', date: '2026-11-22', items: [
+    'A fresh new look: the panels now float with rounded corners and soft shadows, and buttons, cards and sliders are cleaner',
+    'Themes: pick Midnight, Ocean, Aurora, Ember, Rose, Graphite or the new light mode, Daylight (Settings → Appearance)',
+    'Choose your own accent color - pick from 10 colors or any color you like',
+    'Smoother everywhere: tabs, menus, pop-ups and messages glide in, and hovering gives gentle feedback. Prefer it still? Turn off Smooth animations in Settings → Appearance',
+    'The library tabs moved to a tidy side bar, so every name fits (no more squashed "Audio FX" and "Transitions")'
+  ] },
   { v: '5.2.0', date: '2026-11-11', items: [
     'A new export engine: your videos are now read straight from the files frame by frame, instead of being played back in the background. Exports are usually faster, especially longer videos',
     'Exported videos are smooth: every frame is exactly the right one (before, frames could be repeated or skipped, which made exports look laggy)',

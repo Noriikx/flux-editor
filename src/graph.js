@@ -3,6 +3,12 @@
    Mouse: drag empty space = move the playhead · drag a keyframe = move it · Shift+click (or your setting) = select several
    · wheel = zoom time · Shift+wheel = scroll · double-click = add keyframe · right-click / Delete = remove. */
 'use strict';
+// the theme's accent colour at a given opacity (for canvas drawing)
+function accentA(a) {
+  const h = (getComputedStyle(document.documentElement).getPropertyValue('--accent') || '#8d7dff').trim();
+  const m = /^#([0-9a-f]{6})$/i.exec(h); if (!m) return `rgba(141,125,255,${a})`;
+  const n = parseInt(m[1], 16); return `rgba(${n >> 16},${(n >> 8) & 255},${n & 255},${a})`;
+}
 const GRAPH_PROPS = [
   ['scale', 'Size', (v) => Math.round(v * 100) + '%', '#8d7dff'],
   ['x', 'Position X', (v) => Math.round(v * 100), '#4fc3f7'],
@@ -249,7 +255,7 @@ function drawGraph() {
   // keyframes you can't see right now: arrows at the edges
   const hid = graphHidden(c, V);
   for (const b of graphArrowBoxes(V, hid)) {
-    g.fillStyle = 'rgba(141,125,255,.9)';
+    g.fillStyle = accentA(.9);
     g.beginPath(); g.roundRect ? g.roundRect(b.x, b.y, b.w, b.h, 10) : g.rect(b.x, b.y, b.w, b.h); g.fill();
     g.fillStyle = '#fff'; g.font = '600 11px Inter, sans-serif'; g.textAlign = 'center';
     g.fillText(b.side === 'left' ? `◀ ${b.n}` : `${b.n} ▶`, b.x + b.w / 2, b.y + 14);
@@ -258,7 +264,7 @@ function drawGraph() {
   // box selection
   if (graph.drag && graph.drag.kind === 'box') {
     const b = graph.drag;
-    g.fillStyle = 'rgba(141,125,255,.12)'; g.strokeStyle = 'rgba(141,125,255,.7)'; g.lineWidth = 1;
+    g.fillStyle = accentA(.12); g.strokeStyle = accentA(.7); g.lineWidth = 1;
     g.fillRect(Math.min(b.x0, b.x1), Math.min(b.y0, b.y1), Math.abs(b.x1 - b.x0), Math.abs(b.y1 - b.y0));
     g.strokeRect(Math.min(b.x0, b.x1), Math.min(b.y0, b.y1), Math.abs(b.x1 - b.x0), Math.abs(b.y1 - b.y0));
   }

@@ -2912,7 +2912,7 @@ function contextMenu(x, y, items, parent) {
   if (!parent) closeContextMenu();
   const menu = el('div', 'ctx-menu' + (parent ? ' ctx-sub' : ''));
   Object.assign(menu.style, {
-    position: 'fixed', zIndex: parent ? 91 : 90, background: '#1a1a25', border: '1px solid var(--line-2)', borderRadius: '10px',
+    position: 'fixed', zIndex: parent ? 91 : 90, background: 'var(--panel-2)', border: '1px solid var(--line-2)', borderRadius: '10px',
     padding: '5px', minWidth: '190px', boxShadow: '0 16px 40px rgba(0,0,0,.55)', maxHeight: 'calc(100vh - 8px)', overflowY: 'auto'
   });
   let openSub = null, subTimer = 0;
@@ -3347,7 +3347,7 @@ function renderInspectorHeadOnly(c) {
 function renderProjectPanel(body) {
   const total = projectDuration();
   body.innerHTML = `
-    <div class="insp-head"><span class="badge" style="background:var(--grad);color:#120e2c"><svg viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="M3 9h18"/></svg></span>
+    <div class="insp-head"><span class="badge" style="background:var(--grad);color:var(--on-accent)"><svg viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="M3 9h18"/></svg></span>
       <div><h3>Project</h3><small>Nothing selected - click a clip to edit it</small></div></div>`;
   const s = section(body, 'Video shape');
   const seg = el('div', 'seg tall');

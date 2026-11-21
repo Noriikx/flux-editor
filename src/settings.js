@@ -15,6 +15,9 @@ const DEFAULT_SETTINGS = {
   previewQuality: 'auto',
   proxies: true,             // make light copies of long / .mkv videos for smooth editing
   aiKey: '',
+  theme: 'midnight',
+  accent: '',              // '' = the theme's own colour
+  motion: 'on',
   fontsOnline: null,         // null = ask the first time a Google font is needed
   aiModel: 'claude-sonnet-5-5',
   asrModel: '',
@@ -143,6 +146,7 @@ function openSettings(tab = 'general') {
       <nav class="settings-nav">
         <h2>Settings</h2>
         <button data-tab="general">General</button>
+        <button data-tab="look">Appearance</button>
         <button data-tab="keys">Keyboard shortcuts</button>
         <button data-tab="audio">Audio devices</button>
         <button data-tab="perf">Performance</button>
@@ -157,7 +161,7 @@ function openSettings(tab = 'general') {
     keyCapture = null;
     $$('.settings-nav button', box).forEach((b) => b.classList.toggle('active', b.dataset.tab === t));
     body.innerHTML = '';
-    ({ general: settingsGeneral, keys: settingsKeys, audio: settingsAudio, perf: settingsPerf, ai: settingsAi, about: settingsAbout })[t](body);
+    ({ general: settingsGeneral, look: settingsLook, keys: settingsKeys, audio: settingsAudio, perf: settingsPerf, ai: settingsAi, about: settingsAbout })[t](body);
   };
   $$('.settings-nav button', box).forEach((b) => (b.onclick = () => show(b.dataset.tab)));
   show(tab);
@@ -193,6 +197,50 @@ function settingsGeneral(body) {
   inp.oninput = () => { settings.transitionDur = +inp.value; val.textContent = (+inp.value).toFixed(1) + 's'; setRangeFill(inp); };
   inp.onchange = saveSettings;
   body.appendChild(r);
+}
+
+function settingsLook(body) {
+  body.innerHTML = `<h3>Appearance</h3>
+    <div class="set-h4">Theme</div><div class="theme-grid"></div>
+    <div class="set-h4">Accent color</div><div class="accent-row"></div>`;
+  const grid = $('.theme-grid', body), row = $('.accent-row', body);
+  const relook = () => { applyTheme(settings.theme, settings.accent, settings.motion); saveSettings(); if (typeof requestDraw === 'function') requestDraw(); window.dispatchEvent(new Event('flux-theme')); };
+  const drawThemes = () => {
+    grid.innerHTML = '';
+    for (const t of THEMES) {
+      const c = t.c, acc = settings.accent || c.accent;
+      const b = el('button', 'theme-card' + ((settings.theme || 'midnight') === t.id ? ' active' : ''));
+      b.innerHTML = `<span class="tc-prev" style="background:${c.bg};--tc-acc:${acc}"><i class="p-lib" style="background:${c.panel}"></i><i class="p-view" style="background:${c.sunken}"></i><i style="background:${c.panel}"></i><i class="p-tl" style="background:${c.panel}"></i></span>
+        <span class="tc-txt"><span><b></b><small></small></span><span class="tc-check"><svg viewBox="0 0 24 24"><path d="m5 12 5 5 9-10"/></svg></span></span>`;
+      $('b', b).textContent = t.name; $('small', b).textContent = t.sub;
+      b.onclick = () => { settings.theme = t.id; relook(); drawThemes(); drawAccents(); };
+      grid.appendChild(b);
+    }
+  };
+  const drawAccents = () => {
+    row.innerHTML = '';
+    const auto = el('button', 'accent-dot auto' + (!settings.accent ? ' active' : ''));
+    auto.dataset.tip = 'Theme color';
+    auto.onclick = () => { settings.accent = ''; relook(); drawThemes(); drawAccents(); };
+    row.appendChild(auto);
+    for (const a of ACCENTS) {
+      const d = el('button', 'accent-dot' + (settings.accent === a ? ' active' : ''));
+      d.style.background = a;
+      d.onclick = () => { settings.accent = a; relook(); drawThemes(); drawAccents(); };
+      row.appendChild(d);
+    }
+    const pick = el('label', 'accent-dot pick' + (settings.accent && !ACCENTS.includes(settings.accent) ? ' active' : ''));
+    pick.dataset.tip = 'Pick any color';
+    pick.innerHTML = '<svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg><input type="color">';
+    if (settings.accent && !ACCENTS.includes(settings.accent)) { pick.style.background = settings.accent; pick.firstChild.style.display = 'none'; }
+    const inp = $('input', pick); inp.value = settings.accent || '#8d7dff';
+    inp.oninput = () => { settings.accent = inp.value; applyTheme(settings.theme, settings.accent, settings.motion); };
+    inp.onchange = () => { settings.accent = inp.value; relook(); drawThemes(); drawAccents(); };
+    row.appendChild(pick);
+  };
+  drawThemes(); drawAccents();
+  toggleRow(body, 'Smooth animations', 'Panels, menus and buttons glide in. Turn off for a snappier, still interface.',
+    () => settings.motion !== 'off', (v) => { settings.motion = v ? 'on' : 'off'; applyTheme(settings.theme, settings.accent, settings.motion); });
 }
 
 function settingsKeys(body) {

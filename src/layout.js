@@ -4,7 +4,7 @@
 (function setupPanelResize() {
   const ws = document.getElementById('workspace');
   if (!ws) return;
-  const DEF = { lib: 330, insp: 320 };
+  const DEF = { lib: 350, insp: 320 };
   let L = { ...DEF };
   try { Object.assign(L, JSON.parse(localStorage.getItem('flux.layout') || '{}')); } catch {}
   const apply = () => {
@@ -46,8 +46,8 @@
   const gl = mkGrip('lib'), gi = mkGrip('insp');
   function place() {
     const lib = document.getElementById('library'), insp = document.getElementById('inspector');
-    if (lib) gl.style.left = (lib.offsetLeft + lib.offsetWidth - 3) + 'px';
-    if (insp) gi.style.left = (insp.offsetLeft - 4) + 'px';
+    if (lib) gl.style.left = (lib.offsetLeft + lib.offsetWidth + 0.5) + 'px';
+    if (insp) gi.style.left = (insp.offsetLeft - 7.5) + 'px';
   }
   apply();
   window.addEventListener('resize', () => { if (!document.body.classList.contains('resizing-panels')) { apply(); } else place(); });
