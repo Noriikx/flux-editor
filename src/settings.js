@@ -151,6 +151,9 @@ function openSettings(tab = 'general') {
         <button data-tab="audio">Audio devices</button>
         <button data-tab="perf">Performance</button>
         <button data-tab="ai">AI Editor</button>
+        <button data-tab="account">Account</button>
+        <button data-tab="feature">Request a feature</button>
+        <button data-tab="bug">Report a bug</button>
         <button data-tab="about">About</button>
       </nav>
       <div class="settings-body"></div>
@@ -161,7 +164,7 @@ function openSettings(tab = 'general') {
     keyCapture = null;
     $$('.settings-nav button', box).forEach((b) => b.classList.toggle('active', b.dataset.tab === t));
     body.innerHTML = '';
-    ({ general: settingsGeneral, look: settingsLook, keys: settingsKeys, audio: settingsAudio, perf: settingsPerf, ai: settingsAi, about: settingsAbout })[t](body);
+    ({ general: settingsGeneral, look: settingsLook, account: settingsAccount, feature: (b) => settingsFeedback(b, 'feature'), bug: (b) => settingsFeedback(b, 'bug'), keys: settingsKeys, audio: settingsAudio, perf: settingsPerf, ai: settingsAi, about: settingsAbout })[t](body);
   };
   $$('.settings-nav button', box).forEach((b) => (b.onclick = () => show(b.dataset.tab)));
   show(tab);
@@ -241,6 +244,70 @@ function settingsLook(body) {
   drawThemes(); drawAccents();
   toggleRow(body, 'Smooth animations', 'Panels, menus and buttons glide in. Turn off for a snappier, still interface.',
     () => settings.motion !== 'off', (v) => { settings.motion = v ? 'on' : 'off'; applyTheme(settings.theme, settings.accent, settings.motion); });
+}
+
+function settingsAccount(body) {
+  const a = settings.account;
+  body.innerHTML = '<h3>Account</h3>';
+  if (!a) { body.insertAdjacentHTML('beforeend', '<p class="sub">You\u2019re not signed in.</p>'); return; }
+  const card = el('div', 'set-acct');
+  card.innerHTML = `<div class="acct-avatar">${(a.username || a.email)[0].toUpperCase()}</div><div><b></b><small></small></div>`;
+  $('b', card).textContent = a.username ? '@' + a.username : 'No username yet';
+  $('small', card).textContent = a.email;
+  body.appendChild(card);
+  const row = el('div', 'set-row');
+  row.innerHTML = `<div><b>Username</b><small>3-20 letters, numbers, _ or . - other people only ever see this, never your email.</small></div><div class="set-inline"><input class="num-input" maxlength="20" style="font-family:var(--font);width:170px"><button class="btn">Save</button></div>`;
+  const inp = $('input', row); inp.value = a.username || '';
+  $('button', row).onclick = async (e) => {
+    const n = inp.value.trim(); if (!n || n === a.username) return;
+    e.target.disabled = true;
+    const r = await apiCall('username', { username: n }, a.token);
+    e.target.disabled = false;
+    if (r.error) return toast(r.error, { error: true });
+    storeAccount(a.token, r.account); toast('Username changed to @' + r.account.username); settingsAccount(body);
+  };
+  body.appendChild(row);
+  const pw = el('div', 'set-row');
+  pw.innerHTML = '<div><b>Password</b><small>Change the password you sign in with.</small></div><button class="btn">Change password</button>';
+  $('button', pw).onclick = () => { closeModal(); openAccount(); setTimeout(() => { const b = document.querySelector('.modal [data-a=pw]'); if (b) b.click(); }, 50); };
+  body.appendChild(pw);
+  if (!a.admin) {
+    const del = el('div', 'set-row danger-row');
+    del.innerHTML = '<div><b>Delete account</b><small>Removes your account and everything Flux stores about it. We email you a code first to make sure it\u2019s you. Your projects on this computer stay.</small></div><button class="btn danger">Delete account…</button>';
+    $('button', del).onclick = () => { closeModal(); deleteAccountDialog(); };
+    body.appendChild(del);
+  }
+}
+
+// feature requests + bug reports go straight to the owner's admin panel
+function settingsFeedback(body, kind) {
+  const bug = kind === 'bug';
+  body.innerHTML = `<h3>${bug ? 'Report a bug' : 'Request a feature'}</h3>
+    <p class="sub">${bug ? 'Something broken or weird? Tell us what happened - the more detail, the faster it gets fixed.' : 'What would make Flux better for you? Every idea is read.'}</p>
+    <label class="fb-field">${bug ? 'What went wrong?' : 'Your idea in a few words'}<input class="num-input" maxlength="120" data-f="title" placeholder="${bug ? 'e.g. Export stops at 95%' : 'e.g. Green screen effect'}"></label>
+    <label class="fb-field">${bug ? 'What did you do before it happened? What did you expect?' : 'Tell us more (optional details)'}<textarea class="num-input" rows="7" maxlength="4000" data-f="text" placeholder="${bug ? '1. I opened…\n2. I clicked…\n3. Then…' : 'How would you use it?'}"></textarea></label>
+    <p class="hint">${bug ? 'Your Flux version and system are added automatically. ' : ''}Sent with your username so we can reply by email if needed. Nothing from your projects is sent.</p>
+    <div class="fb-actions"><span class="fb-msg"></span><button class="btn primary" data-a="send">Send</button></div>`;
+  const t = $('[data-f=title]', body), x = $('[data-f=text]', body), msg = $('.fb-msg', body), send = $('[data-a=send]', body);
+  const draftKey = 'flux.draft.' + kind;
+  try { const d = JSON.parse(localStorage.getItem(draftKey) || 'null'); if (d) { t.value = d.t || ''; x.value = d.x || ''; } } catch {}
+  const keep = () => { try { localStorage.setItem(draftKey, JSON.stringify({ t: t.value, x: x.value })); } catch {} };
+  t.oninput = keep; x.oninput = keep;
+  send.onclick = async () => {
+    const a = settings.account;
+    if (!a || !a.token) return toast('Sign in first', { error: true });
+    const text = (x.value.trim() || t.value.trim());
+    if ((t.value.trim() + x.value.trim()).length < 10) { msg.textContent = 'Please write a bit more.'; return; }
+    send.disabled = true; send.textContent = 'Sending…'; msg.textContent = '';
+    const ver = api && api.appVersion ? await api.appVersion() : '';
+    const r = await apiCall('feedback', { kind, title: t.value.trim(), text, version: ver, os: api && api.platform ? api.platform : '' }, a.token);
+    send.disabled = false; send.textContent = 'Send';
+    if (r.error) { msg.textContent = r.error; return; }
+    try { localStorage.removeItem(draftKey); } catch {}
+    t.value = ''; x.value = '';
+    body.innerHTML = `<div class="fb-thanks"><div class="enh-badge"><svg viewBox="0 0 24 24"><path d="m5 12 5 5 9-10"/></svg></div><h3>Thank you!</h3><p class="sub">${bug ? 'Your bug report was sent. We\u2019ll look into it.' : 'Your idea was sent. Maybe it\u2019s in the next update!'}</p><button class="btn">Send another</button></div>`;
+    $('.fb-thanks .btn', body).onclick = () => settingsFeedback(body, kind);
+  };
 }
 
 function settingsKeys(body) {

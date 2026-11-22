@@ -478,6 +478,7 @@ const FX_SWATCH = { gaussian: 'blur(3px)', mosaic: 'contrast(1.1)', shadow: 'dro
       b.appendChild(document.createTextNode(t.name));
       if (t.pro && !isPremium()) b.insertAdjacentHTML('beforeend', ' ' + CROWN);
       b.onclick = () => addEffect(getClip(state.selectedId), id);
+      b.dataset.fav = 'fx:' + id;
       box.appendChild(b);
     }
   };

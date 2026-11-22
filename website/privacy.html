@@ -43,7 +43,7 @@ footer .wrap { display:flex; gap:18px; flex-wrap:wrap; }
 <nav><a href="/terms.html">Terms</a><a href="/privacy.html" class="on">Privacy</a><a href="/">Home</a></nav></div></header>
 <main><div class="wrap">
 <h1>Privacy Policy</h1>
-<p class="eff">Effective 22 November 2026. This explains what data Flux uses, why, and your rights.</p>
+<p class="eff">Effective 22 November 2026 (updated for Flux 7.0). This explains what data Flux uses, why, and your rights.</p>
 
 <div class="tldr"><b>The short version:</b>
 <ul>
@@ -73,8 +73,12 @@ footer .wrap { display:flex; gap:18px; flex-wrap:wrap; }
 <tr><th>Data</th><th>Why</th><th>Legal basis (GDPR)</th></tr>
 <tr><td><b>Email address</b></td><td>To create your account, sign you in, send sign-in and password-reset codes, and contact you about your account</td><td>Contract (Art. 6(1)(b))</td></tr>
 <tr><td><b>Password</b> (stored only as a salted scrypt hash, never in plain text)</td><td>To sign you in securely</td><td>Contract</td></tr>
-<tr><td><b>Account details:</b> sign-up date, whether your email is confirmed, Premium status and gift dates, the date you accepted the terms</td><td>To run your account and show the right features</td><td>Contract</td></tr>
-<tr><td><b>Security data:</b> one-time codes (hashed, valid 15 minutes), code attempt counters, the time a code was last sent</td><td>To stop abuse and guessing of codes</td><td>Legitimate interests (Art. 6(1)(f)): keeping accounts safe</td></tr>
+<tr><td><b>Username</b> (public name you choose)</td><td>To show your account without showing your email</td><td>Contract</td></tr>
+<tr><td><b>Year you were born</b> (only the year)</td><td>To check you're old enough for an account (13+, and 13-15 only with a parent's agreement), as the law requires</td><td>Legal obligation (Art. 6(1)(c)) and contract</td></tr>
+<tr><td><b>Account details:</b> sign-up date, whether your email is confirmed, Premium status and gift dates, the date you accepted the terms, and whether the account is banned</td><td>To run your account and show the right features</td><td>Contract</td></tr>
+<tr><td><b>App version and usage:</b> which Flux version and system (Windows / Mac) you use, and when you last used Flux (at most once an hour)</td><td>To keep everyone on a working version, make required updates, and count active users</td><td>Legitimate interests: keeping Flux working and safe</td></tr>
+<tr><td><b>Messages you send:</b> feature requests and bug reports (your text, username, email, Flux version and system)</td><td>So the owner can read and answer them</td><td>Legitimate interests: improving Flux</td></tr>
+<tr><td><b>Security data:</b> one-time codes (hashed, valid 15 minutes), code attempt counters, the time a code was last sent, and short-lived counters of sign-in tries per scrambled (hashed) IP address</td><td>To stop abuse and guessing of codes</td><td>Legitimate interests (Art. 6(1)(f)): keeping accounts safe</td></tr>
 </table></div>
 <p>On your computer, Flux keeps a sign-in token so you stay signed in. It's removed when you sign out.</p>
 
@@ -135,7 +139,7 @@ footer .wrap { display:flex; gap:18px; flex-wrap:wrap; }
 <p>Email <a href="mailto:flux.editing.app@gmail.com">flux.editing.app@gmail.com</a> for any of these and we'll answer within one month. You can also complain to the Romanian data protection authority, ANSPDCP (<a href="https://www.dataprotection.ro" rel="noopener">dataprotection.ro</a>), or to the authority in your own country.</p>
 
 <h2>11. Children</h2>
-<p>Flux accounts are for people aged 16 and over. Younger users need a parent or guardian to agree for them. If you think a child under 16 created an account without permission, email us and we'll delete it.</p>
+<p>You must be at least 13 to have a Flux account. People aged 13 to 15 need a parent or guardian to agree, and confirm this when signing up. We only store the year you were born. If you think a child under 13 (or under 16 without permission) created an account, email us and we'll delete it.</p>
 
 <h2>12. Security</h2>
 <p>All connections to our server use HTTPS, and passwords are stored only as salted hashes. Sign-in codes are also stored hashed and are rate-limited. No system is 100% secure, so use a password you don't use anywhere else.</p>

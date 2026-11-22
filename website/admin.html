@@ -50,7 +50,24 @@
   .stat b { display: block; font: 800 26px "Bricolage Grotesque", sans-serif; margin-top: 2px; }
   .stat small { color: var(--muted); font-size: 12px; }
   .stat.money b { background: var(--grad); -webkit-background-clip: text; background-clip: text; color: transparent; }
+  .bars { display: grid; gap: 6px; margin-top: 4px; }
+  .bar { display: grid; grid-template-columns: 70px 1fr 44px; gap: 10px; align-items: center; font-size: 13px; }
+  .bar i { display: block; height: 10px; border-radius: 6px; background: var(--grad); min-width: 3px; }
+  .bar span { color: var(--muted); text-align: right; font-variant-numeric: tabular-nums; }
+  .two { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; }
+  .row { display: flex; gap: 10px; align-items: end; flex-wrap: wrap; }
+  .row label { flex: 1; min-width: 160px; }
+  .warn { background: rgba(255,138,155,.08); border: 1px solid rgba(255,138,155,.35); border-radius: 12px; padding: 10px 12px; font-size: 13px; color: var(--red); margin-top: 10px; }
+  .pill.ban { background: rgba(255,138,155,.16); color: var(--red); }
+  .tabs { display: flex; gap: 6px; margin-bottom: 12px; }
+  .tabs button.on { border-color: #8d7dff; color: var(--lav); }
+  .fb { border: 1px solid var(--line); background: var(--panel2); border-radius: 12px; padding: 12px 14px; margin-bottom: 10px; }
+  .fb.done { opacity: .5; }
+  .fb .meta { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; font-size: 12px; color: var(--muted); margin-bottom: 6px; }
+  .fb p { margin: 0; white-space: pre-wrap; word-break: break-word; font-size: 14px; }
+  .fb .acts { display: flex; gap: 6px; margin-top: 8px; }
   @media (max-width: 700px) {
+    .two { grid-template-columns: 1fr; }
     .give { grid-template-columns: 1fr; }
     thead { display: none; }
     tr { display: grid; padding: 10px 0; border-bottom: 1px solid var(--line); }
@@ -76,6 +93,39 @@
   <!-- panel -->
   <section id="panel" class="hide">
     <header><img src="logo.png" alt=""><h1>Flux Admin</h1><span class="muted em" id="who"></span><button class="small" id="blurBtn" title="Blur every email - for screen sharing">🙈 Blur emails</button><button class="small" id="out">Sign out</button></header>
+
+    <div class="card">
+      <div class="tools" style="margin-bottom:12px"><h2 style="margin:0;flex:1">Dashboard</h2><button class="small" id="reloadDash">Refresh</button></div>
+      <div class="stats" id="dash"><div class="stat"><small>Loading…</small></div></div>
+      <div class="two" style="margin-top:16px">
+        <div><h2>Versions people use</h2><div class="bars" id="versions"><span class="muted">Loading…</span></div></div>
+        <div><h2>Downloads per version</h2><div class="bars" id="dls"><span class="muted">Loading…</span></div><p class="muted" style="margin:8px 0 0">Installs = installer downloads. Updates = in-app quick updates.</p></div>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>App updates</h2>
+      <div class="row">
+        <label>Force update: everyone below this version must update before they can use Flux<input id="minVer" placeholder="e.g. 6.0.1 (empty = off)"></label>
+        <button class="primary" id="saveMin">Save</button>
+      </div>
+      <div class="row" style="margin-top:14px">
+        <label>Roll back: everyone is moved to this version (pick an older one if an update is broken)<select id="pinVer"><option value="">Off - everyone gets the newest version</option></select></label>
+        <button id="savePin">Save</button>
+      </div>
+      <div class="row" style="margin-top:14px">
+        <label>Message shown with the update (optional)<input id="updMsg" maxlength="300" placeholder="e.g. This update fixes an important bug"></label>
+        <button id="saveMsg">Save</button>
+      </div>
+      <div class="msg" id="updState"></div>
+      <div class="warn" id="updWarn" hidden></div>
+    </div>
+
+    <div class="card">
+      <div class="tools"><h2 style="margin:0;flex:1">Inbox</h2><button class="small" id="reloadFb">Refresh</button></div>
+      <div class="tabs"><button class="small on" data-k="feature">💡 Feature requests <span id="nFeature"></span></button><button class="small" data-k="bug">🐞 Bug reports <span id="nBug"></span></button><button class="small" data-k="done">✓ Done</button></div>
+      <div id="fbList"><span class="muted">Loading…</span></div>
+    </div>
 
     <div class="card">
       <div class="tools" style="margin-bottom:12px"><h2 style="margin:0;flex:1">Earnings</h2><button class="small" id="reloadMoney">Refresh</button></div>
@@ -106,10 +156,10 @@
     </div>
 
     <div class="card">
-      <div class="tools"><h2 style="margin:0;flex:none">Users <span class="muted" id="count"></span></h2><input id="search" placeholder="Search email…"><button class="small" id="reload">Refresh</button></div>
+      <div class="tools"><h2 style="margin:0;flex:none">Users <span class="muted" id="count"></span></h2><input id="search" placeholder="Search email or username…"><select id="filter" style="width:auto"><option value="">Everyone</option><option value="banned">Banned</option><option value="premium">Premium</option><option value="today">Active today</option></select><button class="small" id="reload">Refresh</button></div>
       <table>
-        <thead><tr><th>Email</th><th>Premium</th><th>Joined</th><th>Last sign-in</th><th></th></tr></thead>
-        <tbody id="rows"><tr><td colspan="5" class="muted">Loading…</td></tr></tbody>
+        <thead><tr><th>User</th><th>Premium</th><th>Version</th><th>Joined</th><th>Last seen</th><th></th></tr></thead>
+        <tbody id="rows"><tr><td colspan="6" class="muted">Loading…</td></tr></tbody>
       </table>
     </div>
   </section>
@@ -135,6 +185,7 @@ async function call(path, body) {
     body: body ? JSON.stringify(body) : undefined
   }).catch(() => null);
   if (!r) return { error: 'No connection.' };
+  if (r.status === 429) return { error: 'Too many requests - wait a minute.' };
   const j = await r.json().catch(() => ({}));
   if (r.status === 401 && token) { signOut(); }
   return r.ok ? j : { error: j.error || 'Something went wrong.' };
@@ -203,20 +254,23 @@ function premiumText(u) {
 }
 
 function draw() {
-  const q = $('#search').value.trim().toLowerCase();
-  const list = users.filter((u) => !q || u.email.includes(q));
+  const q = $('#search').value.trim().toLowerCase().replace(/^@/, ''), f = $('#filter').value, now = Date.now(), d0 = new Date(new Date().toISOString().slice(0, 10)).getTime();
+  const list = users.filter((u) => (!q || u.email.includes(q) || (u.username || '').includes(q))
+    && (!f || (f === 'banned' && u.banned) || (f === 'premium' && (u.grantUntil === -1 || u.grantUntil > now)) || (f === 'today' && (u.lastSeen || u.lastLogin || 0) >= d0)));
   $('#count').textContent = `(${users.length})`;
   $('#rows').innerHTML = list.length ? list.map((u) => `
     <tr data-e="${esc(u.email)}">
-      <td><b class="em">${esc(u.email)}</b>${u.hasPassword ? '' : '<br><span class="muted">no account yet</span>'}</td>
+      <td>${u.username ? '<b>@' + esc(u.username) + '</b><br>' : ''}<span class="em ${u.username ? 'muted' : ''}">${esc(u.email)}</span>${u.hasPassword ? '' : '<br><span class="muted">no account yet</span>'}${u.banned ? '<br><span class="pill ban">Banned' + (u.banned.reason ? ': ' + esc(u.banned.reason) : '') + '</span>' : ''}</td>
       <td>${premiumText(u)}</td>
+      <td class="muted">${u.version ? esc(u.version) + (u.os ? ' · ' + esc(u.os) : '') : '-'}</td>
       <td class="muted">${day(u.createdAt)}</td>
-      <td class="muted">${day(u.lastLogin)}</td>
+      <td class="muted">${day(u.lastSeen || u.lastLogin)}</td>
       <td><div class="acts">
         <button class="small" data-a="give">Give…</button>
         ${(u.grantUntil === -1 || u.grantUntil > Date.now()) ? '<button class="small danger" data-a="revoke">Remove gift</button>' : ''}
         <button class="small" data-a="check">Check Stripe</button>
         ${u.hasPassword ? '<button class="small" data-a="pw">New password</button>' : ''}
+        ${u.hasPassword ? (u.banned ? '<button class="small" data-a="unban">Unban</button>' : '<button class="small danger" data-a="ban">Ban</button>') : ''}
         <button class="small danger" data-a="del">Delete</button>
       </div></td>
     </tr>`).join('') : '<tr><td colspan="5" class="muted">No users yet.</td></tr>';
@@ -232,19 +286,92 @@ $('#rows').onclick = async (e) => {
   if (a === 'revoke' && !confirm(`Remove the Premium gift from ${email}?`)) return;
   if (a === 'del' && !confirm(`Delete the account ${email}? This can't be undone.`)) return;
   let body = { email };
+  if (a === 'ban') { const why = prompt(`Ban ${email}? They're signed out right away and can't sign in again.\nReason (they'll see it, optional):`, ''); if (why === null) return; body.reason = why; }
   if (a === 'pw') {
     const pw = prompt(`New password for ${email} (at least 8 characters).\nTell them the new password yourself.`);
     if (!pw) return;
     body.password = pw;
   }
   b.disabled = true;
-  const r = await call('admin/' + ({ revoke: 'revoke', check: 'refresh', pw: 'password', del: 'delete' }[a]), body);
+  const r = await call('admin/' + ({ revoke: 'revoke', check: 'refresh', pw: 'password', del: 'delete', ban: 'ban', unban: 'unban' }[a]), body);
   if (r.error) alert(r.error);
   else if (a === 'pw') alert('Password changed.');
   load();
 };
 
 $('#search').oninput = draw;
+$('#filter').onchange = draw;
+
+// ---------- dashboard ----------
+let cfg = {};
+async function loadDash() {
+  const r = await call('admin/stats');
+  if (r.error) { $('#dash').innerHTML = `<div class="stat"><small class="msg err">${esc(r.error)}</small></div>`; return; }
+  const d = r.downloads;
+  const cards = [['Total users', r.users], ['Active today', r.activeToday], ['Active this week', r.active7], ['Premium users', r.premium], ['New today', r.newToday], ['Banned', r.banned]];
+  if (d) cards.push(['Downloads (installs)', d.installs, true], ['Quick updates', d.updates]);
+  $('#dash').innerHTML = cards.map(([a, b, m]) => `<div class="stat${m ? ' money' : ''}"><small>${a}</small><b>${esc(b)}</b></div>`).join('');
+  const vs = Object.entries(r.versions || {}).sort((a, b) => (b[0] > a[0] ? 1 : -1)), vmax = Math.max(1, ...vs.map((x) => x[1]));
+  $('#versions').innerHTML = vs.length ? vs.map(([v, n]) => `<div class="bar"><b>${esc(v)}</b><i style="width:${(n / vmax) * 100}%"></i><span>${n}</span></div>`).join('') : '<span class="muted">Versions show up as people open the new app.</span>';
+  if (d) { const dm = Math.max(1, ...d.releases.map((x) => x.installs + x.updates)); $('#dls').innerHTML = d.releases.map((x) => `<div class="bar"><b>${esc(x.v)}</b><i style="width:${((x.installs + x.updates) / dm) * 100}%"></i><span>${x.installs}+${x.updates}</span></div>`).join(''); }
+  else $('#dls').innerHTML = '<span class="muted">GitHub didn\u2019t answer - try Refresh.</span>';
+  cfg = r.config || {};
+  $('#minVer').value = cfg.minVersion || '';
+  $('#updMsg').value = cfg.message || '';
+  const sel = $('#pinVer');
+  sel.innerHTML = '<option value="">Off - everyone gets the newest version</option>' + (d ? d.releases.map((x) => `<option value="${esc(x.v)}">${esc(x.v)}</option>`).join('') : '');
+  if (cfg.pinVersion && ![...sel.options].some((o) => o.value === cfg.pinVersion)) sel.insertAdjacentHTML('beforeend', `<option value="${esc(cfg.pinVersion)}">${esc(cfg.pinVersion)}</option>`);
+  sel.value = cfg.pinVersion || '';
+  updState();
+}
+function updState() {
+  const parts = [];
+  parts.push(cfg.minVersion ? `Forced update is ON: Flux below ${cfg.minVersion} can't be used until it's updated.` : 'Forced update is off.');
+  parts.push(cfg.pinVersion ? `Rollback is ON: everyone is moved to ${cfg.pinVersion}.` : 'Rollback is off.');
+  $('#updState').textContent = parts.join(' ');
+  const w = $('#updWarn');
+  w.hidden = !cfg.pinVersion;
+  w.textContent = cfg.pinVersion ? 'While rollback is on, newer versions are replaced with ' + cfg.pinVersion + '. Turn it off once a fixed update is out.' : '';
+}
+async function saveCfg(part, btn) {
+  btn.disabled = true;
+  const r = await call('admin/config', part);
+  btn.disabled = false;
+  if (r.error) return alert(r.error);
+  cfg = r.config; updState();
+}
+$('#saveMin').onclick = (e) => { const v = $('#minVer').value.trim(); if (v && !confirm(`Everyone with a version below ${v} will have to update before using Flux. Make sure ${v} is already released with its installer. Continue?`)) return; saveCfg({ minVersion: v }, e.target); };
+$('#savePin').onclick = (e) => { const v = $('#pinVer').value; if (v && !confirm(`Move EVERYONE to Flux ${v}? Anyone on a newer version gets ${v} installed.`)) return; saveCfg({ pinVersion: v }, e.target); };
+$('#saveMsg').onclick = (e) => saveCfg({ message: $('#updMsg').value.trim() }, e.target);
+$('#reloadDash').onclick = loadDash;
+
+// ---------- inbox ----------
+let fb = [], fbTab = 'feature';
+async function loadFb() {
+  const r = await call('admin/feedback');
+  if (r.error) { $('#fbList').innerHTML = `<span class="msg err">${esc(r.error)}</span>`; return; }
+  fb = r.items || []; drawFb();
+}
+function drawFb() {
+  $('#nFeature').textContent = `(${fb.filter((x) => x.kind === 'feature' && !x.done).length})`;
+  $('#nBug').textContent = `(${fb.filter((x) => x.kind === 'bug' && !x.done).length})`;
+  const list = fb.filter((x) => (fbTab === 'done' ? x.done : !x.done && x.kind === fbTab));
+  $('#fbList').innerHTML = list.length ? list.map((x) => `<div class="fb ${x.done ? 'done' : ''}" data-id="${esc(x.id)}">
+    <div class="meta"><span class="pill ${x.kind === 'bug' ? 'ban' : 'pro'}">${x.kind === 'bug' ? 'Bug' : 'Idea'}</span><b>${x.username ? '@' + esc(x.username) : ''}</b><span class="em">${esc(x.email)}</span><span>${new Date(x.at).toLocaleString()}</span>${x.version ? '<span>Flux ' + esc(x.version) + '</span>' : ''}${x.os ? '<span>' + esc(x.os) + '</span>' : ''}</div>
+    ${x.title ? '<b>' + esc(x.title) + '</b>' : ''}<p>${esc(x.text)}</p>
+    <div class="acts"><button class="small" data-a="done">${x.done ? 'Not done' : 'Mark done'}</button><button class="small danger" data-a="del">Delete</button></div></div>`).join('') : '<span class="muted">Nothing here.</span>';
+}
+document.querySelectorAll('.tabs button').forEach((b) => b.onclick = () => { fbTab = b.dataset.k; document.querySelectorAll('.tabs button').forEach((x) => x.classList.toggle('on', x === b)); drawFb(); });
+$('#fbList').onclick = async (e) => {
+  const b = e.target.closest('button[data-a]'); if (!b) return;
+  const id = b.closest('.fb').dataset.id, it = fb.find((x) => x.id === id);
+  if (b.dataset.a === 'del' && !confirm('Delete this message?')) return;
+  const r = await call(b.dataset.a === 'del' ? 'admin/feedback/delete' : 'admin/feedback/done', { id, done: !it.done });
+  if (r.error) return alert(r.error);
+  if (b.dataset.a === 'del') fb = fb.filter((x) => x.id !== id); else it.done = !it.done;
+  drawFb();
+};
+$('#reloadFb').onclick = loadFb;
 $('#reload').onclick = load;
 
 async function load() {
@@ -256,7 +383,7 @@ async function start() {
   const r = await call('me');
   if (!r.account || !r.account.admin) return signOut();
   $('#who').textContent = r.account.email;
-  show(true); load(); loadMoney();
+  show(true); load(); loadMoney(); loadDash(); loadFb();
 }
 if (token) start(); else show(false);
 </script>

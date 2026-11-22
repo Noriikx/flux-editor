@@ -1,6 +1,22 @@
 /* Flux — changelog. Shown once after an update, and any time from Settings → About. */
 'use strict';
 const CHANGELOG = [
+  { v: '7.0.0', date: '2026-11-22', items: [
+    'Templates: 8 ready-made edits (vlog, fast TikTok, travel, gaming, product promo, birthday, week recap, cinematic). Add your clips and press "Fill the template"',
+    'Reverse: play any video or sound clip backwards (Clip tools → Edit, or right-click → Enhance). Press it again to go back',
+    'Close gaps button: removes every empty space on the timeline in one click (Auto-close is still there too)',
+    'Balance audio: one click makes every voice about equally loud - a loud mic and a quiet one end up the same, and music sits underneath',
+    'Blur or pixelate just one part of the video (faces, plates, names) - plus 8 more effects: Pixelate, Thermal camera, Night vision, Color pop, Water ripple, Spotlight, Anime speed lines and Rain',
+    'Favorites: click the ☆ on any filter, effect or audio effect to pin it at the top',
+    'You can now see which imported files are already used on the timeline (a ✓ on the file)',
+    '10 new filters, 8 new caption styles, 10 new audio effects and 10 new themes',
+    'The anvil bleep now sounds like a real anvil',
+    'Usernames: pick yours (Settings → Account). New accounts also ask the year you were born',
+    'Settings → Request a feature and Report a bug: send ideas and problems straight to us',
+    'Delete account now asks for a code from your email first, so nobody else can do it',
+    'Better protection: limits on sign-in tries and on how fast the account server can be called',
+    'Fixed: "Untitled project" cards that couldn\u2019t be deleted (they were old version-history files)'
+  ] },
   { v: '6.0.1', date: '2026-11-22', items: [
     'Viral Shorts is now a Premium feature'
   ] },

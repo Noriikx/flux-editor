@@ -87,8 +87,9 @@ contextBridge.exposeInMainWorld('flux', {
   enhRun: (o) => ipcRenderer.invoke('enh:run', o),
   enhCancel: (id) => ipcRenderer.invoke('enh:cancel', id),
   onEnhProgress: (cb) => ipcRenderer.on('enh:progress', (_e, v) => cb(v)),
-  updateCheck: () => ipcRenderer.invoke('update:check'),
-  updateInstall: () => ipcRenderer.invoke('update:install'),
+  updateCheck: (o) => ipcRenderer.invoke('update:check', o),
+  updateInstall: (o) => ipcRenderer.invoke('update:install', o),
+  platform: process.platform,
   onUpdateProgress: (cb) => ipcRenderer.on('update:progress', (_e, v) => cb(v)),
   openExternal: (url) => ipcRenderer.invoke('app:openExternal', url),
   openAdmin: (token) => ipcRenderer.invoke('admin:open', token)

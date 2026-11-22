@@ -190,7 +190,8 @@ function deleteProjectDialog(p) {
   $('[data-a=no]', box).onclick = closeModal;
   $('[data-a=yes]', box).onclick = async () => {
     closeModal();
-    await projectStore.remove(p.id);
+    const ok = await projectStore.remove(p.id);
+    if (ok === false) { toast('Couldn\u2019t delete that project - close any program that might be using it and try again', { error: true }); return refreshHome(); }
     if (state.inEditor && P.id === p.id) { state.inEditor = false; await goHome(); }
     else refreshHome();
     toast('Project deleted');

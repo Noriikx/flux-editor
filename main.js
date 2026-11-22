@@ -235,7 +235,11 @@ ipcMain.handle('media:save', (_e, { folder, name, dataUrl, data }) => {
 ipcMain.handle('projects:list', () => {
   const dir = projectsDir();
   const out = [];
-  for (const f of fs.readdirSync(dir)) {
+  const files = fs.readdirSync(dir);
+  for (const f of files) {
+    // version history files (Time machine) belong to a project - they're not projects themselves.
+    // Ones left over from a deleted project are cleaned up.
+    if (f.endsWith('.versions.json')) { if (!files.includes(f.replace(/\.versions\.json$/, '.json'))) { try { fs.unlinkSync(path.join(dir, f)); } catch {} } continue; }
     if (!f.endsWith('.json')) continue;
     try {
       const data = JSON.parse(fs.readFileSync(path.join(dir, f), 'utf8'));
@@ -266,8 +270,12 @@ ipcMain.on('projects:saveSync', (e, { id, data }) => {
   try { writeProject(id, data); e.returnValue = true; } catch { e.returnValue = false; }
 });
 ipcMain.handle('projects:delete', (_e, id) => {
-  for (const ext of ['.json', '.jpg']) { try { fs.unlinkSync(path.join(projectsDir(), safeId(id) + ext)); } catch {} }
-  return true;
+  let ok = true;
+  for (const ext of ['.json', '.jpg', '.versions.json']) {
+    const f = path.join(projectsDir(), safeId(id) + ext);
+    try { fs.unlinkSync(f); } catch (e) { if (e.code !== 'ENOENT') ok = false; }
+  }
+  return ok;
 });
 
 // Optional .flux files (share / back up a project)
@@ -1258,6 +1266,31 @@ async function runEnhance(job, o, prog) {
       return { path: out, ai, fps, factor, len };
     } finally { cleanup(); }
   }
+  if (kind === 'reverse' || kind === 'reverse-audio') {
+    // backwards in short pieces (each piece reversed, then joined last-to-first) so long clips don't need lots of memory
+    const audioOnly = kind === 'reverse-audio', CH = audioOnly ? 30 : 4, n = Math.max(1, Math.ceil(len / CH - 1e-6));
+    const work = ensureDir(base + '-parts'), parts = [];
+    const cleanup = () => { try { fs.rmSync(work, { recursive: true, force: true }); } catch {} };
+    try {
+      for (let i = 0; i < n; i++) {
+        const s0 = start + i * CH, d = Math.min(CH, start + len - s0);
+        if (d <= 0.01) break;
+        const part = path.join(work, String(i).padStart(5, '0') + (audioOnly ? '.wav' : '.mp4'));
+        const args = audioOnly
+          ? ['-ss', String(s0), '-t', String(d), '-i', file, '-vn', '-af', 'areverse', '-ar', '48000', '-c:a', 'pcm_s16le', part]
+          : ['-ss', String(s0), '-t', String(d), '-i', file, '-map', '0:v:0', '-map', '0:a:0?', '-vf', 'reverse,format=yuv420p', '-af', 'areverse', ...enc264(16), '-c:a', 'aac', '-b:a', '256k', '-ar', '48000', part];
+        const r = await enhFf(job, args, d, (v) => prog({ stage: 'work', value: (i + v) / n * 0.95 }));
+        if (r.code !== 0) throw new Error(job.cancelled ? 'cancelled' : 'Could not reverse the clip. ' + r.err.slice(-200));
+        parts.push(part);
+      }
+      const list = path.join(work, 'list.txt');
+      fs.writeFileSync(list, parts.slice().reverse().map((p) => "file '" + p.replace(/\\/g, '/').replace(/'/g, "'\\''") + "'").join('\n'));
+      const out = base + (audioOnly ? '.m4a' : '.mp4');
+      const r = await enhFf(job, ['-f', 'concat', '-safe', '0', '-i', list, ...(audioOnly ? ['-c:a', 'aac', '-b:a', '256k'] : ['-c', 'copy', '-movflags', '+faststart']), out], len, (v) => prog({ stage: 'work', value: 0.95 + v * 0.05 }));
+      if (r.code !== 0) throw new Error(job.cancelled ? 'cancelled' : 'Could not finish the reversed clip. ' + r.err.slice(-200));
+      return { path: out, len };
+    } finally { cleanup(); }
+  }
   throw new Error('Unknown job');
 }
 ipcMain.handle('enh:run', async (e, o) => {
@@ -1417,27 +1450,30 @@ function updateAsset(rel) {
 // Pick the newest release that already has an installer for this computer
 // (a brand-new release needs ~10 minutes before its installer is uploaded).
 let pendingRelease = null;
-async function findUpdate() {
+async function findUpdate(pin) {
   const res = await net.fetch(`https://api.github.com/repos/${REPO}/releases?per_page=15`, { headers: { Accept: 'application/vnd.github+json', 'User-Agent': 'Flux' } });
   if (!res.ok) throw Object.assign(new Error('Could not check for updates (' + res.status + ')'), { status: res.status });
   const list = (await res.json()).filter((r) => !r.draft && !r.prerelease)
     .sort((a, b) => (newer(String(a.tag_name).replace(/^v/, ''), String(b.tag_name).replace(/^v/, '')) ? -1 : 1));
+  // rollback: the owner can pin everyone to one version (even an older one)
+  if (pin) { const p = list.find((r) => String(r.tag_name).replace(/^v/, '') === pin); return { newest: p || list[0], ready: p && updateAsset(p) ? p : null, pinned: true }; }
   const newest = list[0];
   const ready = list.find((r) => updateAsset(r));
   return { newest, ready };
 }
-ipcMain.handle('update:check', async () => {
+ipcMain.handle('update:check', async (_e, opts) => {
   try {
-    const { newest, ready } = await findUpdate();
+    const pin = opts && /^\d+\.\d+\.\d+$/.test(String(opts.pin || '')) ? String(opts.pin) : '';
+    const { newest, ready, pinned } = await findUpdate(pin);
     const cur = app.getVersion();
     const latest = ready ? String(ready.tag_name).replace(/^v/, '') : cur;
     const newestV = newest ? String(newest.tag_name).replace(/^v/, '') : cur;
     const asset = ready ? updateAsset(ready) : null;
-    const available = !!asset && newer(latest, cur);
+    const available = !!asset && (pinned ? latest !== cur : newer(latest, cur));
     pendingRelease = available ? ready : null;
     return {
       current: cur, latest, available, notes: ready ? ready.body || '' : '', size: asset ? asset.size : 0,
-      preparing: newer(newestV, cur) && newestV !== latest ? newestV : null
+      preparing: (pinned ? !asset : newer(newestV, cur) && newestV !== latest) ? newestV : null, rollback: !!pinned && newer(cur, latest)
     };
   } catch (err) { return { error: err.status ? err.message : 'No internet connection.' }; }
 });
@@ -1482,12 +1518,12 @@ async function download(url, file, total0, send) {
   await new Promise((r, j) => out.end((err) => (err ? j(err) : r())));
   if (total && got < total) throw new Error('The download was cut off. Try again.');
 }
-ipcMain.handle('update:install', async (e) => {
+ipcMain.handle('update:install', async (e, opts) => {
   if (updating) return { error: 'Already updating' };
   updating = true;
   const send = (v) => { try { e.sender.send('update:progress', v); } catch {} };
   try {
-    const rel = pendingRelease || (await findUpdate()).ready;
+    const rel = pendingRelease || (await findUpdate(opts && opts.pin)).ready;
     const quick = rel && (await quickUpdatePlan(rel));
     if (quick) {
       const res = process.resourcesPath, next = path.join(res, 'app.asar.next');

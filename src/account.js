@@ -5,15 +5,18 @@ const API_BASE = 'https://flux-editor.netlify.app/api/';
 const ADMIN_URL = 'https://flux-editor.netlify.app/admin.html';
 // Terms of Service + Privacy Policy. Bump TERMS_VERSION when they change in an important way:
 // signed-in users are then asked once to accept the new version.
-const TERMS_VERSION = '2026-10-25';
+const TERMS_VERSION = '2026-11-22';
 const TERMS_URL = 'https://flux-editor.netlify.app/terms.html';
 const PRIVACY_URL = 'https://flux-editor.netlify.app/privacy.html';
 function openLink(url) { if (api && api.openExternal) api.openExternal(url); else window.open(url); }
 const legalLinks = () => `<a href="#" data-legal="terms">Terms of Service</a> and <a href="#" data-legal="privacy">Privacy Policy</a>`;
 function wireLegal(root) { $$('[data-legal]', root).forEach((a) => a.onclick = (e) => { e.preventDefault(); openLink(a.dataset.legal === 'terms' ? TERMS_URL : PRIVACY_URL); }); }
 
+let fluxVersion = '';
+if (api && api.appVersion) api.appVersion().then((v) => { fluxVersion = v; }).catch(() => {});
 async function apiCall(path, body, token) {
-  const headers = { 'content-type': 'application/json' };
+  if (!fluxVersion && api && api.appVersion) { try { fluxVersion = await api.appVersion(); } catch {} }
+  const headers = { 'content-type': 'application/json', 'x-flux-version': fluxVersion || '', 'x-flux-os': api && api.platform ? api.platform : '' };
   if (token) headers.authorization = 'Bearer ' + token;
   let r;
   try {
@@ -22,14 +25,16 @@ async function apiCall(path, body, token) {
     return { offline: true, error: 'No internet connection. Check it and try again.' };
   }
   const j = await r.json().catch(() => ({}));
-  if (!r.ok) return { status: r.status, error: j.error || 'Something went wrong. Try again.' };
+  if (r.status === 429) return { status: 429, error: j.error || 'Too many tries. Please wait a few minutes and try again.' };
+  if (!r.ok) return { status: r.status, error: j.error || 'Something went wrong. Try again.', banned: !!j.banned };
   return j;
 }
 
 function storeAccount(token, a) {
-  settings.account = { token, email: a.email, admin: !!a.admin, premium: !!a.premium, until: a.until || null, source: a.source || null, termsVersion: a.termsVersion || (settings.account && settings.account.termsVersion) || null, checkedAt: Date.now() };
+  settings.account = { token, email: a.email, username: a.username || null, needAge: !!a.needAge, admin: !!a.admin, premium: !!a.premium, until: a.until || null, source: a.source || null, termsVersion: a.termsVersion || (settings.account && settings.account.termsVersion) || null, checkedAt: Date.now() };
   saveSettings();
   updatePremiumBadge(); updateAccountButton();
+  if (!a.username || a.needAge) setTimeout(askProfile, 600);
 }
 
 // Ask the server for the latest Premium status. Offline = keep the last known one.
@@ -38,6 +43,7 @@ async function refreshAccount(force) {
   if (!a || !a.token) return;
   const r = await apiCall('me' + (force ? '?refresh=1' : ''), null, a.token);
   if (r.account) storeAccount(a.token, r.account);
+  else if (r.banned) signOut(r.error);
   else if (r.status === 401) signOut(true);
   else if (r.offline && a.checkedAt && Date.now() - a.checkedAt > 30 * 86400000) { a.premium = false; saveSettings(); updatePremiumBadge(); }
   if (typeof renderInspector === 'function' && document.querySelector('#inspector')) try { renderInspector(); } catch {}
@@ -78,8 +84,9 @@ function showAuth(note) {
     const [h, sub] = titles[mode];
     const body = {
       login: field('email', 'Email', 'email', 'autocomplete="email" placeholder="you@example.com"') + field('password', 'Password', 'password', 'autocomplete="current-password"'),
-      signup: field('email', 'Email', 'email', 'autocomplete="email" placeholder="you@example.com"') + field('password', 'Password', 'password', 'minlength="8" autocomplete="new-password" placeholder="At least 8 characters"') + field('password2', 'Repeat password', 'password', 'autocomplete="new-password"') +
-        `<label class="auth-agree"><input type="checkbox" name="agree" required> <span>I’m 16 or older (or my parent agrees) and I accept the ${legalLinks()}</span></label>`,
+      signup: field('username', 'Username', 'text', 'minlength="3" maxlength="20" autocomplete="username" placeholder="e.g. alex.edits" pattern="[A-Za-z0-9_.]{3,20}"') + field('email', 'Email', 'email', 'autocomplete="email" placeholder="you@example.com"') + field('password', 'Password', 'password', 'minlength="8" autocomplete="new-password" placeholder="At least 8 characters"') + field('password2', 'Repeat password', 'password', 'autocomplete="new-password"') +
+        birthField() +
+        `<label class="auth-agree"><input type="checkbox" name="agree" required> <span>I accept the ${legalLinks()}</span></label>`,
       code: field('code', 'Code', 'text', 'inputmode="numeric" maxlength="6" class="code-input" placeholder="000000" autocomplete="one-time-code"'),
       forgot: field('email', 'Email', 'email', 'autocomplete="email"'),
       reset: field('code', 'Code from the email', 'text', 'inputmode="numeric" maxlength="6" class="code-input" placeholder="000000"') + field('password', 'New password', 'password', 'minlength="8" autocomplete="new-password" placeholder="At least 8 characters"')
@@ -114,6 +121,7 @@ function showAuth(note) {
     $('[data-a=quit]', el).onclick = () => api && api.quit ? api.quit() : null;
     const f = $('form', el);
     if (f.email && email) f.email.value = email;
+    wireBirth(f);
     setTimeout(() => (f.code || f.email).focus(), 30);
     f.onsubmit = async (e) => {
       e.preventDefault();
@@ -121,7 +129,12 @@ function showAuth(note) {
       if (mode === 'signup' && f.password.value !== f.password2.value) { msg = 'The two passwords are not the same.'; err = true; return draw(); }
       const go = $('.auth-go', el); go.disabled = true; go.textContent = 'Please wait…';
       const payload = { email, password: f.password && f.password.value, code: f.code && f.code.value };
-      if (mode === 'signup') payload.terms = TERMS_VERSION;
+      if (mode === 'signup') {
+        payload.terms = TERMS_VERSION; payload.username = f.username.value.trim(); payload.birthYear = +f.birthYear.value; payload.parent = !!(f.parent && f.parent.checked);
+        const age = new Date().getFullYear() - payload.birthYear;
+        if (!payload.birthYear) { msg = 'Please choose the year you were born.'; err = true; go.disabled = false; return draw(); }
+        if (age < 13) { msg = 'Sorry, you need to be at least 13 to have a Flux account.'; err = true; return draw(); }
+      }
       const path = { login: 'login', signup: 'signup', code: 'verify', forgot: 'forgot', reset: 'reset' }[mode];
       const r = await apiCall(path, payload);
       if (r.token) return done(r, mode === 'code' ? 'Account confirmed - welcome to Flux!' : mode === 'reset' ? 'Password changed - you’re signed in' : 'Signed in as ' + r.account.email);
@@ -131,6 +144,53 @@ function showAuth(note) {
     };
   };
   draw();
+}
+
+/* ---------------- age + username ---------------- */
+function birthField() {
+  const y = new Date().getFullYear();
+  let opts = '<option value="">Year</option>';
+  for (let v = y - 5; v >= y - 100; v--) opts += `<option value="${v}">${v}</option>`;
+  return `<label>Year you were born<select name="birthYear" class="auth-select" required>${opts}</select></label>
+    <label class="auth-agree auth-parent" hidden><input type="checkbox" name="parent"> <span>I’m under 16 and my parent or guardian agrees to me using Flux</span></label>
+    <div class="auth-young" hidden>Sorry - you need to be at least 13 to have a Flux account.</div>`;
+}
+function wireBirth(f) {
+  if (!f || !f.birthYear) return;
+  const sync = () => {
+    const age = f.birthYear.value ? new Date().getFullYear() - +f.birthYear.value : null;
+    const p = f.parent.closest('.auth-parent'), y = f.querySelector('.auth-young');
+    p.hidden = !(age !== null && age >= 13 && age < 16);
+    f.parent.required = !p.hidden;
+    y.hidden = !(age !== null && age < 13);
+  };
+  f.birthYear.onchange = sync; sync();
+}
+// accounts made before usernames / ages: choose them once
+let profileOpen = false;
+function askProfile() {
+  const a = settings.account;
+  if (!a || !a.token || (a.username && !a.needAge) || profileOpen || document.body.classList.contains('needs-auth')) return;
+  if (document.querySelector('.modal')) { setTimeout(askProfile, 3000); return; }
+  profileOpen = true;
+  const box = modal(`<h2>${a.username ? 'One more thing' : 'Pick your username'}</h2>
+    <p class="sub">${a.username ? 'Please tell us the year you were born.' : 'Flux accounts now have usernames. Pick yours - you can change it later in Settings → Account.'}</p>
+    <form class="auth-form-lite">${a.username ? '' : '<label class="field">Username<input class="num-input" name="username" maxlength="20" placeholder="e.g. alex.edits" autocomplete="username"></label>'}${a.needAge ? birthField() : ''}
+    <div class="auth-msg err" style="min-height:18px"></div>
+    <div class="footer"><button class="btn primary" type="submit">Save</button></div></form>`, { onClose: () => { profileOpen = false; } });
+  const f = $('form', box);
+  if (f.username && a.email) f.username.value = a.email.split('@')[0].toLowerCase().replace(/[^a-z0-9_.]/g, '').slice(0, 20);
+  wireBirth(f);
+  f.onsubmit = async (e) => {
+    e.preventDefault();
+    const btn = $('button[type=submit]', f); btn.disabled = true;
+    const r = await apiCall('username', { username: f.username ? f.username.value.trim() : a.username, birthYear: f.birthYear ? +f.birthYear.value : undefined, parent: !!(f.parent && f.parent.checked) }, a.token);
+    btn.disabled = false;
+    if (r.error) { $('.auth-msg', f).textContent = r.error; return; }
+    profileOpen = false; closeModal();
+    storeAccount(a.token, r.account);
+    toast('Welcome, @' + r.account.username + '!');
+  };
 }
 
 /* ---------------- account button + window ---------------- */
@@ -145,7 +205,7 @@ function updateAccountButton() {
   if (!b) return;
   const a = settings.account;
   b.querySelector('span').textContent = a ? (a.email[0] || '?').toUpperCase() : '?';
-  b.dataset.tip = a ? a.email : 'Account';
+  b.dataset.tip = a ? (a.username ? '@' + a.username + ' · ' : '') + a.email : 'Account';
   b.classList.toggle('pro', isPremium());
   // owner: a shield button next to the account button opens the admin panel
   let ad = $('#btnAdmin');
@@ -163,7 +223,7 @@ function openAccount() {
     : 'Free plan';
   const box = modal(`
     <h2>Your account</h2>
-    <div class="acct-row"><div class="acct-avatar">${a.email[0].toUpperCase()}</div><div><b>${a.email.replace(/</g, '&lt;')}</b><small class="${isPremium() ? 'acct-pro' : ''}">${status}</small></div></div>
+    <div class="acct-row"><div class="acct-avatar">${(a.username || a.email)[0].toUpperCase()}</div><div><b>${a.username ? '@' + a.username.replace(/</g, '&lt;') : a.email.replace(/</g, '&lt;')}</b>${a.username ? `<small>${a.email.replace(/</g, '&lt;')}</small>` : ''}<small class="${isPremium() ? 'acct-pro' : ''}">${status}</small></div></div>
     <div class="acct-actions">
       ${isPremium() ? '' : PREMIUM_FOR_SALE ? '<button class="btn primary" data-a="buy">Get Premium - €4.99/month</button>' : '<button class="btn" data-a="buy">Premium - coming soon</button>'}
       <button class="btn" data-a="refresh">Check Premium status</button>
@@ -189,6 +249,7 @@ function openAccount() {
     $('[data-a=save]', b2).onclick = async () => {
       const r = await apiCall('password', { old: $('[data-f=old]', b2).value, password: $('[data-f=new]', b2).value }, a.token);
       if (r.error) return toast(r.error, { error: true });
+      if (r.token) { a.token = r.token; saveSettings(); }
       closeModal(); toast('Password changed');
     };
   };
@@ -213,25 +274,39 @@ function setupAccount() {
   window.addEventListener('focus', () => { if (Date.now() - last > 60000) { last = Date.now(); refreshAccount(false); } });
 }
 
-/* ---------------- delete account (GDPR) ---------------- */
+/* ---------------- delete account (GDPR) - confirmed with a code from your email ---------------- */
 function deleteAccountDialog() {
   const a = settings.account; if (!a) return;
   const box = modal(`<h2>Delete your account?</h2>
     <p class="sub">This removes your Flux account (<b>${a.email.replace(/</g, '&lt;')}</b>) and everything we store about it from our server. It can’t be undone.<br>Your projects and videos on this computer are <b>not</b> touched.</p>
-    <label class="field">Type your password to confirm<input type="password" class="num-input" data-f="pw" autocomplete="current-password"></label>
+    <div class="del-step1"><p class="hint">To make sure it’s really you, we’ll email you a 6-digit code.</p></div>
+    <label class="field del-step2" hidden>Code from the email<input class="num-input code-input" data-f="code" inputmode="numeric" maxlength="6" placeholder="000000" autocomplete="one-time-code"></label>
     <div class="auth-msg err" style="min-height:18px"></div>
-    <div class="footer"><button class="btn ghost" data-a="no">Cancel</button><button class="btn danger" data-a="yes">Delete my account</button></div>`);
-  const pw = $('[data-f=pw]', box), msg = $('.auth-msg', box), yes = $('[data-a=yes]', box);
-  setTimeout(() => pw.focus(), 30);
+    <div class="footer"><button class="btn ghost" data-a="no">Cancel</button><button class="btn danger" data-a="yes">Email me a code</button></div>`);
+  const code = $('[data-f=code]', box), msg = $('.auth-msg', box), yes = $('[data-a=yes]', box);
+  let step = 1;
   $('[data-a=no]', box).onclick = closeModal;
   const go = async () => {
-    yes.disabled = true; yes.textContent = 'Deleting…';
-    const r = await apiCall('delete', { password: pw.value }, a.token);
+    msg.textContent = '';
+    yes.disabled = true;
+    if (step === 1) {
+      yes.textContent = 'Sending…';
+      const r = await apiCall('delete/start', {}, a.token);
+      yes.disabled = false;
+      if (r.error) { msg.textContent = r.error; yes.textContent = 'Email me a code'; return; }
+      step = 2;
+      $('.del-step1', box).innerHTML = `<p class="hint">We sent a code to <b>${a.email.replace(/</g, '&lt;')}</b>. Can’t see it? Check your spam folder.</p>`;
+      $('.del-step2', box).hidden = false; yes.textContent = 'Delete my account forever';
+      setTimeout(() => code.focus(), 30);
+      return;
+    }
+    yes.textContent = 'Deleting…';
+    const r = await apiCall('delete', { code: code.value.trim() }, a.token);
     if (r.ok) { closeModal(); signOut('Your account was deleted. Thanks for trying Flux.'); return; }
-    msg.textContent = r.error || 'Something went wrong. Try again.'; yes.disabled = false; yes.textContent = 'Delete my account';
+    msg.textContent = r.error || 'Something went wrong. Try again.'; yes.disabled = false; yes.textContent = 'Delete my account forever';
   };
   yes.onclick = go;
-  pw.onkeydown = (e) => { if (e.key === 'Enter') go(); };
+  code.onkeydown = (e) => { if (e.key === 'Enter') go(); };
 }
 
 /* ---------------- new Terms: ask signed-in users once ---------------- */

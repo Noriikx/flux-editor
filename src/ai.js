@@ -39,6 +39,7 @@ function renderFxGrid() {
     b.draggable = true;
     b.addEventListener('dragstart', (e) => { e.dataTransfer.setData('text/flux-effect', JSON.stringify(fx.look)); e.dataTransfer.effectAllowed = 'copy'; });
     b.onclick = () => applyLook(getClip(state.selectedId), fx.look);
+    b.dataset.fav = 'look:' + fx.id;
     box.appendChild(b);
   }
 }

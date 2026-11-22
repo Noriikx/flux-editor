@@ -3537,6 +3537,7 @@ function renderFilterGrid() {
     }
     b.appendChild(sw);
     b.appendChild(document.createTextNode(f.name));
+    b.dataset.fav = 'filter:' + f.id;
     b.draggable = true;
     b.addEventListener('dragstart', (e) => { e.dataTransfer.setData('text/flux-filter', f.id); e.dataTransfer.effectAllowed = 'copy'; });
     b.onclick = () => {
@@ -3599,7 +3600,7 @@ function serializeProject() {
   return {
     version: 2, id: P.id, name: P.name, aspect: P.aspect, background: P.background, bgChosen: P.bgChosen, tracks: P.tracks, clips: P.clips,
     markers: P.markers || [], output: P.output, createdAt: P.createdAt, updatedAt: P.updatedAt, duration: projectDuration(),
-    folders: P.folders || [],
+    folders: P.folders || [], template: P.template || null,
     media: P.media.map(({ id, path, name, kind, duration, width, height, credit, tag, hasAudio, words, wordsKey, folder }) => ({ id, path, name, kind, duration, width, height, credit, tag, hasAudio, words, wordsKey, folder }))
   };
 }

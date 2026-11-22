@@ -316,6 +316,7 @@ function renderAfxTab() {
       $('.afx-name', b).textContent = t.name;
       b.dataset.tip = on.has(id) ? 'Already on this clip - click to add another one' : 'Add ' + t.name;
       b.draggable = true;
+      b.dataset.fav = 'afx:' + id;
       b.addEventListener('dragstart', (ev) => { ev.dataTransfer.setData('text/flux-afx', id); ev.dataTransfer.effectAllowed = 'copy'; });
       b.onclick = () => {
         const c = getClip(state.selectedId);
