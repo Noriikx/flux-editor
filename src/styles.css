@@ -1438,3 +1438,4 @@ audio.sh-video { height: 40px; }
 .sh-home small { color: var(--muted); font-size: 12px; }
 .sh-home .sh-home-go { width: 18px; height: 18px; color: var(--muted); transition: transform .3s var(--spring); }
 .sh-home:hover .sh-home-go { transform: translateX(3px); color: var(--text); }
+.tab .crown-i { position: absolute; top: 5px; right: 7px; width: 11px; height: 11px; }

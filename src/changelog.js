@@ -1,6 +1,9 @@
 /* Flux — changelog. Shown once after an update, and any time from Settings → About. */
 'use strict';
 const CHANGELOG = [
+  { v: '6.0.1', date: '2026-11-22', items: [
+    'Viral Shorts is now a Premium feature'
+  ] },
   { v: '6.0.0', date: '2026-11-22', items: [
     'Viral Shorts (new tab): drop in a long video or podcast - or paste a link to a video file or podcast feed - and Flux finds the best 30-60 second moments. It looks for a strong first line, a complete thought, emotion, energy and no dead air, then gives each moment a score',
     'One click turns a moment into a ready vertical Short: cut, reframed to 9:16, captions and the hook as a title. "Make all" makes every Short at once. Podcasts without video become captioned audiograms',

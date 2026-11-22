@@ -155,8 +155,10 @@ function shProbe(file) {
     v.src = api.mediaUrl(file);
   });
 }
+const shPro = () => typeof requirePremium !== 'function' || requirePremium('Viral Shorts');
 async function shRun() {
   if (!SH.src || SH.busy) return;
+  if (!shPro()) return;
   if (!api || !api.transcribe) return toast('Viral Shorts works in the Flux desktop app');
   SH.busy = true; SH.stop = false; SH.results = [];
   const model = settings.asrModel || (lowEnd() ? 'tiny' : 'base'), lang = settings.asrLang || 'auto';
@@ -250,6 +252,7 @@ function shPlatformNote(host) {
 /* ---------------- making the Shorts ---------------- */
 async function shCreate(r, { quiet = false } = {}) {
   if (!SH.src) return null;
+  if (!shPro()) return null;
   shStopPreview();
   if (state.inEditor) await saveNow();
   const o = SH.opts, src = SH.src;
@@ -358,7 +361,7 @@ function shRender() {
   if (!page.dataset.built) {
     page.dataset.built = '1';
     page.innerHTML = `
-      <div class="sh-hero"><span class="sh-hero-ic"><svg viewBox="0 0 24 24">${SH_ICON}</svg></span><div><b>Viral Shorts</b><small>Turn a long video or podcast into ready-to-post Shorts. Flux finds the best moments for you.</small></div></div>
+      <div class="sh-hero"><span class="sh-hero-ic"><svg viewBox="0 0 24 24">${SH_ICON}</svg></span><div><b>Viral Shorts ${typeof CROWN !== 'undefined' ? CROWN : ''}</b><small>Turn a long video or podcast into ready-to-post Shorts. Flux finds the best moments for you.</small></div></div>
       <div class="sh-src"></div>
       <div class="sh-opts"></div>
       <div id="shProg" class="sh-prog" hidden><span></span><div class="enh-bar"><i></i></div><button class="link-btn sh-stop">Stop</button></div>
@@ -482,7 +485,7 @@ function shRender() {
 (function setupShortsTab() {
   const tabs = document.getElementById('libTabs'), lib = document.getElementById('library');
   if (!tabs || !lib || document.querySelector('[data-tab=shorts]')) return;
-  const tab = el('button', 'tab', `<svg viewBox="0 0 24 24">${SH_ICON}</svg>Shorts`);
+  const tab = el('button', 'tab', `<svg viewBox="0 0 24 24">${SH_ICON}</svg>Shorts${typeof CROWN !== 'undefined' ? CROWN : ''}`);
   tab.dataset.tab = 'shorts';
   tab.dataset.tip = 'Viral Shorts - turn a long video or podcast into Shorts';
   tabs.insertBefore(tab, tabs.children[1] || null);
