@@ -24,7 +24,7 @@ const HEADERS = {
   'x-content-type-options': 'nosniff',
   'cache-control': 'no-store',
   'access-control-allow-origin': '*',
-  'access-control-allow-headers': 'content-type, authorization',
+  'access-control-allow-headers': 'content-type, authorization, x-flux-version, x-flux-os',
   'access-control-allow-methods': 'GET, POST, OPTIONS'
 };
 const json = (body, status = 200) => new Response(JSON.stringify(body), { status, headers: HEADERS });
