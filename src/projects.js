@@ -249,7 +249,7 @@ async function exitApp() {
 function setupHome() {
   $('#homeNew').onclick = newProjectDialog;
   $('#homeNew2').onclick = newProjectDialog;
-  $$('.quick-shape').forEach((b) => (b.onclick = () => createProject(null, b.dataset.k)));
+  $$('.quick-shape[data-k]').forEach((b) => (b.onclick = () => createProject(null, b.dataset.k)));
   $('#homeSearch').oninput = (e) => { homeQuery = e.target.value.trim().toLowerCase(); renderHome(); };
   $('#homeSort').onchange = (e) => { homeSort = e.target.value; renderHome(); };
   $('#homeImport').onclick = importProjectFile;

@@ -3,9 +3,10 @@
 'use strict';
 const API_BASE = 'https://flux-editor.netlify.app/api/';
 const ADMIN_URL = 'https://flux-editor.netlify.app/admin.html';
+const avatarSrc = (p) => (p ? (/^https?:|^data:/.test(p) ? p : API_BASE.replace(/\/api\/$/, '') + p) : '');
 // Terms of Service + Privacy Policy. Bump TERMS_VERSION when they change in an important way:
 // signed-in users are then asked once to accept the new version.
-const TERMS_VERSION = '2026-11-22';
+const TERMS_VERSION = '2026-11-24';
 const TERMS_URL = 'https://flux-editor.netlify.app/terms.html';
 const PRIVACY_URL = 'https://flux-editor.netlify.app/privacy.html';
 function openLink(url) { if (api && api.openExternal) api.openExternal(url); else window.open(url); }
@@ -31,7 +32,7 @@ async function apiCall(path, body, token) {
 }
 
 function storeAccount(token, a) {
-  settings.account = { token, email: a.email, username: a.username || null, needAge: !!a.needAge, admin: !!a.admin, premium: !!a.premium, until: a.until || null, source: a.source || null, termsVersion: a.termsVersion || (settings.account && settings.account.termsVersion) || null, checkedAt: Date.now() };
+  settings.account = { token, email: a.email, username: a.username || null, uid: a.uid || null, avatar: a.avatar || null, badges: a.badges || [], privacy: a.privacy || { private: false, requests: 'everyone' }, twoFactor: !!a.twoFactor, needAge: !!a.needAge, admin: !!a.admin, premium: !!a.premium, until: a.until || null, source: a.source || null, termsVersion: a.termsVersion || (settings.account && settings.account.termsVersion) || null, checkedAt: Date.now() };
   saveSettings();
   updatePremiumBadge(); updateAccountButton();
   if (!a.username || a.needAge) setTimeout(askProfile, 600);
@@ -72,7 +73,8 @@ function showAuth(note) {
   if (!el) { el = document.createElement('section'); el.id = 'auth'; document.body.appendChild(el); }
   document.body.classList.add('needs-auth');
   let mode = 'login', email = '', msg = note || '', err = false;
-  const titles = { login: ['Welcome back', 'Sign in to Flux'], signup: ['Create your account', 'Free account · no watermark'],
+  let pw = '';
+  const titles = { twofa: ['2-step verification', 'Enter the 6-digit code we just emailed you'], login: ['Welcome back', 'Sign in to Flux'], signup: ['Create your account', 'Free account · no watermark'],
     code: ['Check your email', ''], forgot: ['Forgot password', 'We’ll email you a code'], reset: ['New password', ''] };
   const done = (r, text) => {
     storeAccount(r.token, r.account);
@@ -88,15 +90,16 @@ function showAuth(note) {
         birthField() +
         `<label class="auth-agree"><input type="checkbox" name="agree" required> <span>I accept the ${legalLinks()}</span></label>`,
       code: field('code', 'Code', 'text', 'inputmode="numeric" maxlength="6" class="code-input" placeholder="000000" autocomplete="one-time-code"'),
+      twofa: field('code', 'Code', 'text', 'inputmode="numeric" maxlength="6" class="code-input" placeholder="000000" autocomplete="one-time-code"'),
       forgot: field('email', 'Email', 'email', 'autocomplete="email"'),
       reset: field('code', 'Code from the email', 'text', 'inputmode="numeric" maxlength="6" class="code-input" placeholder="000000"') + field('password', 'New password', 'password', 'minlength="8" autocomplete="new-password" placeholder="At least 8 characters"')
     }[mode];
-    const btn = { login: 'Sign in', signup: 'Create account', code: 'Confirm', forgot: 'Send code', reset: 'Save new password' }[mode];
+    const btn = { twofa: 'Sign in', login: 'Sign in', signup: 'Create account', code: 'Confirm', forgot: 'Send code', reset: 'Save new password' }[mode];
     el.innerHTML = `
       <div class="auth-card">
         <img src="logo.png" alt="" class="auth-logo">
         <h1>${h}</h1>
-        <p class="sub">${sub || 'We sent a 6-digit code to <b>' + email.replace(/</g, '&lt;') + '</b>'}</p>${mode === 'code' || mode === 'reset' ? '<div class="spam-note">📩 Can\u2019t see the email? <b>Check your spam folder</b> (and Promotions).</div>' : ''}
+        <p class="sub">${sub || 'We sent a 6-digit code to <b>' + email.replace(/</g, '&lt;') + '</b>'}</p>${mode === 'code' || mode === 'reset' || mode === 'twofa' ? '<div class="spam-note">📩 Can\u2019t see the email? <b>Check your spam folder</b> (and Promotions).</div>' : ''}
         ${mode === 'login' || mode === 'signup' ? `<div class="auth-tabs"><button data-m="login" class="${mode === 'login' ? 'on' : ''}">Sign in</button><button data-m="signup" class="${mode === 'signup' ? 'on' : ''}">Create account</button></div>` : '<div style="height:14px"></div>'}
         <form autocomplete="on">${body}
           <div class="auth-msg ${err ? 'err' : ''}"></div>
@@ -105,6 +108,7 @@ function showAuth(note) {
         <div class="auth-links">
           ${mode === 'login' ? '<a href="#" data-go="forgot">Forgot password?</a>' : ''}
           ${mode === 'code' ? '<a href="#" data-go="resend">Send the code again</a><a href="#" data-go="login">Back</a>' : ''}
+          ${mode === 'twofa' ? '<a href="#" data-go="resend2">Send the code again</a><a href="#" data-go="login">Back</a>' : ''}
           ${mode === 'forgot' || mode === 'reset' ? '<a href="#" data-go="login">Back to sign in</a>' : ''}
         </div>
         <div class="auth-legal">${legalLinks()}</div>
@@ -115,6 +119,7 @@ function showAuth(note) {
     $$('.auth-tabs button', el).forEach((b) => b.onclick = () => { mode = b.dataset.m; msg = ''; draw(); });
     $$('[data-go]', el).forEach((a) => a.onclick = async (e) => {
       e.preventDefault();
+      if (a.dataset.go === 'resend2') { const r2 = await apiCall('login', { email, password: pw }); msg = r2.need2fa ? 'New code sent (you can ask once a minute).' : (r2.error || ''); err = !r2.need2fa; return draw(); }
       if (a.dataset.go === 'resend') { await apiCall('resend', { email }); msg = 'New code sent (you can ask once a minute).'; err = false; return draw(); }
       mode = a.dataset.go; msg = ''; draw();
     });
@@ -126,6 +131,7 @@ function showAuth(note) {
     f.onsubmit = async (e) => {
       e.preventDefault();
       if (f.email) email = f.email.value.trim();
+      if (mode === 'login' && f.password) pw = f.password.value;
       if (mode === 'signup' && f.password.value !== f.password2.value) { msg = 'The two passwords are not the same.'; err = true; return draw(); }
       const go = $('.auth-go', el); go.disabled = true; go.textContent = 'Please wait…';
       const payload = { email, password: f.password && f.password.value, code: f.code && f.code.value };
@@ -135,9 +141,10 @@ function showAuth(note) {
         if (!payload.birthYear) { msg = 'Please choose the year you were born.'; err = true; go.disabled = false; return draw(); }
         if (age < 13) { msg = 'Sorry, you need to be at least 13 to have a Flux account.'; err = true; return draw(); }
       }
-      const path = { login: 'login', signup: 'signup', code: 'verify', forgot: 'forgot', reset: 'reset' }[mode];
+      const path = { login: 'login', signup: 'signup', code: 'verify', forgot: 'forgot', reset: 'reset', twofa: 'login/2fa' }[mode];
       const r = await apiCall(path, payload);
-      if (r.token) return done(r, mode === 'code' ? 'Account confirmed - welcome to Flux!' : mode === 'reset' ? 'Password changed - you’re signed in' : 'Signed in as ' + r.account.email);
+      if (r.need2fa) { mode = 'twofa'; msg = ''; err = false; return draw(); }
+      if (r.token) { pw = ''; return done(r, mode === 'code' ? 'Account confirmed - welcome to Flux!' : mode === 'reset' ? 'Password changed - you’re signed in' : 'Signed in as ' + (r.account.username ? '@' + r.account.username : r.account.email)); }
       if (r.needCode || (r.status === 403 && mode === 'login')) { mode = 'code'; msg = ''; err = false; return draw(); }
       if (mode === 'forgot' && !r.error) { mode = 'reset'; msg = ''; err = false; return draw(); }
       msg = r.error || 'Something went wrong. Try again.'; err = true; draw();
@@ -179,7 +186,7 @@ function askProfile() {
     <div class="auth-msg err" style="min-height:18px"></div>
     <div class="footer"><button class="btn primary" type="submit">Save</button></div></form>`, { onClose: () => { profileOpen = false; } });
   const f = $('form', box);
-  if (f.username && a.email) f.username.value = a.email.split('@')[0].toLowerCase().replace(/[^a-z0-9_.]/g, '').slice(0, 20);
+  if (f.username && a.email) f.username.value = a.email.split('@')[0].replace(/[^A-Za-z0-9_.]/g, '').slice(0, 20);
   wireBirth(f);
   f.onsubmit = async (e) => {
     e.preventDefault();
@@ -204,7 +211,9 @@ function updateAccountButton() {
   const b = $('#btnAccount');
   if (!b) return;
   const a = settings.account;
-  b.querySelector('span').textContent = a ? (a.email[0] || '?').toUpperCase() : '?';
+  b.querySelector('span').textContent = a ? ((a.username || a.email)[0] || '?').toUpperCase() : '?';
+  let im = b.querySelector('img');
+  if (a && a.avatar) { if (!im) { im = document.createElement('img'); im.alt = ''; b.appendChild(im); } im.src = avatarSrc(a.avatar); } else if (im) im.remove();
   b.dataset.tip = a ? (a.username ? '@' + a.username + ' · ' : '') + a.email : 'Account';
   b.classList.toggle('pro', isPremium());
   // owner: a shield button next to the account button opens the admin panel

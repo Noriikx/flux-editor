@@ -441,7 +441,7 @@ async function runExport(opts) {
       const off = api.onExp2Progress ? null : null; void off;
       exp2Progress = (v) => setP(SOUND + v * (1 - SOUND));
       job.stage = 'ffmpeg';
-      res = await api.exp2Direct({ target, fps, format: opts.format, quality: opts.quality, duration: total, w, h, bg: P.background || '#000000', segs: plan });
+      res = await api.exp2Direct({ target, fps, format: opts.format, quality: opts.quality, duration: total, w, h, bg: P.background || '#000000', segs: plan, smart: settings.smartRender !== false });
     } else {
       setP(SOUND, 'Rendering every frame…');
       state.exporting = true;

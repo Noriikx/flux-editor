@@ -19,6 +19,11 @@ contextBridge.exposeInMainWorld('flux', {
   projectSave: (id, data, thumb) => ipcRenderer.invoke('projects:save', { id, data, thumb }),
   projectSaveSync: (id, data) => ipcRenderer.sendSync('projects:saveSync', { id, data }),
   projectDelete: (id) => ipcRenderer.invoke('projects:delete', id),
+  projectTrash: (id) => ipcRenderer.invoke('projects:trash', id),
+  trashList: () => ipcRenderer.invoke('projects:trashList'),
+  trashRestore: (id) => ipcRenderer.invoke('projects:restore', id),
+  trashPurge: (id) => ipcRenderer.invoke('projects:purge', id),
+  trashEmpty: () => ipcRenderer.invoke('projects:emptyTrash'),
   saveProject: (opts) => ipcRenderer.invoke('project:save', opts),
   openProject: () => ipcRenderer.invoke('project:open'),
 

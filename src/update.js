@@ -12,7 +12,7 @@ async function checkForUpdates(silent) {
   showUpdatePill();
   if (!silent && !r.available) {
     if (r.preparing) toast(`Flux ${r.preparing} is almost ready - try again in a few minutes`, { duration: 6000 });
-    else toast(`You have the newest version (Flux ${r.current})`);
+    else toast(`You have the newest version (Flux ${displayVer(r.current)})`);
   }
   if (r.available && silent && !upd.toasted) {
     upd.toasted = true;
@@ -41,7 +41,7 @@ function openUpdateDialog() {
   const size = r.size ? ` · ${(r.size / 1048576).toFixed(0)} MB` : '';
   const box = modal(`
     <h2>Update Flux</h2>
-    <p class="sub">Version <b>${r.latest}</b> is ready (you have ${r.current})${size}.</p>
+    <p class="sub">Version <b>${displayVer(r.latest)}</b> is ready (you have ${displayVer(r.current)})${size}.</p>
     ${notes ? '<div class="upd-notes"></div>' : ''}
     <div class="upd-progress" hidden><div class="progress"><div class="upd-bar" style="width:0%"></div></div><p class="hint upd-text">Downloading…</p></div>
     <p class="hint">Your projects are saved first. Flux closes, installs the update and opens again by itself.</p>
@@ -91,7 +91,7 @@ function showForcedUpdate(ver, rollback, message) {
   o.innerHTML = `<div class="force-card"><img src="logo.png" alt=""><h2></h2><p class="sub"></p><p class="force-msg"></p>
     <div class="force-prog" hidden><div class="enh-bar"><i style="width:0%"></i></div><small>Downloading…</small></div>
     <button class="btn primary force-go">${rollback ? 'Switch now' : 'Update now'}</button><small class="force-note">Your projects are saved and stay on this computer.</small></div>`;
-  $('h2', o).textContent = rollback ? `Flux is moving back to ${ver}` : `Please update to Flux ${ver}`;
+  $('h2', o).textContent = rollback ? `Flux is moving back to ${displayVer(ver)}` : `Please update to Flux ${displayVer(ver)}`;
   $('.sub', o).textContent = rollback ? 'The newest version had a problem, so everyone is moving to a version that works well. It only takes a minute.' : 'This update is required to keep using Flux. It only takes a minute.';
   $('.force-msg', o).textContent = message;
   $('.force-msg', o).hidden = !message;

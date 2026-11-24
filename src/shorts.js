@@ -68,7 +68,10 @@ function shAnalyze(words, peaks, duration, opts) {
     // a Short should start at the beginning of a thought
     const gapBefore = i === 0 ? 9 : sents[i].s - sents[i - 1].e;
     for (let j = i; j < sents.length; j++) {
-      const s = Math.max(0, sents[i].s - 0.15), e = sents[j].e + 0.25, L = e - s;
+      // start on the first real word (skip "um", "so", "yeah" at the very beginning)
+      let w0 = 0; const fw = sents[i].words;
+      while (w0 < fw.length - 3 && /^(um+|uh+|erm|so|yeah|okay|ok|well|like|and|but)[,.…]*$/i.test(String(fw[w0].w).trim())) w0++;
+      const s = Math.max(0, fw[w0].s - 0.15), e = sents[j].e + 0.25, L = e - s;
       if (L > maxL + 4) break;
       if (L < minL) continue;
       const ss = sents.slice(i, j + 1), ws = ss.flatMap((x) => x.words), text = ss.map((x) => x.text).join(' ');
@@ -84,6 +87,12 @@ function shAnalyze(words, peaks, duration, opts) {
       if (/\d/.test(hook)) sc += 4;
       if (SH_WORDS.badStart.test(ss[0].text)) sc -= 12;
       if (gapBefore > 0.6) sc += 4;
+      // talking straight to the viewer, numbers and lists ("3 things…") make people stay
+      const you = (hook.match(/\b(you|your|you're|yourself)\b/gi) || []).length;
+      if (you) { sc += Math.min(6, you * 2); }
+      if (/\b(\d+|one|two|three|four|five|ten) (things|ways|reasons|tips|mistakes|steps|rules|signs|secrets)\b|\bnumber (one|two|three|\d)\b|\bstep (one|1)\b/i.test(hook)) { sc += 7; why.push('List / steps'); }
+      // a pronoun nobody knows yet ("he said…", "that was…") means the clip needs context
+      if (/^(he|she|they|that|this|it|those|these|him|her)\b/i.test(ss[0].text.replace(/^\W+/, ''))) sc -= 6;
       // emotion, stories and payoffs keep people watching
       const nW = ws.length || 1;
       const strong = (text.match(SH_WORDS.strong) || []).length, story = (text.match(SH_WORDS.story) || []).length, pay = (text.match(SH_WORDS.payoff) || []).length;
@@ -112,6 +121,8 @@ function shAnalyze(words, peaks, duration, opts) {
       // a clean ending, close to the ideal length
       const last = ss[ss.length - 1].text;
       if (/[.!?…]["')]*$/.test(last) && !SH_WORDS.badEnd.test(last)) { sc += 6; } else sc -= 6;
+      // ending on a punchline / payoff / laugh makes people rewatch
+      if (/[!?]["')]*$/.test(last) || SH_WORDS.laugh.test(last) || SH_WORDS.payoff.test(last)) { sc += 4; SH_WORDS.payoff.lastIndex = 0; }
       sc -= Math.abs(L - target) / target * 8;
       if (ss.length >= 2 && !why.length) why.push('Complete thought');
       cands.push({ s, e, i, j, score: sc, hook, text, why: [...new Set(why)].slice(0, 3) });
@@ -122,11 +133,20 @@ function shAnalyze(words, peaks, duration, opts) {
   cands.sort((a, b) => b.score - a.score);
   const want = opts.count > 0 ? opts.count : Math.max(1, Math.min(10, Math.round((duration || 600) / 300) + 2));
   const picked = [];
-  for (const c of cands) {
-    if (picked.some((p) => c.s < p.e + 3 && c.e > p.s - 3)) continue;
-    picked.push(c);
-    if (picked.length >= want) break;
+  // greedy, but moments right next to one already picked count a bit less - so the Shorts cover the whole video
+  const pool = cands.slice(0, 4000);
+  while (picked.length < want) {
+    let best = null, bestSc = -Infinity;
+    for (const c of pool) {
+      if (picked.some((p) => c.s < p.e + 3 && c.e > p.s - 3)) continue;
+      const near = picked.filter((p) => Math.abs(c.s - p.s) < 90).length;
+      const sc = c.score - near * 5;
+      if (sc > bestSc) { bestSc = sc; best = c; }
+    }
+    if (!best) break;
+    picked.push(best);
   }
+  picked.sort((a, b) => b.score - a.score);
   // a friendly 0-99 "viral score" from how many good signs the moment has
   for (const p of picked) {
     p.viral = Math.round(Math.max(12, Math.min(98, 52 + p.score * 1.15)));
@@ -144,6 +164,27 @@ function shTitle(hook) {
 }
 
 /* ---------------- getting the words ---------------- */
+// a part with (almost) no sound at all doesn't need to be listened to
+function shSilent(peaks, a, b) {
+  if (!peaks || !peaks.length) return false;
+  const i0 = Math.floor(a * 40), i1 = Math.min(peaks.length, Math.ceil(b * 40));
+  if (i1 <= i0) return false;
+  let loud = 0;
+  for (let i = i0; i < i1; i++) if (peaks[i] > 0.02) loud++;
+  return loud / (i1 - i0) < 0.01;
+}
+// the words of the last few videos are remembered, so changing the clip length or re-opening is instant
+function shCacheGet(key) {
+  try { const all = JSON.parse(localStorage.getItem('flux.shortsWords') || '[]'); const x = all.find((e) => e.k === key); return x ? { words: x.w.map(([w, s, e]) => ({ w, s, e })), refined: x.r } : null; } catch { return null; }
+}
+function shCachePut(key, v) {
+  try {
+    let all = JSON.parse(localStorage.getItem('flux.shortsWords') || '[]').filter((e) => e.k !== key);
+    all.unshift({ k: key, w: v.words.map((x) => [x.w, Math.round(x.s * 100) / 100, Math.round(x.e * 100) / 100]), r: v.refined });
+    all = all.slice(0, 4);
+    for (;;) { try { localStorage.setItem('flux.shortsWords', JSON.stringify(all)); break; } catch { if (all.length <= 1) break; all.pop(); } }
+  } catch {}
+}
 function shProbe(file) {
   return new Promise((resolve) => {
     const v = document.createElement('video');
@@ -162,30 +203,64 @@ async function shRun() {
   if (!api || !api.transcribe) return toast('Viral Shorts works in the Flux desktop app');
   SH.busy = true; SH.stop = false; SH.results = [];
   const model = settings.asrModel || (lowEnd() ? 'tiny' : 'base'), lang = settings.asrLang || 'auto';
-  const key = SH.src.path + '|' + model + '|' + lang;
+  const D = SH.src.duration;
+  // long videos: a quick listen with the small model finds the moments, then only those are listened to again
+  // with the accurate model (for exact cuts and captions). Much faster than the accurate model on everything.
+  const quick = model !== 'tiny' && D > 6 * 60 ? 'tiny' : model;
+  const key = SH.src.path + '|' + Math.round(D) + '|' + model + '|' + lang;
+  const tx = (o) => (window.__shTx || api.transcribe)(o);
   try {
     if (SH.wordsKey !== key || !SH.words) {
-      SH.words = null; SH.peaks = null;
+      SH.words = null; SH.peaks = null; SH.refined = [];
       shStage('Reading the sound', null); shRender();
       const pk = api.mediaPeaks ? await api.mediaPeaks(SH.src.path) : null;
       SH.peaks = pk && pk.peaks ? pk.peaks : null;
-      // listen in 4-minute parts so there's progress (and Stop works) even for a 3-hour podcast
-      const D = SH.src.duration, STEP = 240, words = [];
-      if (api.onTranscribeProgress && !rt.asrHooked) { api.onTranscribeProgress((v) => rt.asrProgress && rt.asrProgress(v)); rt.asrHooked = true; }
-      for (let t = 0; t < D && !SH.stop; t += STEP) {
-        rt.asrProgress = (v) => { if (v.stage === 'download') shStage('Downloading the speech model (first time only)', v.value || null); };
-        shStage(`Listening… ${fmtMin(t)} of ${fmtMin(D)}`, t / D);
-        const r = await (window.__shTx || api.transcribe)({ file: SH.src.path, start: t, end: Math.min(D, t + STEP), model, language: lang });
-        if (r && r.error) throw new Error(r.error);
-        for (const w of (r && r.words) || []) words.push({ w: w.w, s: w.s + t, e: w.e + t });
+      const saved = shCacheGet(key);
+      if (saved) { SH.words = saved.words; SH.refined = saved.refined || []; SH.wordsKey = key; }
+      else {
+        // listen in 4-minute parts so there's progress (and Stop works) even for a 3-hour podcast; silent parts are skipped
+        const STEP = 240, words = [];
+        if (api.onTranscribeProgress && !rt.asrHooked) { api.onTranscribeProgress((v) => rt.asrProgress && rt.asrProgress(v)); rt.asrHooked = true; }
+        const t0 = performance.now();
+        for (let t = 0; t < D && !SH.stop; t += STEP) {
+          const end = Math.min(D, t + STEP);
+          if (shSilent(SH.peaks, t, end)) continue;
+          rt.asrProgress = (v) => { if (v.stage === 'download') shStage('Downloading the speech model (first time only)', v.value || null); };
+          const el = (performance.now() - t0) / 1000, left = t > 0 ? el / (t / D) - el : 0;
+          shStage(`Listening… ${fmtMin(t)} of ${fmtMin(D)}${left > 20 ? ' · about ' + fmtMin(left) + ' left' : ''}`, (t / D) * (quick !== model ? 0.8 : 1));
+          const r = await tx({ file: SH.src.path, start: t, end, model: quick, language: lang });
+          if (r && r.error) throw new Error(r.error);
+          for (const w of (r && r.words) || []) words.push({ w: w.w, s: w.s + t, e: w.e + t });
+        }
+        rt.asrProgress = null;
+        if (SH.stop) throw new Error('stopped');
+        SH.words = words; SH.wordsKey = key; SH.refined = quick === model ? [[0, D]] : [];
       }
-      rt.asrProgress = null;
-      if (SH.stop) throw new Error('stopped');
-      SH.words = words; SH.wordsKey = key;
     }
     shStage('Finding the best moments', null); shRender();
     await new Promise((r) => setTimeout(r, 30));
-    SH.results = shAnalyze(SH.words, SH.peaks, SH.src.duration, SH.opts);
+    SH.results = shAnalyze(SH.words, SH.peaks, D, SH.opts);
+    // second pass: the picked moments are listened to again with the accurate model, then picked again
+    for (let round = 0; round < 2 && SH.results.length && !SH.stop; round++) {
+      const todo = SH.results.filter((r) => !SH.refined.some(([a, b]) => r.s >= a - 1 && r.e <= b + 1));
+      if (!todo.length) break;
+      let n = 0;
+      for (const r of todo) {
+        if (SH.stop) break;
+        shStage(`Listening closely to the best moments… ${++n} of ${todo.length}`, 0.8 + 0.2 * (n / todo.length));
+        const a = Math.max(0, r.s - 8), b = Math.min(D, r.e + 8);
+        const res = await tx({ file: SH.src.path, start: a, end: b, model, language: lang });
+        SH.refined.push([a + 1, b - 1]); // listened to closely (even if nothing new was heard)
+        if (!res || res.error || !res.words || !res.words.length) continue;
+        const fresh = res.words.map((w) => ({ w: w.w, s: w.s + a, e: w.e + a })).filter((w) => w.s >= a + 0.5 && w.e <= b - 0.5);
+        if (!fresh.length) continue;
+        const fa = fresh[0].s, fb = fresh[fresh.length - 1].e;
+        SH.words = [...SH.words.filter((w) => w.e <= fa || w.s >= fb), ...fresh].sort((x, y) => x.s - y.s);
+      }
+      if (SH.stop) throw new Error('stopped');
+      SH.results = shAnalyze(SH.words, SH.peaks, D, SH.opts);
+    }
+    shCachePut(key, { words: SH.words, refined: SH.refined });
     if (!SH.results.length) toast(SH.words.length < 30 ? 'Flux couldn’t hear enough speech in this file' : 'No moments of that length were found - try another clip length', { error: true });
   } catch (e) {
     if (String(e.message) !== 'stopped') toast('Viral Shorts: ' + (e.message || e), { error: true, duration: 7000 });

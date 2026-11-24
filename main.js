@@ -3,6 +3,7 @@
 // "flux://" protocol, stores projects, downloads free music and handles export.
 
 const { app, BrowserWindow, ipcMain, dialog, protocol, shell, Menu, net, session } = require('electron');
+const { smartRender } = require('./smart-render');
 const path = require('path');
 const fs = require('fs');
 const os = require('os');
@@ -275,6 +276,62 @@ ipcMain.handle('projects:delete', (_e, id) => {
     const f = path.join(projectsDir(), safeId(id) + ext);
     try { fs.unlinkSync(f); } catch (e) { if (e.code !== 'ENOENT') ok = false; }
   }
+  return ok;
+});
+
+// ---------- Trash: deleted projects wait here for 30 days before they're gone for good ----------
+const TRASH_DAYS = 30;
+const trashDir = () => { const d = path.join(projectsDir(), 'trash'); fs.mkdirSync(d, { recursive: true }); return d; };
+const PROJECT_EXTS = ['.json', '.jpg', '.versions.json'];
+function moveFile(a, b) { try { fs.renameSync(a, b); } catch (e) { if (e.code === 'EXDEV') { fs.copyFileSync(a, b); fs.unlinkSync(a); } else throw e; } }
+ipcMain.handle('projects:trash', (_e, id) => {
+  id = safeId(id); if (!id) return false;
+  const src = projectsDir(), dst = trashDir();
+  if (!fs.existsSync(path.join(src, id + '.json'))) return false;
+  try {
+    for (const ext of PROJECT_EXTS) { const f = path.join(src, id + ext); if (fs.existsSync(f)) moveFile(f, path.join(dst, id + ext)); }
+    fs.writeFileSync(path.join(dst, id + '.deleted'), String(Date.now()));
+    return true;
+  } catch (e) { console.warn('trash failed', e.message); return false; }
+});
+function purgeTrashed(id) {
+  let ok = true;
+  for (const ext of [...PROJECT_EXTS, '.deleted']) { try { fs.unlinkSync(path.join(trashDir(), id + ext)); } catch (e) { if (e.code !== 'ENOENT') ok = false; } }
+  return ok;
+}
+ipcMain.handle('projects:trashList', () => {
+  const dir = trashDir(), out = [], now = Date.now();
+  for (const f of fs.readdirSync(dir)) {
+    if (!f.endsWith('.json') || f.endsWith('.versions.json')) continue;
+    const id = path.basename(f, '.json');
+    let deletedAt = 0; try { deletedAt = +fs.readFileSync(path.join(dir, id + '.deleted'), 'utf8') || 0; } catch {}
+    if (!deletedAt) { deletedAt = now; try { fs.writeFileSync(path.join(dir, id + '.deleted'), String(now)); } catch {} }
+    if (now - deletedAt > TRASH_DAYS * 864e5) { purgeTrashed(id); continue; }
+    try {
+      const data = JSON.parse(fs.readFileSync(path.join(dir, f), 'utf8'));
+      let thumb = null; const tp = path.join(dir, id + '.jpg');
+      if (fs.existsSync(tp)) thumb = 'data:image/jpeg;base64,' + fs.readFileSync(tp).toString('base64');
+      out.push({ id, name: data.name, aspect: data.aspect, updatedAt: data.updatedAt, duration: data.duration || 0, deletedAt, daysLeft: Math.max(0, Math.ceil(TRASH_DAYS - (now - deletedAt) / 864e5)), thumb });
+    } catch (e) { console.warn('Bad trashed project', f, e.message); }
+  }
+  return out.sort((a, b) => b.deletedAt - a.deletedAt);
+});
+ipcMain.handle('projects:restore', (_e, id) => {
+  id = safeId(id); if (!id) return false;
+  const src = trashDir(), dst = projectsDir();
+  if (!fs.existsSync(path.join(src, id + '.json'))) return false;
+  let newId = id; while (fs.existsSync(path.join(dst, newId + '.json'))) newId = id + Math.random().toString(36).slice(2, 6);
+  try {
+    for (const ext of PROJECT_EXTS) { const f = path.join(src, id + ext); if (fs.existsSync(f)) moveFile(f, path.join(dst, newId + ext)); }
+    if (newId !== id) { const p = path.join(dst, newId + '.json'); const d = JSON.parse(fs.readFileSync(p, 'utf8')); d.id = newId; fs.writeFileSync(p, JSON.stringify(d)); }
+    try { fs.unlinkSync(path.join(src, id + '.deleted')); } catch {}
+    return newId;
+  } catch (e) { console.warn('restore failed', e.message); return false; }
+});
+ipcMain.handle('projects:purge', (_e, id) => purgeTrashed(safeId(id)));
+ipcMain.handle('projects:emptyTrash', () => {
+  let ok = true;
+  for (const f of fs.readdirSync(trashDir())) { try { fs.unlinkSync(path.join(trashDir(), f)); } catch { ok = false; } }
   return ok;
 });
 
@@ -597,10 +654,20 @@ ipcMain.handle('exp2:finish', async (_e, { target, fps, format, quality, duratio
   return r.ok ? { ok: true, path: target } : { ok: false, error: 'Saving the video failed.\n' + r.error };
 });
 // the fast way: ffmpeg cuts and joins the original files itself
-ipcMain.handle('exp2:direct', async (_e, { target, fps, format, quality, duration, w, h, bg, segs }) => {
+ipcMain.handle('exp2:direct', async (_e, { target, fps, format, quality, duration, w, h, bg, segs, smart }) => {
   if (!exp2) return { ok: false, error: 'No export in progress' };
   try { fs.closeSync(exp2.afd); } catch {}
   const ff = ffmpegPath();
+  // Smart Rendering: copy unchanged parts of the original videos instead of encoding them again
+  if (smart && format !== 'webm' && quality !== 'small') {
+    try {
+      const job = exp2;
+      const sr = await smartRender({ ff, dir: job.dir, target, fps, w, h, bg, segs, audio: job.a, duration, quality,
+        onProgress: (v) => send('exp2:progress', v), keep: (p) => { if (exp2) exp2.proc = p; }, cancelled: () => exp2 !== job });
+      if (sr && sr.ok) { exp2Clean(); return { ok: true, path: target, smart: true, copied: sr.copied }; }
+    } catch (e) { console.warn('smart render skipped', e && e.message); }
+    if (!exp2) return { ok: false, error: 'cancelled' };
+  }
   const enc = format === 'webm' ? 'vp9' : await pickEncoder(ff);
   const inputs = [], filters = [];
   const col = (bg || '#000000').replace('#', '0x');

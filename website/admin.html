@@ -59,6 +59,19 @@
   .row label { flex: 1; min-width: 160px; }
   .warn { background: rgba(255,138,155,.08); border: 1px solid rgba(255,138,155,.35); border-radius: 12px; padding: 10px 12px; font-size: 13px; color: var(--red); margin-top: 10px; }
   .pill.ban { background: rgba(255,138,155,.16); color: var(--red); }
+  .ttabs { display: flex; gap: 6px; margin-bottom: 12px; }
+  .ttabs button.on { background: var(--accent, #8d7dff); color: #fff; }
+  .tpl { border: 1px solid var(--line); border-radius: 12px; padding: 14px; margin-bottom: 10px; display: grid; gap: 8px; }
+  .tpl .meta { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; color: var(--muted); font-size: 13px; }
+  .tpl .meta b { color: var(--text); font-size: 15px; }
+  .tpl .strip { display: flex; gap: 3px; height: 26px; }
+  .tpl .strip i { border-radius: 4px; display: grid; place-items: center; font: 600 10px system-ui; color: rgba(0,0,0,.7); font-style: normal; }
+  .tpl .texts { display: flex; flex-wrap: wrap; gap: 6px; }
+  .tpl .texts span { font-size: 12px; padding: 3px 8px; border-radius: 6px; background: #1e1c2b; }
+  .bdg { display: inline-block; font-size: 11px; padding: 1px 7px; border-radius: 99px; margin: 2px 3px 0 0; border: 1px solid; }
+  .badge-box { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+  .badge-box input { width: auto !important; height: auto !important; margin: 0 !important; padding: 0 !important; }
+  .badge-box label { margin: 0 !important; line-height: 1.2; display: inline-flex; align-items: center; gap: 5px; font-size: 12px; padding: 4px 9px; border-radius: 99px; border: 1px solid var(--line); cursor: pointer; }
   .tabs { display: flex; gap: 6px; margin-bottom: 12px; }
   .tabs button.on { border-color: #8d7dff; color: var(--lav); }
   .fb { border: 1px solid var(--line); background: var(--panel2); border-radius: 12px; padding: 12px 14px; margin-bottom: 10px; }
@@ -106,7 +119,7 @@
     <div class="card">
       <h2>App updates</h2>
       <div class="row">
-        <label>Force update: everyone below this version must update before they can use Flux<input id="minVer" placeholder="e.g. 6.0.1 (empty = off)"></label>
+        <label>Force update: everyone below this version must update before they can use Flux<select id="minVer"><option value="">Off</option></select></label>
         <button class="primary" id="saveMin">Save</button>
       </div>
       <div class="row" style="margin-top:14px">
@@ -125,6 +138,13 @@
       <div class="tools"><h2 style="margin:0;flex:1">Inbox</h2><button class="small" id="reloadFb">Refresh</button></div>
       <div class="tabs"><button class="small on" data-k="feature">💡 Feature requests <span id="nFeature"></span></button><button class="small" data-k="bug">🐞 Bug reports <span id="nBug"></span></button><button class="small" data-k="done">✓ Done</button></div>
       <div id="fbList"><span class="muted">Loading…</span></div>
+    </div>
+
+    <div class="card">
+      <div class="tools"><h2 style="margin:0;flex:1">Community templates</h2><button class="small" id="reloadTpl">Refresh</button></div>
+      <p class="muted" style="margin:6px 0 12px">Templates people shared. Only approved ones show up for everyone in the app.</p>
+      <div class="ttabs"><button class="small on" data-k="pending">⏳ Waiting <span id="nPending"></span></button><button class="small" data-k="approved">✓ Approved</button><button class="small" data-k="rejected">✕ Rejected</button></div>
+      <div id="tplList"><span class="muted">Loading…</span></div>
     </div>
 
     <div class="card">
@@ -175,6 +195,7 @@ try { token = sessionStorage.getItem('fluxAdmin'); } catch {}
 let blur = false; try { blur = localStorage.getItem('fluxAdminBlur') === '1'; } catch {}
 function setBlur(v) { blur = v; document.body.classList.toggle('blur-emails', v); const b = document.getElementById('blurBtn'); b.classList.toggle('on', v); b.textContent = v ? '🙈 Emails blurred' : '👁 Blur emails'; try { localStorage.setItem('fluxAdminBlur', v ? '1' : '0'); } catch {} }
 const $ = (s) => document.querySelector(s);
+const dv = (v) => { const m = /^v?(\d+)\.(\d+)\.(\d+)$/.exec(String(v || '')); if (!m) return String(v || ''); const p = [+m[1]]; if (+m[2]) p.push(+m[2]); if (+m[3]) p.push(+m[3]); return '1.' + p.join('.'); };
 const esc = (s) => String(s || '').replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 const day = (t) => t ? new Date(t).toLocaleDateString() : '-';
 
@@ -255,18 +276,19 @@ function premiumText(u) {
 
 function draw() {
   const q = $('#search').value.trim().toLowerCase().replace(/^@/, ''), f = $('#filter').value, now = Date.now(), d0 = new Date(new Date().toISOString().slice(0, 10)).getTime();
-  const list = users.filter((u) => (!q || u.email.includes(q) || (u.username || '').includes(q))
+  const list = users.filter((u) => (!q || u.email.includes(q) || (u.username || '').toLowerCase().includes(q))
     && (!f || (f === 'banned' && u.banned) || (f === 'premium' && (u.grantUntil === -1 || u.grantUntil > now)) || (f === 'today' && (u.lastSeen || u.lastLogin || 0) >= d0)));
   $('#count').textContent = `(${users.length})`;
   $('#rows').innerHTML = list.length ? list.map((u) => `
     <tr data-e="${esc(u.email)}">
-      <td>${u.username ? '<b>@' + esc(u.username) + '</b><br>' : ''}<span class="em ${u.username ? 'muted' : ''}">${esc(u.email)}</span>${u.hasPassword ? '' : '<br><span class="muted">no account yet</span>'}${u.banned ? '<br><span class="pill ban">Banned' + (u.banned.reason ? ': ' + esc(u.banned.reason) : '') + '</span>' : ''}</td>
+      <td>${u.username ? '<b>@' + esc(u.username) + '</b> ' + (u.badges || []).map((b) => `<span class="bdg" style="color:${BADGES[b][1]};border-color:${BADGES[b][1]}55">${esc(BADGES[b][0])}</span>`).join('') + '<br>' : ''}<span class="em ${u.username ? 'muted' : ''}">${esc(u.email)}</span>${u.hasPassword ? '' : '<br><span class="muted">no account yet</span>'}${u.banned ? '<br><span class="pill ban">Banned' + (u.banned.reason ? ': ' + esc(u.banned.reason) : '') + '</span>' : ''}</td>
       <td>${premiumText(u)}</td>
-      <td class="muted">${u.version ? esc(u.version) + (u.os ? ' · ' + esc(u.os) : '') : '-'}</td>
+      <td class="muted">${u.version ? esc(dv(u.version)) + (u.os ? ' · ' + esc(u.os) : '') : '-'}</td>
       <td class="muted">${day(u.createdAt)}</td>
       <td class="muted">${day(u.lastSeen || u.lastLogin)}</td>
       <td><div class="acts">
         <button class="small" data-a="give">Give…</button>
+        ${u.hasPassword ? '<button class="small" data-a="badges">Badges…</button>' : ''}
         ${(u.grantUntil === -1 || u.grantUntil > Date.now()) ? '<button class="small danger" data-a="revoke">Remove gift</button>' : ''}
         <button class="small" data-a="check">Check Stripe</button>
         ${u.hasPassword ? '<button class="small" data-a="pw">New password</button>' : ''}
@@ -280,6 +302,15 @@ $('#rows').onclick = async (e) => {
   const b = e.target.closest('button[data-a]');
   if (!b) return;
   const email = b.closest('tr').dataset.e, a = b.dataset.a;
+  if (a === 'badges') {
+    const tr = b.closest('tr'), u = users.find((x) => x.email === email), cell = tr.querySelector('td');
+    let box = cell.querySelector('.badge-box');
+    if (box) { box.remove(); return; }
+    box = document.createElement('div'); box.className = 'badge-box';
+    box.innerHTML = Object.entries(BADGES).map(([k, [n, c]]) => `<label style="color:${c}"><input type="checkbox" data-b="${k}" ${(u.badges || []).includes(k) ? 'checked' : ''}>${esc(n)}</label>`).join('');
+    box.onchange = async (ev) => { const i = ev.target; i.disabled = true; const r = await call('admin/badge', { email, badge: i.dataset.b, on: i.checked }); i.disabled = false; if (r.error) { alert(r.error); i.checked = !i.checked; return; } u.badges = r.badges; };
+    cell.appendChild(box); return;
+  }
   if (a === 'give') {
     const f = $('#giveForm'); f.email.value = email; f.email.scrollIntoView({ behavior: 'smooth', block: 'center' }); f.days.focus(); return;
   }
@@ -312,26 +343,29 @@ async function loadDash() {
   if (d) cards.push(['Downloads (installs)', d.installs, true], ['Quick updates', d.updates]);
   $('#dash').innerHTML = cards.map(([a, b, m]) => `<div class="stat${m ? ' money' : ''}"><small>${a}</small><b>${esc(b)}</b></div>`).join('');
   const vs = Object.entries(r.versions || {}).sort((a, b) => (b[0] > a[0] ? 1 : -1)), vmax = Math.max(1, ...vs.map((x) => x[1]));
-  $('#versions').innerHTML = vs.length ? vs.map(([v, n]) => `<div class="bar"><b>${esc(v)}</b><i style="width:${(n / vmax) * 100}%"></i><span>${n}</span></div>`).join('') : '<span class="muted">Versions show up as people open the new app.</span>';
-  if (d) { const dm = Math.max(1, ...d.releases.map((x) => x.installs + x.updates)); $('#dls').innerHTML = d.releases.map((x) => `<div class="bar"><b>${esc(x.v)}</b><i style="width:${((x.installs + x.updates) / dm) * 100}%"></i><span>${x.installs}+${x.updates}</span></div>`).join(''); }
+  $('#versions').innerHTML = vs.length ? vs.map(([v, n]) => `<div class="bar"><b>${esc(dv(v))}</b><i style="width:${(n / vmax) * 100}%"></i><span>${n}</span></div>`).join('') : '<span class="muted">Versions show up as people open the new app.</span>';
+  if (d) { const dm = Math.max(1, ...d.releases.map((x) => x.installs + x.updates)); $('#dls').innerHTML = d.releases.map((x) => `<div class="bar"><b>${esc(dv(x.v))}</b><i style="width:${((x.installs + x.updates) / dm) * 100}%"></i><span>${x.installs}+${x.updates}</span></div>`).join(''); }
   else $('#dls').innerHTML = '<span class="muted">GitHub didn\u2019t answer - try Refresh.</span>';
   cfg = r.config || {};
-  $('#minVer').value = cfg.minVersion || '';
+  const ms = $('#minVer');
+  ms.innerHTML = '<option value="">Off - nobody is forced to update</option>' + (d ? d.releases.map((x) => `<option value="${esc(x.v)}">${esc(dv(x.v))}</option>`).join('') : '');
+  if (cfg.minVersion && ![...ms.options].some((o) => o.value === cfg.minVersion)) ms.insertAdjacentHTML('beforeend', `<option value="${esc(cfg.minVersion)}">${esc(dv(cfg.minVersion))}</option>`);
+  ms.value = cfg.minVersion || '';
   $('#updMsg').value = cfg.message || '';
   const sel = $('#pinVer');
-  sel.innerHTML = '<option value="">Off - everyone gets the newest version</option>' + (d ? d.releases.map((x) => `<option value="${esc(x.v)}">${esc(x.v)}</option>`).join('') : '');
-  if (cfg.pinVersion && ![...sel.options].some((o) => o.value === cfg.pinVersion)) sel.insertAdjacentHTML('beforeend', `<option value="${esc(cfg.pinVersion)}">${esc(cfg.pinVersion)}</option>`);
+  sel.innerHTML = '<option value="">Off - everyone gets the newest version</option>' + (d ? d.releases.map((x) => `<option value="${esc(x.v)}">${esc(dv(x.v))}</option>`).join('') : '');
+  if (cfg.pinVersion && ![...sel.options].some((o) => o.value === cfg.pinVersion)) sel.insertAdjacentHTML('beforeend', `<option value="${esc(cfg.pinVersion)}">${esc(dv(cfg.pinVersion))}</option>`);
   sel.value = cfg.pinVersion || '';
   updState();
 }
 function updState() {
   const parts = [];
-  parts.push(cfg.minVersion ? `Forced update is ON: Flux below ${cfg.minVersion} can't be used until it's updated.` : 'Forced update is off.');
-  parts.push(cfg.pinVersion ? `Rollback is ON: everyone is moved to ${cfg.pinVersion}.` : 'Rollback is off.');
+  parts.push(cfg.minVersion ? `Forced update is ON: Flux below ${dv(cfg.minVersion)} can't be used until it's updated.` : 'Forced update is off.');
+  parts.push(cfg.pinVersion ? `Rollback is ON: everyone is moved to ${dv(cfg.pinVersion)}.` : 'Rollback is off.');
   $('#updState').textContent = parts.join(' ');
   const w = $('#updWarn');
   w.hidden = !cfg.pinVersion;
-  w.textContent = cfg.pinVersion ? 'While rollback is on, newer versions are replaced with ' + cfg.pinVersion + '. Turn it off once a fixed update is out.' : '';
+  w.textContent = cfg.pinVersion ? 'While rollback is on, newer versions are replaced with ' + dv(cfg.pinVersion) + '. Turn it off once a fixed update is out.' : '';
 }
 async function saveCfg(part, btn) {
   btn.disabled = true;
@@ -340,8 +374,8 @@ async function saveCfg(part, btn) {
   if (r.error) return alert(r.error);
   cfg = r.config; updState();
 }
-$('#saveMin').onclick = (e) => { const v = $('#minVer').value.trim(); if (v && !confirm(`Everyone with a version below ${v} will have to update before using Flux. Make sure ${v} is already released with its installer. Continue?`)) return; saveCfg({ minVersion: v }, e.target); };
-$('#savePin').onclick = (e) => { const v = $('#pinVer').value; if (v && !confirm(`Move EVERYONE to Flux ${v}? Anyone on a newer version gets ${v} installed.`)) return; saveCfg({ pinVersion: v }, e.target); };
+$('#saveMin').onclick = (e) => { const v = $('#minVer').value.trim(); if (v && !confirm(`Everyone with a version below ${dv(v)} will have to update before using Flux. Make sure ${dv(v)} is already released with its installer. Continue?`)) return; saveCfg({ minVersion: v }, e.target); };
+$('#savePin').onclick = (e) => { const v = $('#pinVer').value; if (v && !confirm(`Move EVERYONE to Flux ${dv(v)}? Anyone on a newer version gets ${dv(v)} installed.`)) return; saveCfg({ pinVersion: v }, e.target); };
 $('#saveMsg').onclick = (e) => saveCfg({ message: $('#updMsg').value.trim() }, e.target);
 $('#reloadDash').onclick = loadDash;
 
@@ -357,7 +391,7 @@ function drawFb() {
   $('#nBug').textContent = `(${fb.filter((x) => x.kind === 'bug' && !x.done).length})`;
   const list = fb.filter((x) => (fbTab === 'done' ? x.done : !x.done && x.kind === fbTab));
   $('#fbList').innerHTML = list.length ? list.map((x) => `<div class="fb ${x.done ? 'done' : ''}" data-id="${esc(x.id)}">
-    <div class="meta"><span class="pill ${x.kind === 'bug' ? 'ban' : 'pro'}">${x.kind === 'bug' ? 'Bug' : 'Idea'}</span><b>${x.username ? '@' + esc(x.username) : ''}</b><span class="em">${esc(x.email)}</span><span>${new Date(x.at).toLocaleString()}</span>${x.version ? '<span>Flux ' + esc(x.version) + '</span>' : ''}${x.os ? '<span>' + esc(x.os) + '</span>' : ''}</div>
+    <div class="meta"><span class="pill ${x.kind === 'bug' ? 'ban' : 'pro'}">${x.kind === 'bug' ? 'Bug' : 'Idea'}</span><b>${x.username ? '@' + esc(x.username) : ''}</b><span class="em">${esc(x.email)}</span><span>${new Date(x.at).toLocaleString()}</span>${x.version ? '<span>Flux ' + esc(dv(x.version)) + '</span>' : ''}${x.os ? '<span>' + esc(x.os) + '</span>' : ''}</div>
     ${x.title ? '<b>' + esc(x.title) + '</b>' : ''}<p>${esc(x.text)}</p>
     <div class="acts"><button class="small" data-a="done">${x.done ? 'Not done' : 'Mark done'}</button><button class="small danger" data-a="del">Delete</button></div></div>`).join('') : '<span class="muted">Nothing here.</span>';
 }
@@ -372,6 +406,53 @@ $('#fbList').onclick = async (e) => {
   drawFb();
 };
 $('#reloadFb').onclick = loadFb;
+
+// ---------- badges (only you can give them) ----------
+const BADGES = { founder: ['Founder', '#f2c94c'], developer: ['Developer', '#4cb8ff'], verified: ['Verified', '#3fa9ff'], bughunter: ['Bug Hunter', '#7bd84a'], contributor: ['Contributor', '#c77dff'],
+  support: ['Support Team', '#3fdcb0'], sponsor: ['Sponsor', '#ff6fae'], creator: ['Content Creator', '#ff8a4c'], educator: ['Educator', '#ffd23f'] };
+// from the console (F12): flux.badge('@username', 'bughunter')  ·  flux.unbadge('@username', 'bughunter')  ·  flux.badges
+window.flux = {
+  badges: Object.keys(BADGES),
+  badge: async (who, b) => { const r = await call('admin/badge', { email: who, badge: b, on: true }); load(); return r.error || 'Done: ' + (r.badges || []).join(', '); },
+  unbadge: async (who, b) => { const r = await call('admin/badge', { email: who, badge: b, on: false }); load(); return r.error || 'Done: ' + (r.badges || []).join(', '); }
+};
+
+// ---------- community templates ----------
+let tpls = [], tplTab = 'pending';
+async function loadTpl() {
+  const r = await call('admin/templates');
+  if (r.error) { $('#tplList').innerHTML = `<span class="msg err">${esc(r.error)}</span>`; return; }
+  tpls = r.items || []; drawTpl();
+}
+function drawTpl() {
+  $('#nPending').textContent = `(${tpls.filter((t) => t.status === 'pending').length})`;
+  const list = tpls.filter((t) => t.status === tplTab);
+  $('#tplList').innerHTML = list.length ? list.map((t) => {
+    const total = t.tpl.slots.reduce((a, b) => a + b, 0);
+    return `<div class="tpl" data-id="${esc(t.id)}">
+      <div class="meta"><b>${esc(t.name)}</b><span>by @${esc(t.byName)}</span><span>${new Date(t.at).toLocaleString()}</span><span class="pill">${esc(t.tpl.aspect)} · ${t.tpl.slots.length} clips · ${Math.round(total)}s · ${esc(t.tpl.trans)} · ${esc(t.tpl.filter)}</span></div>
+      ${t.desc ? `<p style="margin:0">${esc(t.desc)}</p>` : ''}
+      <div class="strip">${t.tpl.slots.map((d, i) => `<i style="flex:${d};background:hsl(${(i * 37) % 360} 70% 65%)">${d}s</i>`).join('')}</div>
+      ${t.tpl.texts.length ? `<div class="texts">${t.tpl.texts.map((x) => `<span>“${esc(x.content)}” at ${x.t}s</span>`).join('')}</div>` : '<span class="muted">No titles</span>'}
+      ${t.note ? `<span class="muted">Note: ${esc(t.note)}</span>` : ''}
+      <div class="acts">${t.status !== 'approved' ? '<button class="small" data-a="approve">Approve</button>' : ''}${t.status !== 'rejected' ? '<button class="small danger" data-a="reject">Reject…</button>' : ''}${t.status !== 'pending' ? '<button class="small" data-a="pending">Back to waiting</button>' : ''}<button class="small danger" data-a="del">Delete</button></div></div>`;
+  }).join('') : '<span class="muted">Nothing here.</span>';
+}
+document.querySelectorAll('.ttabs button').forEach((b) => b.onclick = () => { tplTab = b.dataset.k; document.querySelectorAll('.ttabs button').forEach((x) => x.classList.toggle('on', x === b)); drawTpl(); });
+$('#tplList').onclick = async (e) => {
+  const b = e.target.closest('button[data-a]'); if (!b) return;
+  const id = b.closest('.tpl').dataset.id, a = b.dataset.a;
+  let r;
+  if (a === 'del') { if (!confirm('Delete this template for good?')) return; r = await call('admin/templates/delete', { id }); }
+  else {
+    let note = '';
+    if (a === 'reject') { note = prompt('Why not? (the person sees this, optional)', ''); if (note === null) return; }
+    r = await call('admin/templates/review', { id, status: a === 'approve' ? 'approved' : a === 'reject' ? 'rejected' : 'pending', note });
+  }
+  if (r.error) return alert(r.error);
+  loadTpl();
+};
+$('#reloadTpl').onclick = loadTpl;
 $('#reload').onclick = load;
 
 async function load() {
@@ -383,7 +464,7 @@ async function start() {
   const r = await call('me');
   if (!r.account || !r.account.admin) return signOut();
   $('#who').textContent = r.account.email;
-  show(true); load(); loadMoney(); loadDash(); loadFb();
+  show(true); load(); loadMoney(); loadDash(); loadFb(); loadTpl();
 }
 if (token) start(); else show(false);
 </script>

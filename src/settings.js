@@ -485,7 +485,7 @@ function settingsAbout(body) {
     <p class="sub">Flux is built with open-source software, including FFmpeg (GPL), Electron and Chromium. <a href="#" data-lic>See all licenses & credits</a></p>`;
   if (typeof legalLinks === 'function') { const lp = el('p', 'sub acct-legal'); lp.innerHTML = 'Legal: ' + legalLinks() + ' · <a href="#" data-legal-mail>flux.editing.app@gmail.com</a>'; body.appendChild(lp); wireLegal(lp); $('[data-legal-mail]', lp).onclick = (e) => { e.preventDefault(); openLink('mailto:flux.editing.app@gmail.com'); }; }
   $('[data-lic]', body).onclick = (e) => { e.preventDefault(); openLink('https://flux-editor.netlify.app/licenses.html'); };
-  if (api && api.appVersion) api.appVersion().then((v) => { const e = $('.about-ver', body); if (e) e.textContent = 'Flux ' + v; });
+  if (api && api.appVersion) api.appVersion().then((v) => { const e = $('.about-ver', body); if (e) e.textContent = 'Flux ' + displayVer(v); });
   $('#btnCheckUpd', body).onclick = async (e) => { e.target.disabled = true; e.target.textContent = 'Checking…'; await checkForUpdates(false); e.target.disabled = false; e.target.textContent = 'Check for updates'; };
 }
 

@@ -1,6 +1,21 @@
 /* Flux — changelog. Shown once after an update, and any time from Settings → About. */
 'use strict';
 const CHANGELOG = [
+  { v: '7.1.0', date: '2026-11-24', items: [
+    'New version names: Flux now counts 1.6, 1.7, 1.7.1… (this is 1.7.1)',
+    'Templates fixed: the Templates button opened an empty project instead of the templates. Now there’s a whole Templates tab with live animated previews - hover to play, click to see it big',
+    'Share your own templates: turn any project into a template (only the timing, transitions, looks and titles - never your videos). Approved ones show up for everyone under Community',
+    'Smart Rendering: when your video is mostly plain cuts, Flux copies the untouched parts of your clips instead of encoding them again - faster exports with no quality loss (Settings → Performance)',
+    'Trash: deleted projects go to the Trash for 30 days, so you can bring them back. Undo right after deleting, too',
+    'Brightness slider for themes (Settings → Appearance)',
+    'Profiles: add a profile picture, see badges (Founder, Developer, Verified, Bug Hunter, Contributor, Support Team, Sponsor, Content Creator, Educator and Premium)',
+    'Friends: send friend requests, follow creators, search by username. Private account and friend-request settings in Settings → Account. Your email is never shown to anyone',
+    '2-step verification: after your password, Flux can also ask for a code from your email',
+    'Usernames can have capital letters now',
+    'Achievements tab: 57 achievements and your stats (videos exported, time editing, streaks…). They unlock quietly - no pop-ups',
+    'Viral Shorts is faster and smarter: a quick scan of the whole video, then only the best moments are listened to closely. Silent parts are skipped, and changing the clip length is instant. Better hooks, endings and picks spread over the whole video',
+    'New Community Guidelines, and the Privacy Policy and Terms are updated for profiles, friends and shared templates'
+  ] },
   { v: '7.0.0', date: '2026-11-22', items: [
     'Templates: 8 ready-made edits (vlog, fast TikTok, travel, gaming, product promo, birthday, week recap, cinematic). Add your clips and press "Fill the template"',
     'Reverse: play any video or sound clip backwards (Clip tools → Edit, or right-click → Enhance). Press it again to go back',
@@ -165,11 +180,11 @@ const CHANGELOG = [
   ] }
 ];
 function changelogHtml(list = CHANGELOG) {
-  return list.map((r) => `<div class="cl-rel"><div class="cl-head"><b>Flux ${r.v}</b><small>${new Date(r.date + 'T12:00:00').toLocaleDateString()}</small></div><ul>${r.items.map((i) => `<li>${i.replace(/&/g, '&amp;').replace(/</g, '&lt;')}</li>`).join('')}</ul></div>`).join('');
+  return list.map((r) => `<div class="cl-rel"><div class="cl-head"><b>Flux ${displayVer(r.v)}</b><small>${new Date(r.date + 'T12:00:00').toLocaleDateString()}</small></div><ul>${r.items.map((i) => `<li>${i.replace(/&/g, '&amp;').replace(/</g, '&lt;')}</li>`).join('')}</ul></div>`).join('');
 }
 function openChangelog(onlyNew) {
   const list = onlyNew ? CHANGELOG.slice(0, 1) : CHANGELOG;
-  const box = modal(`<h2>${onlyNew ? 'What’s new in Flux ' + CHANGELOG[0].v : 'Changelog'}</h2><div class="cl-list">${changelogHtml(list)}</div>
+  const box = modal(`<h2>${onlyNew ? 'What’s new in Flux ' + displayVer(CHANGELOG[0].v) : 'Changelog'}</h2><div class="cl-list">${changelogHtml(list)}</div>
     <div class="footer">${onlyNew ? '<button class="btn ghost" data-a="all">All versions</button>' : ''}<button class="btn primary" data-a="ok">Got it</button></div>`);
   $('[data-a=ok]', box).onclick = closeModal;
   const all = $('[data-a=all]', box);

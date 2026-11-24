@@ -120,7 +120,9 @@ body::after { content: ""; position: fixed; inset: -50%; z-index: 60; pointer-ev
 .stat { padding: 34px 26px; text-align: left; border-left: 1px solid var(--line); }
 .stat:first-child { border-left: 0; }
 .stat b { display: block; font: 700 clamp(34px, 4vw, 54px)/1 var(--f-display); letter-spacing: -.04em; }
-.stat span { display: block; margin-top: 10px; color: var(--muted); font-size: 14px; }
+.stat > span { display: block; margin-top: 10px; color: var(--muted); font-size: 14px; }
+.stat b span { display: inline; font: inherit; color: inherit; margin: 0; }
+.stat b .plus { color: var(--gold); margin-left: 2px; }
 
 /* sections */
 section { padding-block: 120px; position: relative; }
@@ -274,7 +276,7 @@ footer a:hover { color: var(--gold-hi); }
   <div class="hero" id="download">
     <canvas id="field" aria-hidden="true"></canvas>
     <div class="hero-in wrap">
-      <a class="pill-new fade" href="#changelog"><b>Flux 7.0</b> · Templates, Reverse, Balance audio <span>New</span></a>
+      <a class="pill-new fade" href="#changelog"><b>Flux 1.7.1</b> · Templates tab, Friends, Smart Rendering <span>New</span></a>
       <h1><span class="ln"><span>Edit videos</span></span><span class="ln"><span><span class="gold">without</span> the learning curve.</span></span></h1>
       <p class="lede fade d1">Flux puts the tools from big editors into a screen you understand on day one. Cut, add music and captions, record your voice, and export an MP4 - all on your own computer.</p>
       <div class="dl fade d2">
@@ -300,9 +302,9 @@ footer a:hover { color: var(--gold-hi); }
       <div class="chip c2"><span class="dot"></span> Auto captions · on your PC</div>
     </div>
     <div class="stats">
-      <div class="stat rv"><b><span data-count="2000">0</span>+</b><span>free songs, licence shown</span></div>
-      <div class="stat rv" style="--d:.08s"><b><span data-count="80">0</span>+</b><span>transitions</span></div>
-      <div class="stat rv" style="--d:.16s"><b><span data-count="50">0</span>+</b><span>audio effects</span></div>
+      <div class="stat rv"><b><span data-count="2000">0</span><span class="plus">+</span></b><span>free songs, licence shown</span></div>
+      <div class="stat rv" style="--d:.08s"><b><span data-count="80">0</span><span class="plus">+</span></b><span>transitions</span></div>
+      <div class="stat rv" style="--d:.16s"><b><span data-count="50">0</span><span class="plus">+</span></b><span>audio effects</span></div>
       <div class="stat rv" style="--d:.24s"><b><span data-count="0">0</span></b><span>watermarks, ever</span></div>
     </div>
   </div>
@@ -399,87 +401,93 @@ footer a:hover { color: var(--gold-hi); }
         <p class="rv" style="--d:.1s">Flux updates itself - click <b>Update</b> in the app when a new version is ready.</p>
       </div>
       <div class="changelog">
-        <div class="cl"><div class="cl-v"><b>7.0.0</b><small>Nov 22, 2026</small></div><ul>
+        <div class="cl"><div class="cl-v"><b>1.7.1</b><small>Nov 24, 2026</small></div><ul>
+          <li><b>Templates tab</b> with live previews, and <b>share your own templates</b> with everyone</li>
+          <li><b>Smart Rendering</b>: faster exports with no quality loss for plain cuts</li>
+          <li><b>Profiles, friends and following</b>, profile pictures, badges, <b>2-step verification</b> and privacy settings</li>
+          <li><b>Achievements</b> and stats, a <b>Trash</b> for deleted projects, a theme <b>brightness</b> slider, and faster, smarter <b>Viral Shorts</b></li>
+        </ul></div>
+        <div class="cl"><div class="cl-v"><b>1.7</b><small>Nov 22, 2026</small></div><ul>
           <li><b>Templates</b>, <b>Reverse</b>, one-click <b>Close gaps</b> and <b>Balance audio</b></li>
           <li>Blur or pixelate one part of the video, 8 more effects, 10 filters, 8 caption styles, 10 audio effects and 10 themes</li>
           <li>Favorite effects, media usage ticks, usernames, feature requests and bug reports in Settings</li>
           <li>Safer accounts: email code to delete, sign-in limits; fixed undeletable "Untitled project" cards</li>
         </ul></div>
-        <div class="cl"><div class="cl-v"><b>6.0.1</b><small>Nov 22, 2026</small></div><ul>
+        <div class="cl"><div class="cl-v"><b>1.6.1</b><small>Nov 22, 2026</small></div><ul>
           <li>Viral Shorts is now a Premium feature</li>
         </ul></div>
-        <div class="cl"><div class="cl-v"><b>6.0.0</b><small>Nov 22, 2026</small></div><ul>
+        <div class="cl"><div class="cl-v"><b>1.6</b><small>Nov 22, 2026</small></div><ul>
           <li><b>Viral Shorts:</b> drop in a long video or podcast and Flux finds the best 30-60 second moments, then makes each one a ready vertical Short with captions</li>
           <li>Studio sound, Improve quality, AI upscale and AI slow motion - all on your own computer</li>
           <li>Smooth timeline zooming, 6 new themes and springier buttons</li>
         </ul></div>
-        <div class="cl"><div class="cl-v"><b>5.3.0</b><small>Nov 22, 2026</small></div><ul>
+        <div class="cl"><div class="cl-v"><b>1.5.3</b><small>Nov 22, 2026</small></div><ul>
           <li>A fresh new look with floating panels, softer shadows and smoother animations everywhere</li>
           <li>7 color themes, including a light mode, plus your own accent color (Settings → Appearance)</li>
           <li>The library tabs moved to a tidy side bar</li>
         </ul></div>
-        <div class="cl"><div class="cl-v"><b>5.2.0</b><small>Nov 11, 2026</small></div><ul>
+        <div class="cl"><div class="cl-v"><b>1.5.2</b><small>Nov 11, 2026</small></div><ul>
           <li>New export engine: videos are read straight from your files, so every frame is exactly right (no more laggy exports) and exports are usually faster</li>
           <li>Privacy: the website and the app no longer load anything from Google without asking; new <a href="/licenses.html">Licenses &amp; credits</a> page, and updated Privacy Policy and Terms</li>
         </ul></div>
-        <div class="cl"><div class="cl-v"><b>5.1.1</b><small>Nov 8, 2026</small></div><ul>
+        <div class="cl"><div class="cl-v"><b>1.5.1.1</b><small>Nov 8, 2026</small></div><ul>
           <li>Fixed transitions: previews work again and playback no longer jumps or sticks around cuts</li>
         </ul></div>
-        <div class="cl"><div class="cl-v"><b>5.1.0</b><small>Nov 5, 2026</small></div><ul>
+        <div class="cl"><div class="cl-v"><b>1.5.1</b><small>Nov 5, 2026</small></div><ul>
           <li>Text to speech with 10 natural AI voices - offline, free to use in your videos, with auto captions</li>
           <li>A much smarter AI Editor that works without any account or key</li>
           <li>17 new audio effects with real icons, 6 new transitions and 10 new looks</li>
           <li>Smooth transition previews, tidier clip tools and a shorter right-click menu</li>
         </ul></div>
-        <div class="cl"><div class="cl-v"><b>5.0.0</b><small>Oct 29, 2026</small></div><ul>
+        <div class="cl"><div class="cl-v"><b>1.5</b><small>Oct 29, 2026</small></div><ul>
           <li>New Audio FX tab - every sound effect in one place, drag onto clips</li>
           <li>Resize the library, preview, inspector and timeline the way you like</li>
           <li>10 new caption styles and funny bleep sounds (anvil, bonk, quack, air horn…)</li>
           <li>Drag bleeps to resize them, smoother scroll-wheel panning, quiet updates</li>
         </ul></div>
-        <div class="cl"><div class="cl-v"><b>4.15.0</b><small>Oct 29, 2026</small></div><ul>
+        <div class="cl"><div class="cl-v"><b>1.4.15</b><small>Oct 29, 2026</small></div><ul>
           <li>19 new audio effects: ultra loud, distortion, 8-bit, glitch, chipmunk / deep voice, robot, telephone, underwater and more</li>
         </ul></div>
-        <div class="cl"><div class="cl-v"><b>4.14.0</b><small>Oct 29, 2026</small></div><ul>
+        <div class="cl"><div class="cl-v"><b>1.4.14</b><small>Oct 29, 2026</small></div><ul>
           <li>Updates no longer reinstall Flux - your shortcuts stay</li>
           <li>882 hand-checked free songs for YouTube & TikTok (most need no credit)</li>
           <li>Removed the old public domain music search</li>
         </ul></div>
-        <div class="cl"><div class="cl-v"><b>4.13.0</b><small>Oct 29, 2026</small></div><ul>
+        <div class="cl"><div class="cl-v"><b>1.4.13</b><small>Oct 29, 2026</small></div><ul>
           <li>Zoom the timeline way out, smooth 1-hour videos, real frames along long clips</li>
           <li>47 free sound effects (whoosh, pop, boom, ding, riser, funny sounds…)</li>
           <li>New Glitch effect with short bursts and pauses</li>
           <li>Volume up to +40 dB</li>
         </ul></div>
-        <div class="cl"><div class="cl-v"><b>4.12.0</b><small>Oct 25, 2026</small></div><ul>
+        <div class="cl"><div class="cl-v"><b>1.4.12</b><small>Oct 25, 2026</small></div><ul>
           <li>Drag files into library folders (also straight from File Explorer)</li>
           <li>Graph editor: arrows show keyframes outside the view, clearer labels when zoomed</li>
           <li>Terms of Service, Privacy Policy and "delete my account"</li>
           <li>Premium is coming soon - no payments are taken right now</li>
         </ul></div>
-        <div class="cl"><div class="cl-v"><b>4.11.0</b><small>Oct 25, 2026</small></div><ul>
+        <div class="cl"><div class="cl-v"><b>1.4.11</b><small>Oct 25, 2026</small></div><ul>
           <li>Folders in the media library - create, rename, delete, drag files in</li>
           <li>Smoother keyframed zooms</li>
           <li>Faster editing copies</li>
         </ul></div>
-        <div class="cl"><div class="cl-v"><b>4.10.0</b><small>Oct 25, 2026</small></div><ul>
+        <div class="cl"><div class="cl-v"><b>1.4.10</b><small>Oct 25, 2026</small></div><ul>
           <li>Smooth editing copies for long videos and .mkv recordings - smooth playback and scrubbing</li>
           <li>Fixed glitchy pictures in .mkv recordings and sound jumping during playback</li>
           <li>The dB label stays visible when you raise the volume</li>
         </ul></div>
-        <div class="cl"><div class="cl-v"><b>4.9.0</b><small>Oct 25, 2026</small></div><ul>
+        <div class="cl"><div class="cl-v"><b>1.4.9</b><small>Oct 25, 2026</small></div><ul>
           <li>New export engine: every frame saved at full quality, no more choppy exports</li>
           <li>Simple edits export super fast using your graphics card</li>
           <li>No more waiting at 90%</li>
           <li>Volume in decibels (dB) like CapCut</li>
           <li>Sharper waveforms on long sound clips</li>
         </ul></div>
-        <div class="cl"><div class="cl-v"><b>4.8.0</b><small>Oct 24, 2026</small></div><ul>
+        <div class="cl"><div class="cl-v"><b>1.4.8</b><small>Oct 24, 2026</small></div><ul>
           <li>New Fusion page: build a clip's look with simple nodes (Text+, Shape, Background, Transform, Color, effects)</li>
           <li>Ready-made node sets: Big title, Lower third, Picture in picture, Retro TV, Dreamy, Spotlight</li>
           <li>Smoother playback, high speeds and transition previews</li>
         </ul></div>
-        <div class="cl"><div class="cl-v"><b>4.7.0</b><small>Oct 24, 2026</small></div><ul>
+        <div class="cl"><div class="cl-v"><b>1.4.7</b><small>Oct 24, 2026</small></div><ul>
           <li>Dragging the playhead shows the video right away (no more black screen)</li>
           <li>Text goes on Media tracks; video and sound unlinked by default</li>
           <li>Box-select clips by dragging on empty timeline space</li>
@@ -487,7 +495,7 @@ footer a:hover { color: var(--gold-hi); }
           <li>36 new transitions, 30 new looks, 22 new effects</li>
           <li>Pick library items and press Delete to remove them</li>
         </ul></div>
-        <div class="cl"><div class="cl-v"><b>4.6.0</b><small>Oct 24, 2026</small></div><ul>
+        <div class="cl"><div class="cl-v"><b>1.4.6</b><small>Oct 24, 2026</small></div><ul>
           <li>Compound clips (Alt+C) and decompose</li>
           <li>Masks: rectangle, circle and pen, with soft edge and invert</li>
           <li>New effects: Gaussian, lens, directional, radial, mosaic and zoom blur, Ultra sharpen, CCTV, paper edge, drop shadow</li>
@@ -497,11 +505,11 @@ footer a:hover { color: var(--gold-hi); }
           <li>Better graph editor; keyframes and graph editor are now free</li>
           <li>Shift+click to select several clips or keyframes (key can be changed)</li>
         </ul></div>
-        <div class="cl"><div class="cl-v"><b>4.5.1</b><small>Oct 23, 2026</small></div><ul>
+        <div class="cl"><div class="cl-v"><b>1.4.5.1</b><small>Oct 23, 2026</small></div><ul>
           <li>Update button appears as soon as a new version is ready</li>
           <li>Opening Flux twice brings the open window to the front</li>
         </ul></div>
-        <div class="cl"><div class="cl-v"><b>4.5.0</b><small>Oct 22, 2026</small></div><ul>
+        <div class="cl"><div class="cl-v"><b>1.4.5</b><small>Oct 22, 2026</small></div><ul>
           <li>Text transitions, graph editor, adjustment clips, In/Out range, ripple trims, track lock</li>
           <li>Keyboard map, 200+ fonts, hover previews, offline quick-mode AI editor</li>
         </ul></div>
@@ -533,7 +541,7 @@ footer a:hover { color: var(--gold-hi); }
   </div>
 </main>
 
-<footer><div class="wrap"><span>© <span id="yr">2026</span> Flux</span><span class="foot-links"><a href="/terms.html">Terms of Service</a><a href="/privacy.html">Privacy Policy</a><a href="/licenses.html">Licenses &amp; credits</a><a href="mailto:flux.editing.app@gmail.com">Contact</a></span><span>Made by an independent developer in Romania · <a href="mailto:flux.editing.app@gmail.com">flux.editing.app@gmail.com</a></span><span>Music by Kevin MacLeod (incompetech.com), Komiku, Monplaisir, Loyalty Freak Music, Audionautix and Rolemusic.</span></div></footer>
+<footer><div class="wrap"><span>© <span id="yr">2026</span> Flux</span><span class="foot-links"><a href="/terms.html">Terms of Service</a><a href="/privacy.html">Privacy Policy</a><a href="/community.html">Community Guidelines</a><a href="/licenses.html">Licenses &amp; credits</a><a href="mailto:flux.editing.app@gmail.com">Contact</a></span><span>Made by an independent developer in Romania · <a href="mailto:flux.editing.app@gmail.com">flux.editing.app@gmail.com</a></span><span>Music by Kevin MacLeod (incompetech.com), Komiku, Monplaisir, Loyalty Freak Music, Audionautix and Rolemusic.</span></div></footer>
 
 <script>
   // ---- downloads ----

@@ -2,6 +2,14 @@
    Loaded in <head> so the right colours are there before anything is drawn (no flash).
    Every colour in styles.css comes from the CSS variables set here. */
 'use strict';
+// Version names people see: Flux counts internally as 7.1.0, 7.2.0… (so updates keep working),
+// but shows them as 1.7.1, 1.7.2… (7.0.0 → 1.7, 6.0.1 → 1.6.1).
+function displayVer(v) {
+  const m = /^v?(\d+)\.(\d+)\.(\d+)$/.exec(String(v || '').trim());
+  if (!m) return String(v || '');
+  const p = [+m[1]]; if (+m[2]) p.push(+m[2]); if (+m[3]) p.push(+m[3]);
+  return '1.' + p.join('.');
+}
 const THEMES = [
   { id: 'midnight', name: 'Midnight', sub: 'Flux violet', dark: true,
     c: { bg: '#07070b', panel: '#0f0f16', panel2: '#15151f', panel3: '#1c1c28', line: '#20202c', line2: '#2c2c3b', line3: '#3d3d52',
@@ -102,11 +110,18 @@ function themeById(id) { return THEMES.find((t) => t.id === id) || THEMES[0]; }
 
 // read straight from storage so this works before settings.js has loaded
 function storedLook() {
-  try { const s = JSON.parse(localStorage.getItem('flux.settings') || '{}'); return { theme: s.theme, accent: s.accent, motion: s.motion }; } catch { return {}; }
+  try { const s = JSON.parse(localStorage.getItem('flux.settings') || '{}'); return { theme: s.theme, accent: s.accent, motion: s.motion, bright: s.bright }; } catch { return {}; }
 }
 
-function applyTheme(id, accent, motion) {
+function applyTheme(id, accent, motion, bright) {
   const t = themeById(id), c = { ...t.c };
+  // Brightness slider (-50 … +50): makes the backgrounds and panels lighter or darker; text and accent stay
+  if (bright === undefined) bright = storedLook().bright || 0;
+  bright = Math.max(-50, Math.min(50, Number(bright) || 0));
+  if (bright) {
+    const k = Math.abs(bright) * (bright > 0 ? (t.dark ? 0.36 : 0.5) : (t.dark ? 0.8 : 0.3)), to = bright > 0 ? '#ffffff' : '#000000';
+    for (const key of ['bg', 'panel', 'panel2', 'panel3', 'line', 'line2', 'line3', 'sunken']) c[key] = `color-mix(in srgb, ${c[key]} ${(100 - k).toFixed(1)}%, ${to})`;
+  }
   // a custom accent colour overrides the theme's own; the lighter / deeper shades are mixed from it
   const custom = accent && /^#[0-9a-f]{6}$/i.test(accent) ? accent : null;
   const root = document.documentElement, st = root.style;
@@ -143,5 +158,5 @@ function applyTheme(id, accent, motion) {
 
 (function bootTheme() {
   const s = storedLook();
-  applyTheme(s.theme, s.accent, s.motion);
+  applyTheme(s.theme, s.accent, s.motion, s.bright);
 })();
