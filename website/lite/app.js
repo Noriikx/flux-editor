@@ -3,7 +3,7 @@
    motion and transitions. Loaded after the editor (index.html) and shared.js (code shared with the desktop app). */
 const API_BASE = location.hostname === 'flux-editor.netlify.app' ? '/api/' : 'https://flux-editor.netlify.app/api/';
 const SITE = 'https://flux-editor.netlify.app';
-const APP_VERSION = '7.3.0';
+const APP_VERSION = '7.4.0';
 const TERMS_VERSION = '2026-11-24';
 const TF_URL = 'https://cdn.jsdelivr.net/npm/@huggingface/transformers@3.8.1/dist/transformers.min.js';
 const isPhone = matchMedia('(pointer: coarse)').matches;

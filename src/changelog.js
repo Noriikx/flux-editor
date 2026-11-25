@@ -1,6 +1,12 @@
 /* Flux — changelog. Shown once after an update, and any time from Settings → About. */
 'use strict';
 const CHANGELOG = [
+  { v: '7.4.0', date: '2026-11-25', items: [
+    'Thumbnail Studio is now its own place: Home → Thumbnails. Add your own pictures (choose, drop or paste them), text, shapes and stickers - each one is a layer you can hide, lock, rename, drag up or down, fade and blend, like a simple Photoshop. Move, resize and rotate things right on the picture, undo anything, and your thumbnails save by themselves',
+    'Sizes for YouTube thumbnails, Shorts / TikTok covers, square posts, channel banners and X headers',
+    'Pictures can get an outline (great for cut-out PNGs), a shadow, and brightness, contrast, color and blur',
+    'A brand new Premium screen'
+  ] },
   { v: '7.3.0', date: '2026-11-25', items: [
     'Viral Shorts from YouTube links no longer download the whole video: Flux reads the video’s captions and YouTube’s “most replayed” moments, then downloads only the moments you turn into Shorts. Twitch streams without captions download only the sound (deleted after 2 days)',
     'Audio Mixer (Mixer button above the timeline): a fader, pan, 3-band EQ, mute and solo for every track, live level meters, and a master with Glue and a Limiter. Your mix is used in the export too',
