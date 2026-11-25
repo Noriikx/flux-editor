@@ -43,6 +43,7 @@ contextBridge.exposeInMainWorld('flux', {
 
   // export & snapshots
   saveSnapshot: (dataUrl) => ipcRenderer.invoke('snapshot:save', dataUrl),
+  saveThumbnail: (o) => ipcRenderer.invoke('thumb:save', o),
   exportChoose: (opts) => ipcRenderer.invoke('export:choose', opts),
   exportBegin: () => ipcRenderer.invoke('export:begin'),
   exp2Begin: () => ipcRenderer.invoke('exp2:begin'),
@@ -87,6 +88,8 @@ contextBridge.exposeInMainWorld('flux', {
   fontGet: (opts) => ipcRenderer.invoke('font:get', opts),
   shortsLink: (url) => ipcRenderer.invoke('shorts:link', url),
   shortsPlatform: (url) => ipcRenderer.invoke('shorts:platform', url),
+  shortsPlatformAudio: (o) => ipcRenderer.invoke('shorts:platformAudio', o),
+  shortsSection: (o) => ipcRenderer.invoke('shorts:section', o),
   shortsCancelLink: () => ipcRenderer.invoke('shorts:cancelLink'),
   onShortsProgress: (cb) => ipcRenderer.on('shorts:progress', (_e, v) => cb(v)),
   enhStatus: () => ipcRenderer.invoke('enh:status'),
@@ -99,5 +102,7 @@ contextBridge.exposeInMainWorld('flux', {
   platform: process.platform,
   onUpdateProgress: (cb) => ipcRenderer.on('update:progress', (_e, v) => cb(v)),
   openExternal: (url) => ipcRenderer.invoke('app:openExternal', url),
-  openAdmin: (token) => ipcRenderer.invoke('admin:open', token)
+  openAdmin: (token) => ipcRenderer.invoke('admin:open', token),
+  templatePlaceholders: (list) => ipcRenderer.invoke('template:placeholders', list),
+  onTemplateReview: (cb) => ipcRenderer.on('template:review', (_e, tp) => cb(tp))
 });

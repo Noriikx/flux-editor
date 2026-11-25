@@ -92,6 +92,8 @@ function soundGainAt(it, t) {
     if (b) g *= c.beepSound === 'duck' ? 0.12 : 0;
   }
   if (it.comp) { const cl = t - it.comp.start; g *= kv(it.comp, 'volume', cl) * fadeEnv(it.comp, cl); }
+  // Audio Mixer: the track's fader, mute and solo
+  if (typeof mixTrackGain === 'function') g *= mixTrackGain(it.comp ? it.comp.trackId : c.trackId);
   return Math.max(0, g);
 }
 async function renderSound(r0, r1, onProgress, isCancelled) {
@@ -108,6 +110,8 @@ async function renderSound(r0, r1, onProgress, isCancelled) {
     let workletOk = false;
     if (needWorklet) { try { await ctx.audioWorklet.addModule(new URL('dyn-worklet.js', location.href).href); workletOk = true; } catch {} }
     let any = false;
+    // Audio Mixer master: level, glue compressor and a limiter, the same as you hear while editing
+    const bus = typeof mixMasterChain === 'function' ? mixMasterChain(ctx) : ctx.destination;
     for (const it of items) {
       const c = it.c;
       let ta = Math.max(pa, it.a0), tb = Math.min(b, it.a1);
@@ -133,7 +137,16 @@ async function renderSound(r0, r1, onProgress, isCancelled) {
       let last = gain;
       src.connect(gain);
       const au = c.audio || {};
-      if (au.pan) { const p = ctx.createStereoPanner(); p.pan.value = au.pan; last.connect(p); last = p; }
+      const mixTr = it.comp ? it.comp.trackId : c.trackId;
+      const panV = clamp((au.pan || 0) + (typeof mixPan === 'function' ? mixPan(mixTr) : 0), -1, 1);
+      if (panV) { const p = ctx.createStereoPanner(); p.pan.value = panV; last.connect(p); last = p; }
+      const mq = typeof mixEq === 'function' ? mixEq(mixTr) : null;
+      if (mq) {
+        const lo = ctx.createBiquadFilter(); lo.type = 'lowshelf'; lo.frequency.value = 120; lo.gain.value = mq.low;
+        const mi = ctx.createBiquadFilter(); mi.type = 'peaking'; mi.frequency.value = 1200; mi.Q.value = 0.8; mi.gain.value = mq.mid;
+        const hi = ctx.createBiquadFilter(); hi.type = 'highshelf'; hi.frequency.value = 6000; hi.gain.value = mq.high;
+        last.connect(lo); lo.connect(mi); mi.connect(hi); last = hi;
+      }
       if (isPremium() && (au.bass || au.mid || au.treble)) {
         const lo = ctx.createBiquadFilter(); lo.type = 'lowshelf'; lo.frequency.value = 200; lo.gain.value = au.bass || 0;
         const mi = ctx.createBiquadFilter(); mi.type = 'peaking'; mi.frequency.value = 1500; mi.Q.value = 0.9; mi.gain.value = au.mid || 0;
@@ -143,7 +156,7 @@ async function renderSound(r0, r1, onProgress, isCancelled) {
       for (const e of activeAudioFx(c)) {
         try { const u = makeUnit(e, ctx, workletOk, true); u.update(e); last.connect(u.in); last = u.out; } catch (er) { console.warn('export fx', er); }
       }
-      last.connect(ctx.destination);
+      last.connect(bus);
       src.start(Math.max(0, ta - pa));
       any = true;
       // bleep tone over covered words

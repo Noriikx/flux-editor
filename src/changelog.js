@@ -1,6 +1,14 @@
 /* Flux — changelog. Shown once after an update, and any time from Settings → About. */
 'use strict';
 const CHANGELOG = [
+  { v: '7.3.0', date: '2026-11-25', items: [
+    'Viral Shorts from YouTube links no longer download the whole video: Flux reads the video’s captions and YouTube’s “most replayed” moments, then downloads only the moments you turn into Shorts. Twitch streams without captions download only the sound (deleted after 2 days)',
+    'Audio Mixer (Mixer button above the timeline): a fader, pan, 3-band EQ, mute and solo for every track, live level meters, and a master with Glue and a Limiter. Your mix is used in the export too',
+    'Thumbnail Studio (Thumbnail button): pick any frame of your video or a picture, add big outlined text, arrows, circles and stickers, choose a style, and save it for YouTube, Shorts or square',
+    'New theme for Premium: Golden Hour - warm without being too bright',
+    'Limited Christmas themes: Christmas Eve, Candy Cane and Snowfall (with falling snow). Once a theme is yours you keep it on every computer',
+    'Fixed: some coloured buttons (like “Share your template”) turned completely black when you hovered over them'
+  ] },
   { v: '7.2.0', date: '2026-11-25', items: [
     'Viral Shorts from a link: paste a YouTube or Twitch link (a video or a past stream) and Flux downloads it and finds the best moments. Only use videos you own or have permission to use',
     'Flux Mobile: the phone version now has Viral Shorts with captions, auto captions, templates, motion and transitions, plus your account, friends, profiles and achievements - open flux-editor.netlify.app/lite on your phone'

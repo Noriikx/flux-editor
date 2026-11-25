@@ -67,6 +67,30 @@
   .tpl .strip { display: flex; gap: 3px; height: 26px; }
   .tpl .strip i { border-radius: 4px; display: grid; place-items: center; font: 600 10px system-ui; color: rgba(0,0,0,.7); font-style: normal; }
   .tpl .texts { display: flex; flex-wrap: wrap; gap: 6px; }
+  .tpl { grid-template-columns: 200px 1fr; }
+  .tpl > .pv { grid-row: span 6; background: #000; border-radius: 10px; display: grid; place-items: center; overflow: hidden; aspect-ratio: 4/5; cursor: pointer; position: relative; }
+  .tpl > .pv canvas { max-width: 100%; max-height: 100%; display: block; }
+  .tpl > .pv::after { content: "▶ hover to play"; position: absolute; bottom: 6px; left: 0; right: 0; text-align: center; font-size: 11px; color: #fff; text-shadow: 0 1px 3px #000; opacity: .8; }
+  .tpl > .pv.playing::after { content: ""; }
+  @media (max-width: 640px) { .tpl { grid-template-columns: 1fr; } .tpl > .pv { grid-row: auto; max-height: 300px; } }
+  .dlg-bg { position: fixed; inset: 0; background: rgba(5,4,10,.7); backdrop-filter: blur(4px); display: grid; place-items: center; z-index: 50; padding: 20px; }
+  .dlg { background: var(--panel); border: 1px solid var(--line); border-radius: 18px; padding: 22px; width: min(560px, 100%); max-height: 90vh; overflow: auto; box-shadow: 0 30px 80px rgba(0,0,0,.6); }
+  .dlg h3 { margin: 0 0 6px; font: 800 19px "Bricolage Grotesque", sans-serif; }
+  .dlg p { margin: 0 0 14px; color: var(--muted); font-size: 13.5px; white-space: pre-line; }
+  .dlg input { width: 100%; margin-bottom: 14px; }
+  .dlg .row { display: flex; justify-content: flex-end; gap: 8px; margin-top: 6px; }
+  .bgrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 10px; margin-bottom: 14px; }
+  .bcard { --bc: #d8b674; height: auto; white-space: normal; text-align: left; padding: 12px; border-radius: 14px; display: grid; gap: 6px; align-content: start; border: 1px solid var(--line); background: var(--panel2); position: relative; }
+  .bcard:hover { border-color: var(--bc); }
+  .bcard.on { border-color: var(--bc); background: color-mix(in srgb, var(--bc) 14%, var(--panel2)); }
+  .bcard .ic { width: 40px; height: 40px; border-radius: 12px; display: grid; place-items: center; color: var(--bc); background: color-mix(in srgb, var(--bc) 16%, transparent); }
+  .bcard .ic svg { width: 22px; height: 22px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+  .bcard b { font-size: 14px; color: var(--text); }
+  .bcard small { font-size: 11.5px; color: var(--muted); font-weight: 400; line-height: 1.35; }
+  .bcard .tick { position: absolute; top: 10px; right: 10px; width: 22px; height: 22px; border-radius: 50%; border: 2px solid var(--line); display: grid; place-items: center; font-size: 12px; color: #120d2c; }
+  .bcard.on .tick { background: var(--bc); border-color: var(--bc); }
+  .bcard.on .tick::after { content: "✓"; }
+  .bcard .sw { height: 46px; border-radius: 10px; }
   .tpl .texts span { font-size: 12px; padding: 3px 8px; border-radius: 6px; background: #1e1c2b; }
   .bdg { display: inline-block; font-size: 11px; padding: 1px 7px; border-radius: 99px; margin: 2px 3px 0 0; border: 1px solid; }
   .badge-box { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
@@ -185,6 +209,7 @@
   </section>
 </div>
 
+<script src="/lite/shared.js"></script>
 <script>
 const API = '/api/';
 let token = null, users = [];
@@ -287,8 +312,8 @@ function draw() {
       <td class="muted">${day(u.createdAt)}</td>
       <td class="muted">${day(u.lastSeen || u.lastLogin)}</td>
       <td><div class="acts">
-        <button class="small" data-a="give">Give…</button>
-        ${u.hasPassword ? '<button class="small" data-a="badges">Badges…</button>' : ''}
+        <button class="small" data-a="give">Give Premium</button>
+        ${u.hasPassword ? '<button class="small" data-a="badges">Badges</button><button class="small" data-a="themes">Themes</button>' : ''}
         ${(u.grantUntil === -1 || u.grantUntil > Date.now()) ? '<button class="small danger" data-a="revoke">Remove gift</button>' : ''}
         <button class="small" data-a="check">Check Stripe</button>
         ${u.hasPassword ? '<button class="small" data-a="pw">New password</button>' : ''}
@@ -302,31 +327,23 @@ $('#rows').onclick = async (e) => {
   const b = e.target.closest('button[data-a]');
   if (!b) return;
   const email = b.closest('tr').dataset.e, a = b.dataset.a;
-  if (a === 'badges') {
-    const tr = b.closest('tr'), u = users.find((x) => x.email === email), cell = tr.querySelector('td');
-    let box = cell.querySelector('.badge-box');
-    if (box) { box.remove(); return; }
-    box = document.createElement('div'); box.className = 'badge-box';
-    box.innerHTML = Object.entries(BADGES).map(([k, [n, c]]) => `<label style="color:${c}"><input type="checkbox" data-b="${k}" ${(u.badges || []).includes(k) ? 'checked' : ''}>${esc(n)}</label>`).join('');
-    box.onchange = async (ev) => { const i = ev.target; i.disabled = true; const r = await call('admin/badge', { email, badge: i.dataset.b, on: i.checked }); i.disabled = false; if (r.error) { alert(r.error); i.checked = !i.checked; return; } u.badges = r.badges; };
-    cell.appendChild(box); return;
-  }
+  if (a === 'badges' || a === 'themes') return itemMenu(a, users.find((x) => x.email === email));
   if (a === 'give') {
     const f = $('#giveForm'); f.email.value = email; f.email.scrollIntoView({ behavior: 'smooth', block: 'center' }); f.days.focus(); return;
   }
-  if (a === 'revoke' && !confirm(`Remove the Premium gift from ${email}?`)) return;
-  if (a === 'del' && !confirm(`Delete the account ${email}? This can't be undone.`)) return;
+  if (a === 'revoke' && !(await askBox({ title: 'Remove Premium gift?', text: email, ok: 'Remove gift', danger: true }))) return;
+  if (a === 'del' && !(await askBox({ title: 'Delete this account?', text: email + "\nThis can't be undone.", ok: 'Delete', danger: true }))) return;
   let body = { email };
-  if (a === 'ban') { const why = prompt(`Ban ${email}? They're signed out right away and can't sign in again.\nReason (they'll see it, optional):`, ''); if (why === null) return; body.reason = why; }
+  if (a === 'ban') { const why = await askBox({ title: 'Ban ' + email + '?', text: "They're signed out right away and can't sign in again.\nReason (they'll see it, optional):", input: 'text', ok: 'Ban', danger: true }); if (why === null) return; body.reason = why; }
   if (a === 'pw') {
-    const pw = prompt(`New password for ${email} (at least 8 characters).\nTell them the new password yourself.`);
+    const pw = await askBox({ title: 'New password', text: 'For ' + email + ' (at least 8 characters).\nTell them the new password yourself.', input: 'password', ok: 'Save password' });
     if (!pw) return;
     body.password = pw;
   }
   b.disabled = true;
   const r = await call('admin/' + ({ revoke: 'revoke', check: 'refresh', pw: 'password', del: 'delete', ban: 'ban', unban: 'unban' }[a]), body);
-  if (r.error) alert(r.error);
-  else if (a === 'pw') alert('Password changed.');
+  if (r.error) askBox({ title: 'Something went wrong', text: r.error, ok: 'OK', cancel: false });
+  else if (a === 'pw') askBox({ title: 'Password changed', text: 'Tell ' + email + ' the new password yourself.', ok: 'OK', cancel: false });
   load();
 };
 
@@ -374,8 +391,8 @@ async function saveCfg(part, btn) {
   if (r.error) return alert(r.error);
   cfg = r.config; updState();
 }
-$('#saveMin').onclick = (e) => { const v = $('#minVer').value.trim(); if (v && !confirm(`Everyone with a version below ${dv(v)} will have to update before using Flux. Make sure ${dv(v)} is already released with its installer. Continue?`)) return; saveCfg({ minVersion: v }, e.target); };
-$('#savePin').onclick = (e) => { const v = $('#pinVer').value; if (v && !confirm(`Move EVERYONE to Flux ${dv(v)}? Anyone on a newer version gets ${dv(v)} installed.`)) return; saveCfg({ pinVersion: v }, e.target); };
+$('#saveMin').onclick = async (e) => { const v = $('#minVer').value.trim(); if (v && !await askBox({ ok: 'Save', title: `Everyone with a version below ${dv(v)} will have to update before using Flux. Make sure ${dv(v)} is already released with its installer. Continue?` })) return; saveCfg({ minVersion: v }, e.target); };
+$('#savePin').onclick = async (e) => { const v = $('#pinVer').value; if (v && !await askBox({ ok: 'Move everyone', danger: true, title: `Move EVERYONE to Flux ${dv(v)}? Anyone on a newer version gets ${dv(v)} installed.` })) return; saveCfg({ pinVersion: v }, e.target); };
 $('#saveMsg').onclick = (e) => saveCfg({ message: $('#updMsg').value.trim() }, e.target);
 $('#reloadDash').onclick = loadDash;
 
@@ -399,7 +416,7 @@ document.querySelectorAll('.tabs button').forEach((b) => b.onclick = () => { fbT
 $('#fbList').onclick = async (e) => {
   const b = e.target.closest('button[data-a]'); if (!b) return;
   const id = b.closest('.fb').dataset.id, it = fb.find((x) => x.id === id);
-  if (b.dataset.a === 'del' && !confirm('Delete this message?')) return;
+  if (b.dataset.a === 'del' && !(await askBox({ title: 'Delete this message?', ok: 'Delete', danger: true }))) return;
   const r = await call(b.dataset.a === 'del' ? 'admin/feedback/delete' : 'admin/feedback/done', { id, done: !it.done });
   if (r.error) return alert(r.error);
   if (b.dataset.a === 'del') fb = fb.filter((x) => x.id !== id); else it.done = !it.done;
@@ -417,6 +434,52 @@ window.flux = {
   unbadge: async (who, b) => { const r = await call('admin/badge', { email: who, badge: b, on: false }); load(); return r.error || 'Done: ' + (r.badges || []).join(', '); }
 };
 
+// ---------- dialogs (the app's admin window can't show prompt() boxes) ----------
+function askBox({ title, text = '', input = null, ok = 'OK', danger = false, cancel = true, html = '' }) {
+  return new Promise((res) => {
+    const bg = document.createElement('div'); bg.className = 'dlg-bg';
+    bg.innerHTML = `<div class="dlg"><h3></h3><p></p>${html}${input ? `<input type="${input}" autocomplete="off">` : ''}<div class="row">${cancel ? '<button data-x>Cancel</button>' : ''}<button class="${danger ? 'danger' : 'primary'}" data-ok></button></div></div>`;
+    bg.querySelector('h3').textContent = title; bg.querySelector('p').textContent = text; bg.querySelector('[data-ok]').textContent = ok;
+    if (!text) bg.querySelector('p').remove();
+    const inp = bg.querySelector('input');
+    const done = (v) => { bg.remove(); document.removeEventListener('keydown', key); res(v); };
+    const key = (e) => { if (e.key === 'Escape') done(input ? null : false); if (e.key === 'Enter' && document.activeElement !== bg.querySelector('[data-x]')) done(input ? inp.value : true); };
+    bg.querySelector('[data-ok]').onclick = () => done(input ? inp.value : true);
+    const x = bg.querySelector('[data-x]'); if (x) x.onclick = () => done(input ? null : false);
+    bg.onmousedown = (e) => { if (e.target === bg) done(input ? null : false); };
+    document.addEventListener('keydown', key);
+    document.body.appendChild(bg); (inp || bg.querySelector('[data-ok]')).focus();
+  });
+}
+window.alert = (m) => askBox({ title: String(m), ok: 'OK', cancel: false });
+// ---------- badge + theme menus ----------
+const SHOP_THEMES = { xmas: ['Christmas Eve', 'Deep pine green with candle-red and gold. Limited.', 'linear-gradient(135deg,#0f2a1d,#1d4a30 55%,#c8323a)'], candycane: ['Candy Cane', 'Peppermint red and snowy white. Limited.', 'linear-gradient(135deg,#2a0e12,#7a1d27 50%,#f4eded)'], snowfall: ['Snowfall', 'Icy night blue with soft snow. Limited.', 'linear-gradient(135deg,#0d1726,#1e3552 55%,#dfeaf7)'] };
+function itemMenu(kind, u) {
+  if (!u) return;
+  const isB = kind === 'badges';
+  const have = new Set((isB ? u.badges : u.themes) || []);
+  const items = isB ? Object.keys(BADGES).map((k) => { const x = (typeof BADGE_INFO !== 'undefined' && BADGE_INFO[k]) || { name: BADGES[k][0], color: BADGES[k][1], desc: '', icon: '' }; return [k, x.name, x.desc, x.color, `<span class="ic"><svg viewBox="0 0 24 24">${x.icon}</svg></span>`]; })
+    : Object.entries(SHOP_THEMES).map(([k, [n, d, g]]) => [k, n, d, '#ffd23f', `<span class="sw" style="background:${g}"></span>`]);
+  const html = `<div class="bgrid">${items.map(([k, n, d, c, vis]) => `<button class="bcard${have.has(k) ? ' on' : ''}" data-k="${k}" style="--bc:${c}"><span class="tick"></span>${vis}<b>${esc(n)}</b><small>${esc(d)}</small></button>`).join('')}</div>`;
+  askBox({ title: (isB ? 'Badges for ' : 'Limited themes for ') + (u.username ? '@' + u.username : u.email), text: isB ? 'Click a badge to give it or take it away. It changes right away.' : 'Click a theme to give it or take it away. They can use it right after the app checks their account.', html, ok: 'Done', cancel: false }).then(load);
+  document.querySelectorAll('.dlg .bcard').forEach((c) => (c.onclick = async () => {
+    const on = !c.classList.contains('on'); c.disabled = true;
+    const r = await call(isB ? 'admin/badge' : 'admin/theme', isB ? { email: u.email, badge: c.dataset.k, on } : { email: u.email, theme: c.dataset.k, on });
+    c.disabled = false;
+    if (r.error) { c.querySelector('small').textContent = r.error; return; }
+    c.classList.toggle('on', on);
+    if (isB) u.badges = r.badges; else u.themes = r.themes;
+  }));
+}
+// ---------- open a template as a real project to check it ----------
+function openTplProject(t) {
+  if (!t) return;
+  const tp = { ...t.tpl, name: t.name, desc: t.desc || '', by: t.byName, community: true, id: 'review-' + t.id };
+  const data = encodeURIComponent(JSON.stringify(tp));
+  if (/[?&]app=1/.test(location.search)) { window.open('flux-template:' + data); return; }
+  window.open('/lite/#trytpl=' + data, '_blank');
+}
+
 // ---------- community templates ----------
 let tpls = [], tplTab = 'pending';
 async function loadTpl() {
@@ -429,27 +492,40 @@ function drawTpl() {
   const list = tpls.filter((t) => t.status === tplTab);
   $('#tplList').innerHTML = list.length ? list.map((t) => {
     const total = t.tpl.slots.reduce((a, b) => a + b, 0);
-    return `<div class="tpl" data-id="${esc(t.id)}">
+    return `<div class="tpl" data-id="${esc(t.id)}"><div class="pv" title="Hover to play · click to open it as a project"></div>
       <div class="meta"><b>${esc(t.name)}</b><span>by @${esc(t.byName)}</span><span>${new Date(t.at).toLocaleString()}</span><span class="pill">${esc(t.tpl.aspect)} · ${t.tpl.slots.length} clips · ${Math.round(total)}s · ${esc(t.tpl.trans)} · ${esc(t.tpl.filter)}</span></div>
       ${t.desc ? `<p style="margin:0">${esc(t.desc)}</p>` : ''}
       <div class="strip">${t.tpl.slots.map((d, i) => `<i style="flex:${d};background:hsl(${(i * 37) % 360} 70% 65%)">${d}s</i>`).join('')}</div>
       ${t.tpl.texts.length ? `<div class="texts">${t.tpl.texts.map((x) => `<span>“${esc(x.content)}” at ${x.t}s</span>`).join('')}</div>` : '<span class="muted">No titles</span>'}
       ${t.note ? `<span class="muted">Note: ${esc(t.note)}</span>` : ''}
-      <div class="acts">${t.status !== 'approved' ? '<button class="small" data-a="approve">Approve</button>' : ''}${t.status !== 'rejected' ? '<button class="small danger" data-a="reject">Reject…</button>' : ''}${t.status !== 'pending' ? '<button class="small" data-a="pending">Back to waiting</button>' : ''}<button class="small danger" data-a="del">Delete</button></div></div>`;
+      <div class="acts">${t.status !== 'approved' ? '<button class="small" data-a="approve">Approve</button>' : ''}${t.status !== 'rejected' ? '<button class="small danger" data-a="reject">Reject</button>' : ''}${t.status !== 'pending' ? '<button class="small" data-a="pending">Back to waiting</button>' : ''}<button class="small danger" data-a="del">Delete</button><button class="small" data-a="open">Open as a project</button></div></div>`;
   }).join('') : '<span class="muted">Nothing here.</span>';
+  // live preview of each template (plays on hover)
+  list.forEach((t) => {
+    const box = document.querySelector(`.tpl[data-id="${CSS.escape(t.id)}"] .pv`); if (!box) return;
+    const tp = { ...t.tpl, name: t.name }, cv = tplCanvas(tp, 300), T = tplTotal(tp);
+    box.appendChild(cv);
+    let raf = 0, t0 = 0;
+    const still = () => { try { drawTemplateFrame(cv, tp, Math.min(T - 0.05, (tp.texts && tp.texts[0] ? tp.texts[0].t + 0.9 : 1))); } catch (e) { console.error(e); } };
+    still();
+    box.onmouseenter = () => { box.classList.add('playing'); t0 = performance.now(); const loop = (n) => { try { drawTemplateFrame(cv, tp, ((n - t0) / 1000) % T); } catch {} raf = requestAnimationFrame(loop); }; raf = requestAnimationFrame(loop); };
+    box.onmouseleave = () => { cancelAnimationFrame(raf); box.classList.remove('playing'); still(); };
+    box.onclick = () => openTplProject(t);
+  });
 }
 document.querySelectorAll('.ttabs button').forEach((b) => b.onclick = () => { tplTab = b.dataset.k; document.querySelectorAll('.ttabs button').forEach((x) => x.classList.toggle('on', x === b)); drawTpl(); });
 $('#tplList').onclick = async (e) => {
   const b = e.target.closest('button[data-a]'); if (!b) return;
   const id = b.closest('.tpl').dataset.id, a = b.dataset.a;
   let r;
-  if (a === 'del') { if (!confirm('Delete this template for good?')) return; r = await call('admin/templates/delete', { id }); }
+  if (a === 'open') return openTplProject(tpls.find((x) => x.id === id));
+  if (a === 'del') { if (!(await askBox({ title: 'Delete this template for good?', text: 'It disappears for everyone.', ok: 'Delete', danger: true }))) return; r = await call('admin/templates/delete', { id }); }
   else {
     let note = '';
-    if (a === 'reject') { note = prompt('Why not? (the person sees this, optional)', ''); if (note === null) return; }
+    if (a === 'reject') { note = await askBox({ title: 'Reject this template?', text: 'Why not? The person sees this (optional).', input: 'text', ok: 'Reject', danger: true }); if (note === null) return; }
     r = await call('admin/templates/review', { id, status: a === 'approve' ? 'approved' : a === 'reject' ? 'rejected' : 'pending', note });
   }
-  if (r.error) return alert(r.error);
+  if (r.error) return askBox({ title: 'Something went wrong', text: r.error, ok: 'OK', cancel: false });
   loadTpl();
 };
 $('#reloadTpl').onclick = loadTpl;

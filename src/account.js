@@ -32,7 +32,7 @@ async function apiCall(path, body, token) {
 }
 
 function storeAccount(token, a) {
-  settings.account = { token, email: a.email, username: a.username || null, uid: a.uid || null, avatar: a.avatar || null, badges: a.badges || [], privacy: a.privacy || { private: false, requests: 'everyone' }, twoFactor: !!a.twoFactor, needAge: !!a.needAge, admin: !!a.admin, premium: !!a.premium, until: a.until || null, source: a.source || null, termsVersion: a.termsVersion || (settings.account && settings.account.termsVersion) || null, checkedAt: Date.now() };
+  settings.account = { token, email: a.email, username: a.username || null, uid: a.uid || null, avatar: a.avatar || null, badges: a.badges || [], privacy: a.privacy || { private: false, requests: 'everyone' }, twoFactor: !!a.twoFactor, needAge: !!a.needAge, admin: !!a.admin, premium: !!a.premium, until: a.until || null, source: a.source || null, termsVersion: a.termsVersion || (settings.account && settings.account.termsVersion) || null, themes: a.themes || [], checkedAt: Date.now() };
   saveSettings();
   updatePremiumBadge(); updateAccountButton();
   if (!a.username || a.needAge) setTimeout(askProfile, 600);

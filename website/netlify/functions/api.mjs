@@ -95,6 +95,8 @@ const userByName = async (n) => { const e = await names().get(nameKey(n)); retur
 
 // ---------- profiles: a stable id, picture, badges, friends and followers (emails are never shown to others) ----------
 const BADGES = ['founder', 'developer', 'verified', 'bughunter', 'contributor', 'support', 'sponsor', 'creator', 'educator'];
+// limited themes people buy (or get from the owner) - kept on the account so they work on every computer
+const SHOP_THEMES = ['xmas', 'candycane', 'snowfall'];
 async function ensureUid(u) {
   if (u.uid) return false;
   u.uid = crypto.randomBytes(6).toString('hex');
@@ -269,7 +271,7 @@ const publicUser = async (u, force) => {
   if (await ensureUid(u)) await saveUser(u);
   const st = await status(u, force);
   return { email: u.email, username: u.username || null, uid: u.uid, avatar: avatarUrl(u), badges: badgesOf(u, st.premium), privacy: privacyOf(u), twoFactor: !!u.twoFA,
-    needAge: !u.birthYear && u.email !== ADMIN_EMAIL, admin: u.email === ADMIN_EMAIL, termsVersion: u.termsVersion || null, ...st };
+    needAge: !u.birthYear && u.email !== ADMIN_EMAIL, admin: u.email === ADMIN_EMAIL, termsVersion: u.termsVersion || null, themes: (u.themes || []).filter((x) => SHOP_THEMES.includes(x)), ...st };
 };
 const tokenFor = (u) => makeToken(u.email, u.tv || 0);
 const banned = (u) => fail('This account is banned' + (u.banned && u.banned.reason ? ': ' + u.banned.reason : '.') + ' Questions? flux.editing.app@gmail.com', 403);
@@ -693,7 +695,7 @@ export default async (req) => {
       if (action === 'users') {
         const list = (await allUsers()).map((u) => ({
           email: u.email, username: u.username || null, badges: (u.badges || []).filter((x) => BADGES.includes(x)), avatar: avatarUrl(u), twoFactor: !!u.twoFA, createdAt: u.createdAt, lastLogin: u.lastLogin || null, lastSeen: u.lastSeen || null,
-          version: u.version || null, os: u.os || null, hasPassword: !!u.hash && isVerified(u), banned: u.banned || null,
+          version: u.version || null, os: u.os || null, hasPassword: !!u.hash && isVerified(u), banned: u.banned || null, themes: u.themes || [],
           grantUntil: u.grantUntil || 0, subscription: u.stripe ? { active: !!u.stripe.active, until: u.stripe.until || null } : null
         }));
         list.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
@@ -798,6 +800,16 @@ export default async (req) => {
         u.badges = BADGES.filter((x) => set.has(x));
         await saveUser(u);
         return json({ ok: true, badges: u.badges });
+      }
+      if (action === 'theme') {
+        if (!(await getUser(target))) return fail('No account with that email / username.');
+        const t = String(body.theme || '');
+        if (!SHOP_THEMES.includes(t)) return fail('Themes: ' + SHOP_THEMES.join(', '));
+        const set = new Set(u.themes || []);
+        if (body.on === false) set.delete(t); else set.add(t);
+        u.themes = SHOP_THEMES.filter((x) => set.has(x));
+        await saveUser(u);
+        return json({ ok: true, themes: u.themes });
       }
       if (action === 'revoke') { u.grantUntil = 0; await saveUser(u); return json({ ok: true }); }
       if (action === 'password') {

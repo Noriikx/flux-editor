@@ -177,6 +177,20 @@ function createWindow() {
 // ---------- admin panel (owner only - the server checks the account on every request) ----------
 let adminWin = null;
 const ADMIN_ORIGIN = 'https://flux-editor.netlify.app';
+// writes the coloured "Clip 1, Clip 2…" pictures used to preview a template as a project
+ipcMain.handle('template:placeholders', async (_e, list) => {
+  const dir = path.join(app.getPath('userData'), 'template-preview');
+  fs.mkdirSync(dir, { recursive: true });
+  const out = [];
+  for (let i = 0; i < Math.min(40, (list || []).length); i++) {
+    const m = /^data:image\/png;base64,([A-Za-z0-9+/=]+)$/.exec(String(list[i] || ''));
+    if (!m) continue;
+    const p = path.join(dir, 'clip-' + (i + 1) + '-' + Date.now() + '.png');
+    fs.writeFileSync(p, Buffer.from(m[1], 'base64'));
+    out.push(p);
+  }
+  return out;
+});
 ipcMain.handle('admin:open', (_e, token) => {
   if (typeof token !== 'string' || !/^[\w.-]{20,2000}$/.test(token)) return false;
   if (adminWin && !adminWin.isDestroyed()) { adminWin.show(); adminWin.focus(); return true; }
@@ -187,7 +201,18 @@ ipcMain.handle('admin:open', (_e, token) => {
   });
   // stay on the admin site; anything else opens in the normal browser
   adminWin.webContents.on('will-navigate', (ev, url) => { if (!url.startsWith(ADMIN_ORIGIN + '/admin.html')) { ev.preventDefault(); if (/^https:\/\//.test(url)) shell.openExternal(url); } });
-  adminWin.webContents.setWindowOpenHandler(({ url }) => { if (/^https:\/\//.test(url)) shell.openExternal(url); return { action: 'deny' }; });
+  adminWin.webContents.setWindowOpenHandler(({ url }) => {
+    // "Open as a project" on a template someone sent in: hand it to the editor window
+    if (url.startsWith('flux-template:')) {
+      try {
+        const tp = JSON.parse(decodeURIComponent(url.slice('flux-template:'.length)));
+        if (tp && Array.isArray(tp.slots) && win && !win.isDestroyed()) { win.webContents.send('template:review', tp); if (win.isMinimized()) win.restore(); win.show(); win.focus(); }
+      } catch {}
+      return { action: 'deny' };
+    }
+    if (/^https:\/\//.test(url)) shell.openExternal(url);
+    return { action: 'deny' };
+  });
   adminWin.on('closed', () => { adminWin = null; });
   // the token goes in the #hash, which is never sent over the network
   adminWin.loadURL(ADMIN_ORIGIN + '/admin.html?app=1#t=' + encodeURIComponent(token));
@@ -368,6 +393,21 @@ ipcMain.handle('snapshot:save', async (_e, dataUrl) => {
   });
   if (r.canceled) return null;
   fs.writeFileSync(r.filePath, Buffer.from(dataUrl.split(',')[1], 'base64'));
+  return r.filePath;
+});
+
+ipcMain.handle('thumb:save', async (_e, o) => {
+  const safe = String((o && o.name) || 'Thumbnail').replace(/[\\/:*?"<>|]+/g, ' ').slice(0, 80);
+  const r = await dialog.showSaveDialog(win, {
+    title: 'Save thumbnail',
+    defaultPath: path.join(app.getPath('pictures'), safe + '.png'),
+    filters: [{ name: 'PNG image', extensions: ['png'] }, { name: 'JPEG image (smaller - YouTube allows up to 2 MB)', extensions: ['jpg', 'jpeg'] }]
+  });
+  if (r.canceled || !r.filePath) return null;
+  const jpg = /\.jpe?g$/i.test(r.filePath), url = String(jpg ? o.jpg : o.png);
+  const m = /^data:image\/(png|jpeg);base64,([A-Za-z0-9+/=]+)$/.exec(url);
+  if (!m) return null;
+  fs.writeFileSync(r.filePath, Buffer.from(m[2], 'base64'));
   return r.filePath;
 });
 
@@ -1455,31 +1495,95 @@ ipcMain.handle('shorts:platform', async (e, raw) => {
   if (dur > 12 * 3600) return { error: 'That video is longer than 12 hours. Pick a shorter one.' };
   const id = String(meta.id || crypto.createHash('sha1').update(u.href).digest('hex')).replace(/[^\w-]/g, '').slice(0, 40);
   const site = /twitch/i.test(u.hostname) ? 'twitch' : 'yt';
-  const file = path.join(shortsDir(), `${site}-${id}.mp4`);
   const name = String(meta.title || 'Video').replace(/[\\/:*?"<>|]+/g, ' ').slice(0, 90);
-  if (fs.existsSync(file) && fs.statSync(file).size > 100000) return { path: file, name, duration: dur };
-  // 2) download it (1080p at most - enough for vertical Shorts; long streams use 720p to save time and space)
-  const h = dur > 2 * 3600 ? 720 : 1080;
-  const fmt = `bv*[height<=${h}][vcodec^=avc1]+ba[ext=m4a]/bv*[height<=${h}]+ba/b[height<=${h}]/b`;
-  const ffdir = path.dirname(ffmpegPath());
+  // Nothing is downloaded here. Flux reads the video's captions and its "most replayed" graph instead,
+  // and later downloads only the moments that become Shorts.
+  let words = null;
+  try { words = await platformCaptions(meta); } catch (err) { console.warn('captions', err); }
+  const heat = Array.isArray(meta.heatmap) ? meta.heatmap.map((h) => [+h.start_time || 0, +h.end_time || 0, +h.value || 0]) : null;
+  return { remote: true, url: u.href, id, site, name, duration: dur, words, heat, channel: meta.channel || meta.uploader || '' };
+});
+// the video's own captions (made by the creator, or YouTube's automatic ones) as words with times
+async function platformCaptions(meta) {
+  const lang = String(meta.language || '').split('-')[0];
+  const subs = meta.subtitles || {}, auto = meta.automatic_captions || {};
+  const keys = (o) => Object.keys(o).filter((k) => k !== 'live_chat');
+  const pickKey = () => {
+    const own = keys(subs);
+    const hit = own.find((k) => lang && k.split('-')[0] === lang) || own.find((k) => /^en\b/.test(k)) || own[0];
+    if (hit) return [subs, hit];
+    const ak = keys(auto);
+    const a1 = ak.find((k) => /-orig$/.test(k)) || ak.find((k) => lang && k === lang) || (lang ? null : ak.find((k) => /^en\b/.test(k)));
+    return a1 ? [auto, a1] : null;
+  };
+  const got = pickKey();
+  if (!got) return null;
+  const list = got[0][got[1]] || [];
+  const j3 = list.find((x) => x.ext === 'json3');
+  if (!j3 || !j3.url) return null;
+  const res = await net.fetch(j3.url, { headers: { 'User-Agent': 'Mozilla/5.0' } });
+  if (!res.ok) return null;
+  const data = await res.json();
+  const words = [];
+  for (const ev of data.events || []) {
+    if (!ev.segs) continue;
+    const t0 = (ev.tStartMs || 0) / 1000, evEnd = t0 + (ev.dDurationMs || 0) / 1000;
+    const segs = ev.segs.filter((x) => x.utf8 && x.utf8.trim() && x.utf8 !== '\n');
+    segs.forEach((sg, i) => {
+      const s = t0 + (sg.tOffsetMs || 0) / 1000;
+      const nx = segs[i + 1], e = nx ? t0 + (nx.tOffsetMs || 0) / 1000 : Math.min(evEnd, s + 0.8);
+      for (const w of sg.utf8.trim().split(/\s+/)) {
+        if (!w || /^\[.*\]$/.test(w)) continue;
+        words.push({ w: w.replace(/&#39;/g, "'").replace(/&amp;/g, '&'), s, e: Math.max(s + 0.12, e) });
+      }
+    });
+  }
+  words.sort((x, y) => x.s - y.s);
+  return words.length > 20 ? words : null;
+}
+// no captions (most Twitch streams): get only the sound, at low quality, to listen to it. Removed again later.
+ipcMain.handle('shorts:platformAudio', async (e, o) => {
+  const send = (v) => { try { e.sender.send('shorts:progress', v); } catch {} };
+  try { await ensureYtdlp(send); } catch (err) { return { error: err.message }; }
+  const dir = shortsDir();
+  // old sound files from earlier links go away after 2 days
+  for (const f of fs.readdirSync(dir)) { if (/-sound\./.test(f)) { try { const st = fs.statSync(path.join(dir, f)); if (Date.now() - st.mtimeMs > 2 * 86400000) fs.unlinkSync(path.join(dir, f)); } catch {} } }
+  const base = `${o.site}-${String(o.id).replace(/[^\w-]/g, '')}-sound`;
+  const have = fs.readdirSync(dir).find((f) => f.startsWith(base + '.') && !/\.part$/.test(f));
+  if (have) return { path: path.join(dir, have) };
   let last = 0;
-  const r = await runYtdlp(['--no-playlist', '--no-warnings', '--newline', '-f', fmt, '--merge-output-format', 'mp4', '--ffmpeg-location', ffdir,
-    '--no-part', '-o', path.join(shortsDir(), `${site}-${id}.%(ext)s`), u.href], (line) => {
+  const r = await runYtdlp(['--no-playlist', '--no-warnings', '--newline', '-f', 'ba[abr<=96]/worstaudio/ba/w', '--no-part', '-o', path.join(dir, base + '.%(ext)s'), o.url], (line) => {
     const m = /\[download\]\s+([\d.]+)%(?:\s+of\s+~?\s*([\d.]+\s*\w+))?(?:.*?ETA\s+([\d:]+))?/.exec(line);
-    if (m && Date.now() - last > 250) { last = Date.now(); send({ stage: 'download', value: Math.min(1, +m[1] / 100), size: m[2] || '', eta: m[3] || '' }); }
-    if (/\[Merger\]|\[FixupM3u8\]|\[VideoConvertor\]/.test(line)) send({ stage: 'merge', value: null });
+    if (m && Date.now() - last > 250) { last = Date.now(); send({ stage: 'sound', value: Math.min(1, +m[1] / 100), size: m[2] || '', eta: m[3] || '' }); }
   });
-  if (r.code !== 0) {
-    if (r.code === null || /SIGTERM|SIGKILL/.test(r.err)) return { error: 'cancelled' };
-    return { error: ytError(r.err) };
-  }
-  if (!fs.existsSync(file)) {
-    // yt-dlp sometimes keeps another container: find what it made
-    const other = fs.readdirSync(shortsDir()).find((f) => f.startsWith(`${site}-${id}.`) && /\.(mp4|mkv|webm|m4a)$/.test(f));
-    if (!other) return { error: 'The download didn\u2019t finish. Try again.' };
-    return { path: path.join(shortsDir(), other), name, duration: dur };
-  }
-  return { path: file, name, duration: dur };
+  if (r.code !== 0) return { error: r.code === null || /SIGTERM|SIGKILL/.test(r.err) ? 'cancelled' : ytError(r.err) };
+  const f = fs.readdirSync(dir).find((x) => x.startsWith(base + '.'));
+  return f ? { path: path.join(dir, f) } : { error: 'The sound didn’t download. Try again.' };
+});
+// download only one moment of the video (for one Short)
+ipcMain.handle('shorts:section', async (e, o) => {
+  const send = (v) => { try { e.sender.send('shorts:progress', v); } catch {} };
+  try { await ensureYtdlp(send); } catch (err) { return { error: err.message }; }
+  const start = Math.max(0, Math.floor(+o.start || 0)), end = Math.ceil(+o.end || 0);
+  if (!(end > start)) return { error: 'Nothing to download.' };
+  const base = `${o.site}-${String(o.id).replace(/[^\w-]/g, '')}-${start}-${end}`;
+  const dir = shortsDir();
+  const have = fs.readdirSync(dir).find((f) => f.startsWith(base + '.') && /\.(mp4|mkv|webm)$/.test(f) && fs.statSync(path.join(dir, f)).size > 50000);
+  if (have) return { path: path.join(dir, have), start };
+  const fmt = 'bv*[height<=1080][vcodec^=avc1]+ba[ext=m4a]/bv*[height<=1080]+ba/b[height<=1080]/b';
+  let last = 0;
+  const r = await runYtdlp(['--no-playlist', '--no-warnings', '--newline', '-f', fmt, '--download-sections', `*${start}-${end}`, '--force-keyframes-at-cuts',
+    '--merge-output-format', 'mp4', '--ffmpeg-location', path.dirname(ffmpegPath()), '--no-part', '-o', path.join(dir, base + '.%(ext)s'), o.url], (line) => {
+    const m = /\[download\]\s+([\d.]+)%/.exec(line) || /time=(\d+):(\d+):([\d.]+)/.exec(line);
+    if (m && Date.now() - last > 250) {
+      last = Date.now();
+      const v = m.length === 2 ? +m[1] / 100 : (+m[1] * 3600 + +m[2] * 60 + +m[3]) / (end - start);
+      send({ stage: 'section', value: Math.max(0, Math.min(1, v)) });
+    }
+  });
+  if (r.code !== 0) return { error: r.code === null || /SIGTERM|SIGKILL/.test(r.err) ? 'cancelled' : ytError(r.err) };
+  const f = fs.readdirSync(dir).find((x) => x.startsWith(base + '.') && /\.(mp4|mkv|webm)$/.test(x));
+  return f ? { path: path.join(dir, f), start } : { error: 'That part didn’t download. Try again.' };
 });
 ipcMain.handle('shorts:cancelLink', () => { if (ytdlpProc) { try { ytdlpProc.kill(); } catch {} } return true; });
 

@@ -197,6 +197,37 @@ function shProbe(file) {
   });
 }
 const shPro = () => typeof requirePremium !== 'function' || requirePremium('Viral Shorts');
+// the file Flux listens to: the video itself, or only the sound of a YouTube / Twitch link
+function shFile() { return (SH.src && SH.src.audioPath) || (SH.src && SH.src.path); }
+// YouTube's "most replayed" graph, turned into the loudness-like signal the moment finder uses
+function shHeatPeaks(heat, D) {
+  if (!heat || !heat.length || !D) return null;
+  const n = Math.ceil(D * 40), out = new Array(n).fill(0.12);
+  for (const [a, b, v] of heat) { const i0 = Math.max(0, Math.floor(a * 40)), i1 = Math.min(n, Math.ceil(b * 40)); for (let i = i0; i < i1; i++) out[i] = 0.08 + 0.5 * v; }
+  return out;
+}
+function shHeat(results) {
+  const heat = SH.src && SH.src.heat;
+  if (!heat || !heat.length) return results;
+  for (const r of results) {
+    const parts = heat.filter(([a, b]) => b > r.s && a < r.e);
+    const v = parts.length ? parts.reduce((x, h) => x + h[2], 0) / parts.length : 0;
+    if (v > 0.55) { r.why = [...(r.why || []).filter((w) => w !== 'Most replayed'), 'Most replayed']; r.viral = Math.min(99, Math.round(r.viral + (v - 0.5) * 20)); }
+  }
+  return results.sort((a, b) => b.viral - a.viral);
+}
+function shHookProgress() {
+  if (rt.shProgHooked || !api.onShortsProgress) return;
+  rt.shProgHooked = true;
+  api.onShortsProgress((v) => {
+    if (!SH.linkDl) return;
+    if (v.stage === 'tool') shStage('Getting the downloader (first time only)', v.value || null);
+    else if (v.stage === 'info') shStage('Reading the video', null);
+    else if (v.stage === 'sound') shStage(`Getting only the sound… ${Math.round(v.value * 100)}%${v.size ? ' of ' + v.size : ''}`, v.value);
+    else if (v.stage === 'section') shStage(`Downloading just this moment… ${Math.round(v.value * 100)}%`, v.value);
+    else if (v.stage === 'download') shStage(`Downloading… ${Math.round(v.value * 100)}%`, v.value);
+  });
+}
 async function shRun() {
   if (!SH.src || SH.busy) return;
   if (!shPro()) return;
@@ -212,9 +243,22 @@ async function shRun() {
   try {
     if (SH.wordsKey !== key || !SH.words) {
       SH.words = null; SH.peaks = null; SH.refined = [];
-      shStage('Reading the sound', null); shRender();
-      const pk = api.mediaPeaks ? await api.mediaPeaks(SH.src.path) : null;
-      SH.peaks = pk && pk.peaks ? pk.peaks : null;
+      const remote = SH.src.remote;
+      if (remote) SH.peaks = shHeatPeaks(SH.src.heat, D);
+      if (remote && SH.src.words) { SH.words = SH.src.words; SH.wordsKey = key; SH.refined = [[0, D]]; }
+      else if (remote && !SH.src.audioPath) {
+        // no captions: get only the sound (small, deleted after 2 days) so Flux can listen to it
+        shStage('Getting the sound of the video (not the video itself)', null); shRender();
+        SH.linkDl = true; shHookProgress();
+        let ra; try { ra = await api.shortsPlatformAudio(SH.src); } finally { SH.linkDl = false; }
+        if (ra.error) throw new Error(ra.error === 'cancelled' ? 'stopped' : ra.error);
+        SH.src.audioPath = ra.path;
+      }
+    }
+    if (SH.wordsKey !== key || !SH.words) {
+      if (!SH.src.remote || SH.src.audioPath) { shStage('Reading the sound', null); shRender(); }
+      const pk = !SH.src.remote || SH.src.audioPath ? (api.mediaPeaks ? await api.mediaPeaks(shFile()) : null) : null;
+      if (pk && pk.peaks && !(SH.src.remote && SH.src.heat)) SH.peaks = pk.peaks;
       const saved = shCacheGet(key);
       if (saved) { SH.words = saved.words; SH.refined = saved.refined || []; SH.wordsKey = key; }
       else {
@@ -228,7 +272,7 @@ async function shRun() {
           rt.asrProgress = (v) => { if (v.stage === 'download') shStage('Downloading the speech model (first time only)', v.value || null); };
           const el = (performance.now() - t0) / 1000, left = t > 0 ? el / (t / D) - el : 0;
           shStage(`Listening… ${fmtMin(t)} of ${fmtMin(D)}${left > 20 ? ' · about ' + fmtMin(left) + ' left' : ''}`, (t / D) * (quick !== model ? 0.8 : 1));
-          const r = await tx({ file: SH.src.path, start: t, end, model: quick, language: lang });
+          const r = await tx({ file: shFile(), start: t, end, model: quick, language: lang });
           if (r && r.error) throw new Error(r.error);
           for (const w of (r && r.words) || []) words.push({ w: w.w, s: w.s + t, e: w.e + t });
         }
@@ -239,7 +283,7 @@ async function shRun() {
     }
     shStage('Finding the best moments', null); shRender();
     await new Promise((r) => setTimeout(r, 30));
-    SH.results = shAnalyze(SH.words, SH.peaks, D, SH.opts);
+    SH.results = shHeat(shAnalyze(SH.words, SH.peaks, D, SH.opts));
     // second pass: the picked moments are listened to again with the accurate model, then picked again
     for (let round = 0; round < 2 && SH.results.length && !SH.stop; round++) {
       const todo = SH.results.filter((r) => !SH.refined.some(([a, b]) => r.s >= a - 1 && r.e <= b + 1));
@@ -249,7 +293,7 @@ async function shRun() {
         if (SH.stop) break;
         shStage(`Listening closely to the best moments… ${++n} of ${todo.length}`, 0.8 + 0.2 * (n / todo.length));
         const a = Math.max(0, r.s - 8), b = Math.min(D, r.e + 8);
-        const res = await tx({ file: SH.src.path, start: a, end: b, model, language: lang });
+        const res = await tx({ file: shFile(), start: a, end: b, model, language: lang });
         SH.refined.push([a + 1, b - 1]); // listened to closely (even if nothing new was heard)
         if (!res || res.error || !res.words || !res.words.length) continue;
         const fresh = res.words.map((w) => ({ w: w.w, s: w.s + a, e: w.e + a })).filter((w) => w.s >= a + 0.5 && w.e <= b - 0.5);
@@ -258,7 +302,7 @@ async function shRun() {
         SH.words = [...SH.words.filter((w) => w.e <= fa || w.s >= fb), ...fresh].sort((x, y) => x.s - y.s);
       }
       if (SH.stop) throw new Error('stopped');
-      SH.results = shAnalyze(SH.words, SH.peaks, D, SH.opts);
+      SH.results = shHeat(shAnalyze(SH.words, SH.peaks, D, SH.opts));
     }
     shCachePut(key, { words: SH.words, refined: SH.refined });
     if (!SH.results.length) toast(SH.words.length < 30 ? 'Flux couldn’t hear enough speech in this file' : 'No moments of that length were found - try another clip length', { error: true });
@@ -322,7 +366,7 @@ async function shPlatform(url) {
   if (!api.shortsPlatform) return toast('Update Flux to use YouTube and Twitch links', { error: true });
   if (!settings.ytOk) {
     const ok = await new Promise((res) => {
-      const box = modal(`<h2>Use this video?</h2><p class="sub">Flux will download the video to your computer to make Shorts from it. Only use videos <b>you made</b> or that you have <b>permission</b> to use - re-uploading other people's videos can break copyright and the site's rules.</p>
+      const box = modal(`<h2>Use this video?</h2><p class="sub">Flux reads the video’s captions to find the best moments - it doesn’t download the whole video. When you make a Short, only that moment is downloaded. Only use videos <b>you made</b> or that you have <b>permission</b> to use - re-uploading other people's videos can break copyright and the site's rules.</p>
         <div class="footer"><button class="btn ghost" data-a="no">Cancel</button><button class="btn primary" data-a="yes">It's my video / I have permission</button></div>`);
       $('[data-a=no]', box).onclick = () => { closeModal(); res(false); };
       $('[data-a=yes]', box).onclick = () => { closeModal(); res(true); };
@@ -332,21 +376,15 @@ async function shPlatform(url) {
   }
   SH.busy = true; SH.stop = false; SH.linkDl = true;
   shStage(/twitch/i.test(url) ? 'Opening the Twitch link' : 'Opening the YouTube link', null); shRender();
-  if (!rt.shProgHooked && api.onShortsProgress) {
-    rt.shProgHooked = true;
-    api.onShortsProgress((v) => {
-      if (!SH.linkDl) return;
-      if (v.stage === 'tool') shStage('Getting the downloader (first time only)', v.value || null);
-      else if (v.stage === 'info') shStage('Reading the video', null);
-      else if (v.stage === 'download') shStage(`Downloading the video… ${Math.round(v.value * 100)}%${v.size ? ' of ' + v.size : ''}${v.eta && v.eta !== '00:00' ? ' · ' + v.eta + ' left' : ''}`, v.value);
-      else if (v.stage === 'merge') shStage('Putting the video together', null);
-    });
-  }
+  shHookProgress();
   let r;
   try { r = await api.shortsPlatform(url); } finally { SH.busy = false; SH.linkDl = false; shStage('', 0); }
   if (r.error) { shRender(); if (r.error !== 'cancelled') toast(r.error, { error: true, duration: 8000 }); return; }
-  await shSetSource(r.path, r.name);
-  if (SH.src) toast('Ready - press Find the best moments');
+  shStopPreview();
+  SH.src = { remote: true, url: r.url, id: r.id, site: r.site, path: 'link:' + r.site + '-' + r.id, name: r.name, duration: r.duration, video: true, words: r.words, heat: r.heat };
+  SH.results = []; SH.feed = null; SH.words = null; SH.wordsKey = '';
+  shRender();
+  toast(r.words ? 'Ready - Flux will use the video’s captions. Nothing is downloaded until you make a Short.' : 'Ready - this one has no captions, so Flux will listen to its sound first. Press Find the best moments.', { duration: 7000 });
 }
 function shPlatformNote(host) {
   const box = modal(`<h2>Links from ${host} can't be downloaded</h2>
@@ -362,11 +400,23 @@ async function shCreate(r, { quiet = false } = {}) {
   if (!shPro()) return null;
   shStopPreview();
   if (state.inEditor) await saveNow();
-  const o = SH.opts, src = SH.src;
+  const o = SH.opts;
+  let src = SH.src, shift = 0;
+  if (src.remote) {
+    // download only this moment (a little extra on both sides for clean cuts)
+    SH.linkDl = true; shHookProgress(); shStage('Downloading just this moment…', 0); shRender();
+    let part;
+    try { part = await api.shortsSection({ url: src.url, id: src.id, site: src.site, start: Math.max(0, r.s - 1), end: Math.min(src.duration || r.e + 1, r.e + 1) }); } finally { SH.linkDl = false; shStage('', 0); shRender(); }
+    if (!part || part.error) { if (part && part.error !== 'cancelled') toast(part.error, { error: true, duration: 8000 }); return null; }
+    shift = part.start;
+    src = { path: part.path, name: src.name + ' (' + fmtMin(r.s) + ')', duration: r.e - r.s + 2, video: true };
+    r = { ...r, s: r.s - shift, e: r.e - shift };
+  }
+  const words = shift && SH.words ? SH.words.map((w) => ({ ...w, s: w.s - shift, e: w.e - shift })).filter((w) => w.e > 0 && w.s < r.e + 2) : SH.words;
   await createProject(r.title.replace(/[…?!.]+$/, '').slice(0, 50) || 'Short', '9:16');
   const [m] = await importFiles([{ path: src.path, name: src.name }]);
   if (!m) { toast('Flux couldn’t open the file for this Short', { error: true }); return null; }
-  if (SH.words) { m.words = SH.words; m.wordsKey = SH.wordsKey.split('|').slice(1).join('|'); }
+  if (words && !shift) { m.words = words; m.wordsKey = SH.wordsKey.split('|').slice(1).join('|'); }
   const L = r.e - r.s;
   let main = null, sound = null;
   commit(() => {
@@ -396,11 +446,11 @@ async function shCreate(r, { quiet = false } = {}) {
       P.clips.push(tc);
     }
     // captions from the words Flux already heard
-    if (o.captions && SH.words) {
+    if (o.captions && words) {
       const keep = { ...capOpts };
       capOpts.style = o.style; capOpts.pos = main ? 0.7 : 0.55; capOpts.perLine = 4; capOpts.size = 0;
       const capSrc = sound || spk;
-      const caps = buildCaptions(capSrc, SH.words);
+      const caps = buildCaptions(capSrc, words);
       Object.assign(capOpts, keep);
       const tr = captionTrack();
       for (const c of caps) { c.trackId = tr.id; P.clips.push(c); }
@@ -436,6 +486,12 @@ let shPrev = null;
 function shStopPreview() { if (shPrev) { try { shPrev.el.pause(); } catch {} shPrev = null; } }
 function shPreview(r, btn) {
   if (!SH.src) return;
+  if (SH.src.remote) {
+    const t = Math.max(0, Math.floor(r.s));
+    const u = SH.src.site === 'yt' ? `https://www.youtube.com/watch?v=${encodeURIComponent(SH.src.id)}&t=${t}s` : SH.src.url.split('?')[0] + '?t=' + Math.floor(t / 3600) + 'h' + Math.floor((t % 3600) / 60) + 'm' + (t % 60) + 's';
+    if (api && api.openExternal) api.openExternal(u);
+    return;
+  }
   if (shPrev && shPrev.r === r) { shStopPreview(); shRender(); return; }
   shStopPreview();
   shRender();
@@ -577,7 +633,7 @@ function shRender() {
       card.innerHTML = `<div class="sh-score" style="--v:${r.viral}"><span>${r.viral}</span></div>
         <div class="sh-info"><b class="sh-title"></b><small>${fmtMin(r.s)} - ${fmtMin(r.e)} · ${Math.round(r.e - r.s)}s</small><div class="sh-why">${r.why.map((w) => `<i>${w}</i>`).join('')}</div><p class="sh-text"></p>
         <div class="sh-pv sh-preview" hidden></div>
-        <div class="sh-actions"><button class="btn ghost sh-play">▶ Preview</button><button class="btn sh-make">Make Short</button></div></div>`;
+        <div class="sh-actions"><button class="btn ghost sh-play">${SH.src && SH.src.remote ? '▶ Watch on ' + (SH.src.site === 'yt' ? 'YouTube' : 'Twitch') : '▶ Preview'}</button><button class="btn sh-make">Make Short</button></div></div>`;
       $('.sh-title', card).textContent = r.title;
       $('.sh-text', card).textContent = '“' + r.text.slice(0, 190) + (r.text.length > 190 ? '…' : '') + '”';
       $('.sh-play', card).onclick = (e) => shPreview(r, e.currentTarget);

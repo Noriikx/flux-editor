@@ -3,7 +3,7 @@
    motion and transitions. Loaded after the editor (index.html) and shared.js (code shared with the desktop app). */
 const API_BASE = location.hostname === 'flux-editor.netlify.app' ? '/api/' : 'https://flux-editor.netlify.app/api/';
 const SITE = 'https://flux-editor.netlify.app';
-const APP_VERSION = '7.2.0';
+const APP_VERSION = '7.3.0';
 const TERMS_VERSION = '2026-11-24';
 const TF_URL = 'https://cdn.jsdelivr.net/npm/@huggingface/transformers@3.8.1/dist/transformers.min.js';
 const isPhone = matchMedia('(pointer: coarse)').matches;
@@ -714,6 +714,24 @@ const _sheetBgClick = $('#sheetBg').onclick;
 $('#sheetBg').onclick = () => { if ($('#editor').classList.contains('on')) return _sheetBgClick(); if (!SHS.busy) closeSheet(); };
 updateNavMe();
 if (signedIn()) { refreshMe(); checkRequests(); }
+// the owner's admin panel opens a sent-in template here to check it (coloured cards stand in for clips)
+async function tryTemplateFromLink(raw) {
+  let tp; try { tp = JSON.parse(decodeURIComponent(raw)); } catch { return toast('That template link is broken'); }
+  if (!tp || !Array.isArray(tp.slots) || !tp.slots.length) return;
+  const [W, H] = SIZES[tp.aspect] || SIZES['16:9'], k = 720 / Math.max(W, H), files = [];
+  for (let i = 0; i < tp.slots.length; i++) {
+    const c = document.createElement('canvas'); c.width = Math.round(W * k); c.height = Math.round(H * k);
+    const x = c.getContext('2d'), hue = (i * 47 + 210) % 360, g = x.createLinearGradient(0, 0, c.width, c.height);
+    g.addColorStop(0, `hsl(${hue} 70% 46%)`); g.addColorStop(1, `hsl(${(hue + 40) % 360} 75% 28%)`); x.fillStyle = g; x.fillRect(0, 0, c.width, c.height);
+    const s = Math.min(c.width, c.height); x.fillStyle = '#fff'; x.textAlign = 'center'; x.textBaseline = 'middle';
+    x.font = `800 ${Math.round(s * 0.16)}px sans-serif`; x.fillText('Clip ' + (i + 1), c.width / 2, c.height / 2);
+    const blob = await new Promise((r) => c.toBlob(r, 'image/png'));
+    files.push(new File([blob], `Clip ${i + 1}.png`, { type: 'image/png' }));
+  }
+  window.history.replaceState(null, '', location.pathname);
+  await buildFromTemplate({ ...tp, name: 'Review · ' + (tp.name || 'Template') }, files);
+}
+if ((location.hash || '').startsWith('#trytpl=')) setTimeout(() => tryTemplateFromLink(location.hash.slice(8)), 300);
 // open a page straight from a link, like /lite/#shorts
 const startPage = (location.hash || '').slice(1);
 if (['templates', 'shorts', 'friends', 'me'].includes(startPage)) go(startPage);
