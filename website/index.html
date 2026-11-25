@@ -93,8 +93,9 @@ body::after { content: ""; position: fixed; inset: -50%; z-index: 60; pointer-ev
 .ready .hero h1 .ln:nth-child(2) > span { transition-delay: .12s; }
 .lede { font-size: clamp(17px, 1.5vw, 20px); color: var(--muted); max-width: 34em; margin: 0 auto 38px; }
 .dl { display: flex; flex-wrap: wrap; gap: 14px; justify-content: center; }
-.mac-pick { margin-top: 16px; font-size: 13px; color: var(--dim); }
-.mac-pick a { color: var(--gold); text-underline-offset: 3px; }
+.lite-row { margin-top: 18px; display: flex; flex-wrap: wrap; gap: 8px; align-items: center; justify-content: center; font-size: 13px; color: var(--dim); }
+.lite-row > span { margin-right: 4px; } .lite-row b { color: var(--muted); }
+.lite-row .btn svg { width: 15px; height: 15px; }
 .dl-note { margin-top: 8px; color: var(--dim); font-size: 13px; letter-spacing: .02em; }
 .dl-note b { color: var(--muted); font-weight: 600; }
 .fade { opacity: 0; transform: translateY(18px); transition: opacity 1.1s var(--ease), transform 1.1s var(--ease); }
@@ -289,7 +290,10 @@ footer a:hover { color: var(--gold-hi); }
           <span>Download for Mac<small>Apple Silicon (M1-M4)</small></span>
         </a>
       </div>
-      <div class="mac-pick fade d3">Older Intel Mac? <a id="dlMacIntel" href="#">Get the Intel version</a></div>
+      <div class="lite-row fade d3"><span>Phone or older computer? Get <b>Flux Lite</b>:</span>
+        <a class="btn sm" href="/lite/"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M7.2 9.5h9.6v8.2c0 .7-.5 1.2-1.2 1.2h-.9v2.4a1.1 1.1 0 0 1-2.2 0v-2.4h-1v2.4a1.1 1.1 0 0 1-2.2 0v-2.4h-.9c-.7 0-1.2-.5-1.2-1.2zM5.3 9.4a1.1 1.1 0 0 1 1.1 1.1v4.6a1.1 1.1 0 0 1-2.2 0v-4.6c0-.6.5-1.1 1.1-1.1zm13.4 0a1.1 1.1 0 0 1 1.1 1.1v4.6a1.1 1.1 0 0 1-2.2 0v-4.6c0-.6.5-1.1 1.1-1.1zM15.3 4.2l1-1.6a.3.3 0 0 0-.5-.3l-1 1.7a6 6 0 0 0-5.6 0l-1-1.7a.3.3 0 1 0-.5.3l1 1.6a4.9 4.9 0 0 0-2.4 4.4h11.4a4.9 4.9 0 0 0-2.4-4.4zM9.5 7a.5.5 0 1 1 0-1 .5.5 0 0 1 0 1zm5 0a.5.5 0 1 1 0-1 .5.5 0 0 1 0 1z"/></svg>Android</a>
+        <a class="btn sm" href="/lite/"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M16.4 12.6c0-2.4 2-3.6 2.1-3.7-1.1-1.7-2.9-1.9-3.5-1.9-1.5-.2-2.9.9-3.7.9-.8 0-1.9-.9-3.2-.8-1.6 0-3.1 1-4 2.4-1.7 3-.4 7.4 1.2 9.8.8 1.2 1.8 2.5 3 2.4 1.2 0 1.7-.8 3.1-.8 1.5 0 1.9.8 3.2.8 1.3 0 2.1-1.2 2.9-2.4.9-1.4 1.3-2.7 1.3-2.8-.1 0-2.4-.9-2.4-3.9zM14 5.4c.7-.8 1.1-1.9 1-3-1 0-2.1.6-2.8 1.4-.6.7-1.2 1.8-1 2.9 1.1.1 2.1-.5 2.8-1.3z"/></svg>Mac Lite · iPhone</a>
+        <a class="btn sm" href="/lite/"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="4" width="18" height="12" rx="2"/><path d="M2 20h20"/></svg>Chromebook · older PCs</a></div>
       <p class="dl-note fade d4"><b>Free to use</b> · No watermark · Premium coming soon</p>
     </div>
     <div class="scroll-hint" aria-hidden="true">Scroll<i></i></div>
@@ -522,6 +526,7 @@ footer a:hover { color: var(--gold-hi); }
     <div class="wrap faq-grid">
       <div class="rv"><span class="kicker">FAQ</span><h2 style="font-size:clamp(34px,5vw,68px);line-height:.98;margin-top:18px">Questions</h2><p style="color:var(--muted);margin-top:18px">Something else? <a href="mailto:flux.editing.app@gmail.com" style="color:var(--gold)">Email us</a> or use Settings → Report a bug in the app.</p></div>
       <div class="faq rv" style="--d:.1s">
+        <details><summary>Is there Flux for Android, iPhone or older computers?</summary><div class="ans"><p>Yes - <a href="/lite/">Flux Lite</a> runs on Android phones, iPhones, iPads, Chromebooks, Intel Macs and older PCs. Open it and tap <b>Install</b> (on iPhone: Share → Add to Home Screen) to get it as an app. It has the basics - cut, trim, text, music, filters, speed - and exports a video with no watermark. Your videos stay on your device.</p></div></details>
         <details><summary>Is Flux safe to install?</summary><div class="ans"><p>Yes. Your videos stay on your computer and are never uploaded. Flux only goes online to sign you in, check for updates and download free extras you ask for (music, fonts, the caption model and the voices). Passwords are stored only as secure hashes, never in plain text. See the <a href="/privacy.html">Privacy Policy</a>.</p></div></details>
         <details><summary>Windows says “Windows protected your PC”. What do I do?</summary><div class="ans"><p>That message appears for new apps that aren't widely downloaded yet. Click <b>More info</b>, then <b>Run anyway</b>.</p></div></details>
         <details><summary>My Mac says Flux can't be opened.</summary><div class="ans"><p>In Finder, right-click Flux in Applications and choose <b>Open</b>, then <b>Open</b> again. You only need to do this once.</p></div></details>
@@ -547,12 +552,17 @@ footer a:hover { color: var(--gold-hi); }
   // ---- downloads ----
   const GITHUB = 'Noriikx/flux-editor';
   const rel = (f) => `https://github.com/${GITHUB}/releases/latest/download/${f}`;
-  const win = document.getElementById('dlWin'), mac = document.getElementById('dlMac'), macI = document.getElementById('dlMacIntel');
+  const win = document.getElementById('dlWin'), mac = document.getElementById('dlMac');
   win.href = rel('Flux-Setup.exe');
   mac.href = rel('Flux-mac-arm64.dmg');
-  macI.href = rel('Flux-mac-x64.dmg');
   const isMac = /Mac/i.test(navigator.platform || navigator.userAgent);
   if (isMac) { win.classList.remove('primary'); mac.classList.add('primary'); mac.parentNode.insertBefore(mac, win); }
+  // on a phone or tablet the desktop apps can't run: offer Flux Lite first
+  if (/Android|iPhone|iPad|Mobile/i.test(navigator.userAgent)) {
+    const lite = document.createElement('a'); lite.className = 'btn primary mag'; lite.href = '/lite/';
+    lite.innerHTML = '<span>Open Flux Lite<small>The phone version · free · installs like an app</small></span>';
+    win.classList.remove('primary'); mac.classList.remove('primary'); win.parentNode.insertBefore(lite, win.parentNode.firstChild);
+  }
   document.getElementById('yr').textContent = new Date().getFullYear();
 </script>
 <script>
