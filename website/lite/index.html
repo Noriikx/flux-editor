@@ -3,13 +3,13 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
-<title>Flux Lite</title>
-<meta name="description" content="Flux Lite - a simple video editor for phones, tablets and older computers. Free, no watermark.">
+<title>Flux Mobile</title>
+<meta name="description" content="Flux Mobile - edit videos, make Viral Shorts with captions, use templates and add friends, right on your phone. Free, no watermark.">
 <meta name="theme-color" content="#0b0a08">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<meta name="apple-mobile-web-app-title" content="Flux Lite">
+<meta name="apple-mobile-web-app-title" content="Flux">
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="icon" href="icon-192.png">
 <link rel="apple-touch-icon" href="icon-192.png">
@@ -117,11 +117,12 @@ input[type=text], textarea { width: 100%; background: var(--p1); border: 1px sol
 .hint { color: var(--muted); font-size: 12.5px; margin: 6px 0 0; }
 @media (min-width: 900px) { .home { max-width: 760px; margin: 0 auto; width: 100%; } .plist { grid-template-columns: repeat(3, 1fr); } .tl-wrap { height: 140px; } }
 </style>
+<link rel="stylesheet" href="app.css">
 </head>
 <body>
 <!-- ============ home ============ -->
-<section class="screen on" id="home"><div class="home">
-  <div class="home-top"><img src="icon-192.png" alt=""><b>Flux</b><span>LITE</span></div>
+<section class="screen on" id="home"><div class="home page on" data-p="create">
+  <div class="home-top"><img src="icon-192.png" alt=""><b>Flux</b><span>MOBILE</span></div>
   <h1>New video</h1>
   <p class="sub">Pick a shape, add your clips and photos, then export an MP4. Free, no watermark.</p>
   <div class="shapes">
@@ -129,11 +130,23 @@ input[type=text], textarea { width: 100%; background: var(--p1); border: 1px sol
     <button class="shape" data-ar="16:9"><i style="width:40px;height:23px"></i><b>Wide</b><small>YouTube</small></button>
     <button class="shape" data-ar="1:1"><i style="width:30px;height:30px"></i><b>Square</b><small>Posts</small></button>
   </div>
-  <button class="btn gold install" id="installBtn"><svg class="i" viewBox="0 0 24 24"><path d="M12 3v12M7 10l5 5 5-5M5 21h14"/></svg>Install Flux Lite as an app</button>
+  <button class="btn gold install" id="installBtn"><svg class="i" viewBox="0 0 24 24"><path d="M12 3v12M7 10l5 5 5-5M5 21h14"/></svg>Install Flux as an app</button>
   <h2>Your projects</h2>
   <div class="plist" id="plist"></div>
-  <div class="note"><b>Flux Lite</b> is the light version of Flux for phones, tablets, Chromebooks and older computers. Your videos never leave your device. Want everything (auto captions, Viral Shorts, 80+ transitions)? <a href="/#download">Get Flux for Windows or Mac</a>.</div>
-</div></section>
+  <div class="note"><b>Flux Mobile</b> runs right in your browser - your videos never leave your device. Want 80+ transitions, effects and YouTube / Twitch links for Viral Shorts? <a href="/#download">Get Flux for Windows or Mac</a>.</div>
+</div>
+<div class="home page" data-p="templates"></div>
+<div class="home page" data-p="shorts"></div>
+<div class="home page" data-p="friends"></div>
+<div class="home page" data-p="me"></div>
+<nav class="nav" id="nav">
+  <button data-p="create" class="on"><svg class="i" viewBox="0 0 24 24"><path d="M3 10.5 12 3l9 7.5V20a1 1 0 0 1-1 1h-5v-6H9v6H4a1 1 0 0 1-1-1z"/></svg><span>Home</span></button>
+  <button data-p="templates"><svg class="i" viewBox="0 0 24 24"><rect x="3" y="3" width="8" height="8" rx="1.5"/><rect x="13" y="3" width="8" height="8" rx="1.5"/><rect x="3" y="13" width="8" height="8" rx="1.5"/><rect x="13" y="13" width="8" height="8" rx="1.5"/></svg><span>Templates</span></button>
+  <button data-p="shorts" class="nav-shorts"><svg class="i" viewBox="0 0 24 24"><path d="M13 2 4 14h7l-1 8 9-12h-7z"/></svg><span>Shorts</span></button>
+  <button data-p="friends"><svg class="i" viewBox="0 0 24 24"><circle cx="9" cy="8" r="3.5"/><path d="M2.5 20a6.5 6.5 0 0 1 13 0"/><circle cx="17" cy="9" r="2.5"/><path d="M16 14a5 5 0 0 1 5.5 5"/></svg><span>Friends</span><i class="dot" hidden></i></button>
+  <button data-p="me" id="navMe"><svg class="i" viewBox="0 0 24 24"><circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/></svg><span>Me</span></button>
+</nav>
+</section>
 
 <!-- ============ editor ============ -->
 <section class="screen" id="editor">
@@ -151,14 +164,17 @@ input[type=text], textarea { width: 100%; background: var(--p1); border: 1px sol
     <button class="tool sel-only" data-t="split"><svg class="i" viewBox="0 0 24 24"><circle cx="6" cy="6" r="3"/><circle cx="6" cy="18" r="3"/><path d="M20 4 8.1 15.9M14.5 14.5 20 20M8.1 8.1 12 12"/></svg>Split</button>
     <button class="tool sel-only" data-t="trim"><svg class="i" viewBox="0 0 24 24"><path d="M6 4v16M18 4v16M6 12h12"/></svg>Trim</button>
     <button class="tool" data-t="text"><svg class="i" viewBox="0 0 24 24"><path d="M5 6V4h14v2M12 4v16M9 20h6"/></svg>Text</button>
+    <button class="tool" data-t="captions"><svg class="i" viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="M10 10.5a2 2 0 1 0 0 3M17 10.5a2 2 0 1 0 0 3"/></svg>Captions</button>
     <button class="tool" data-t="music"><svg class="i" viewBox="0 0 24 24"><path d="M9 18V5l11-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="17" cy="16" r="3"/></svg>Music</button>
     <button class="tool sel-only" data-t="filter"><svg class="i" viewBox="0 0 24 24"><circle cx="9" cy="9" r="6"/><circle cx="15" cy="15" r="6"/></svg>Filter</button>
+    <button class="tool sel-only" data-t="motion"><svg class="i" viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="M9 9h-3v3M15 15h3v-3M6 9l4 4M18 15l-4-4"/></svg>Motion</button>
     <button class="tool sel-only" data-t="speed"><svg class="i" viewBox="0 0 24 24"><path d="M12 13l4-4"/><path d="M3.5 17a9 9 0 1 1 17 0"/></svg>Speed</button>
     <button class="tool sel-only" data-t="volume"><svg class="i" viewBox="0 0 24 24"><path d="M4 9.5v5h3.5L12 18V6L7.5 9.5Z"/><path d="M15.5 9a4 4 0 0 1 0 6M18 6.5a7.5 7.5 0 0 1 0 11"/></svg>Volume</button>
     <button class="tool sel-only" data-t="left"><svg class="i" viewBox="0 0 24 24"><path d="M15 5l-7 7 7 7"/></svg>Move left</button>
     <button class="tool sel-only" data-t="right"><svg class="i" viewBox="0 0 24 24"><path d="M9 5l7 7-7 7"/></svg>Move right</button>
     <button class="tool sel-only" data-t="dup"><svg class="i" viewBox="0 0 24 24"><rect x="8" y="8" width="12" height="12" rx="2"/><path d="M16 8V5a1 1 0 0 0-1-1H5a1 1 0 0 0-1 1v10a1 1 0 0 0 1 1h3"/></svg>Duplicate</button>
     <button class="tool sel-only" data-t="del"><svg class="i" viewBox="0 0 24 24"><path d="M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13"/></svg>Delete</button>
+    <button class="tool" data-t="trans"><svg class="i" viewBox="0 0 24 24"><rect x="2" y="6" width="9" height="12" rx="1.5"/><rect x="13" y="6" width="9" height="12" rx="1.5"/></svg>Transitions</button>
     <button class="tool" data-t="fit"><svg class="i" viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M8 3v18M16 3v18"/></svg>Fit / Fill</button>
   </div>
   <input type="file" id="pick" accept="video/*,image/*" multiple hidden>
@@ -169,6 +185,7 @@ input[type=text], textarea { width: 100%; background: var(--p1); border: 1px sol
 <div class="sheet" id="sheet"><div class="grab"></div><div id="sheetBody"></div></div>
 <div class="toast" id="toast"></div>
 
+<script src="shared.js"></script>
 <script>
 'use strict';
 /* ============================ helpers ============================ */
@@ -230,14 +247,14 @@ async function renderHome() {
   for (const p of list) {
     const c = document.createElement('button'); c.className = 'pcard';
     c.innerHTML = `<div class="th" style="${p.thumb ? `background-image:url(${p.thumb})` : ''}"></div><div class="m"><b>${esc(p.name)}</b><small>${p.aspect} · ${fmt(p.duration || 0)}</small></div><span class="x" role="button" aria-label="Delete"><svg class="i" viewBox="0 0 24 24"><path d="M6 6l12 12M18 6 6 18"/></svg></span>`;
-    c.onclick = (e) => { if (e.target.closest('.x')) { if (confirm(`Delete “${p.name}”? This can’t be undone.`)) { delProject(p.id).then(renderHome); p.clips.forEach((x) => delFile(x.file).catch(() => {})); if (p.music) delFile(p.music.file).catch(() => {}); } return; } openProject(p); };
+    c.onclick = (e) => { if (e.target.closest('.x')) { if (confirm(`Delete “${p.name}”? This can’t be undone.`)) { delProject(p.id).then(async () => { const used = new Set(); (await allProjects().catch(() => [])).forEach((q) => { q.clips.forEach((x) => used.add(x.file)); if (q.music) used.add(q.music.file); }); p.clips.forEach((x) => { if (!used.has(x.file)) delFile(x.file).catch(() => {}); }); if (p.music && !used.has(p.music.file)) delFile(p.music.file).catch(() => {}); renderHome(); }); } return; } openProject(p); };
     box.appendChild(c);
   }
 }
 $$('.shape').forEach((b) => (b.onclick = async () => {
   const n = (await allProjects().catch(() => [])).length + 1;
   const p = { id: uid(), name: 'Video ' + n, aspect: b.dataset.ar, fit: 'cover', clips: [], texts: [], music: null, createdAt: Date.now(), updatedAt: Date.now() };
-  await putProject(p); openProject(p); setTimeout(() => $('#pick').click(), 250);
+  await putProject(p); bump('projects'); openProject(p); setTimeout(() => $('#pick').click(), 250);
 }));
 // install as an app (Android / desktop Chrome); iPhone shows how to add it
 let installEvt = null;
@@ -281,12 +298,13 @@ $('#pick').onchange = async (e) => {
   const at = sel && sel.type === 'clip' ? P.clips.findIndex((c) => c.id === sel.id) + 1 : P.clips.length;
   const added = [];
   for (const f of files) {
-    if (f.size > 1.5e9) { toast('A file is too big for Flux Lite (1.5 GB max)'); continue; }
+    if (f.size > 1.5e9) { toast('A file is too big for Flux Mobile (1.5 GB max)'); continue; }
     const id = uid(); await putFile(id, f);
     const m = await loadMedia(id); if (!m) continue;
     added.push({ id: uid(), file: id, kind: m.kind, name: f.name, in: 0, out: m.kind === 'image' ? 4 : m.dur, speed: 1, volume: 1, filter: 'none' });
   }
   P.clips.splice(at, 0, ...added);
+  if (added.length) { bump('imports', added.length); maxStat('maxClips', P.clips.length); }
   if (!P.thumbSet && added.length) setProjectThumb();
   sel = added.length ? { type: 'clip', id: added[0].id } : sel;
   renderTimeline(); seek(time); save();
@@ -298,7 +316,7 @@ $('#pickMusic').onchange = async (e) => {
   const id = uid(); await putFile(id, f); const m = await loadMedia(id);
   if (!m) return toast('Couldn’t read that file');
   if (P.music) delFile(P.music.file).catch(() => {});
-  P.music = { file: id, name: f.name, volume: 0.6, offset: 0, fade: true };
+  bump('songs'); P.music = { file: id, name: f.name, volume: 0.6, offset: 0, fade: true };
   sel = { type: 'music' }; renderTimeline(); save(); toast('Music added');
 };
 async function setProjectThumb() { await new Promise((r) => setTimeout(r, 600)); const c = document.createElement('canvas'); c.width = 320; c.height = 200; draw(c.getContext('2d'), 320, 200, 0.3, true); P.thumb = c.toDataURL('image/jpeg', .7); P.thumbSet = true; save(); }
@@ -322,7 +340,7 @@ function fitPreview() {
 function show(id) { $$('.screen').forEach((s) => s.classList.toggle('on', s.id === id)); if (id === 'home') renderHome(); }
 $('#back').onclick = () => { pause(); save(); P = null; show('home'); };
 $('#ttl').onclick = () => { const n = prompt('Project name', P.name); if (n && n.trim()) { P.name = n.trim().slice(0, 60); $('#ttl').textContent = P.name; save(); } };
-$('#undo').onclick = () => { const s = history.pop(); if (!s) return toast('Nothing to undo'); const keep = P.thumb; P = JSON.parse(s); P.thumb = keep; sel = null; renderTimeline(); seek(Math.min(time, total())); save(); };
+$('#undo').onclick = () => { const s = history.pop(); if (!s) return toast('Nothing to undo'); bump('undos'); const keep = P.thumb; P = JSON.parse(s); P.thumb = keep; sel = null; renderTimeline(); seek(Math.min(time, total())); save(); };
 
 /* ---------- drawing a frame ---------- */
 function draw(x, W, H, t, still) {
@@ -334,11 +352,22 @@ function draw(x, W, H, t, still) {
       const f = FILTERS.find((z) => z[0] === c.filter);
       if (P.fit === 'contain') { x.save(); x.filter = 'blur(18px) brightness(.55)'; drawCover(x, m.el, W, H); x.restore(); }
       x.filter = (f && f[2]) || 'none';
+      const dd = clipDur(c), k = dd > 0 ? hit.local / dd : 0, mo = c.motion || 'none', tr = P.trans || 'dip';
+      // zoom transition: punch in at the start of each clip
+      const zin = tr === 'zoom' && hit.start > 0 && hit.local < 0.3 ? (1 - hit.local / 0.3) * 0.18 : 0;
+      if (mo !== 'none' || zin) {
+        x.save(); let sc = 1 + zin, dx = 0;
+        if (mo === 'zoomIn') sc += 0.14 * k; else if (mo === 'zoomOut') sc += 0.14 * (1 - k);
+        else if (mo === 'panRight' || mo === 'panLeft') { sc += 0.1; dx = (k - 0.5) * 0.08 * W * (mo === 'panRight' ? -1 : 1); }
+        x.translate(W / 2 + dx, H / 2); x.scale(sc, sc); x.translate(-W / 2, -H / 2);
+      }
       if (P.fit === 'contain') drawContain(x, m.el, W, H); else drawCover(x, m.el, W, H);
+      if (mo !== 'none' || zin) x.restore();
       x.filter = 'none';
       // a quick dip between clips makes cuts feel smoother
       const d = clipDur(c), edge = Math.min(hit.local, d - hit.local);
-      if (P.fade !== false && edge < 0.12 && P.clips.length > 1 && !(hit.local < 0.12 && hit.start === 0) && !(d - hit.local < 0.12 && c === P.clips[P.clips.length - 1])) { x.fillStyle = `rgba(0,0,0,${(1 - edge / 0.12) * 0.55})`; x.fillRect(0, 0, W, H); }
+      const tw = tr === 'flash' ? 0.16 : 0.12;
+      if (P.fade !== false && tr !== 'none' && tr !== 'zoom' && edge < tw && P.clips.length > 1 && !(hit.local < tw && hit.start === 0) && !(d - hit.local < tw && c === P.clips[P.clips.length - 1])) { x.fillStyle = tr === 'flash' ? `rgba(255,255,255,${(1 - edge / tw) * 0.85})` : `rgba(0,0,0,${(1 - edge / tw) * 0.55})`; x.fillRect(0, 0, W, H); }
     }
   }
   for (const tx of P.texts) if (t >= tx.start && t <= tx.end) drawText(x, tx, W, H, t);
@@ -481,7 +510,7 @@ $('#tools').onclick = (e) => {
     if (local < 0.2 || local > d - 0.2) return toast('Move the white line inside the clip to split it');
     snapshot();
     const at = c.in + local * c.speed, b2 = { ...c, id: uid(), in: at };
-    c.out = at; P.clips.splice(i + 1, 0, b2); sel = { type: 'clip', id: b2.id }; toast('Split');
+    c.out = at; P.clips.splice(i + 1, 0, b2); sel = { type: 'clip', id: b2.id }; toast('Split'); bump('splits');
   }
   if (t === 'del') { snapshot(); P.clips.splice(i, 1); sel = null; toast('Deleted'); }
   if (t === 'dup') { snapshot(); const d2 = { ...c, id: uid() }; P.clips.splice(i + 1, 0, d2); sel = { type: 'clip', id: d2.id }; toast('Duplicated'); }
@@ -492,7 +521,7 @@ $('#tools').onclick = (e) => {
 };
 
 /* ---------- sheets ---------- */
-function closeSheet() { $('#sheet').classList.remove('on'); $('#sheetBg').classList.remove('on'); renderTimeline(); seek(time); save(); }
+function closeSheet() { $('#sheet').classList.remove('on'); $('#sheetBg').classList.remove('on'); if (P && $('#editor').classList.contains('on')) { renderTimeline(); seek(time); save(); } }
 $('#sheetBg').onclick = () => { if (!exporting) closeSheet(); };
 function openSheet(kind, obj) {
   const b = $('#sheetBody');
@@ -516,7 +545,7 @@ function openSheet(kind, obj) {
     b.innerHTML = `<h3>Filter</h3><div class="fgrid">${FILTERS.map(([k, n]) => `<button class="fcell${c.filter === k ? ' on' : ''}" data-f="${k}"><canvas width="90" height="90"></canvas>${n}</button>`).join('')}</div>${done}`;
     const m = media[c.file];
     $$('.fcell', b).forEach((cell) => { const x = $('canvas', cell).getContext('2d'); x.filter = FILTERS.find((f) => f[0] === cell.dataset.f)[2] || 'none'; try { drawCover(x, m.el, 90, 90); } catch {}
-      cell.onclick = () => { c.filter = cell.dataset.f; $$('.fcell', b).forEach((z) => z.classList.toggle('on', z === cell)); seek(time); }; });
+      cell.onclick = () => { if (c.filter !== cell.dataset.f) bump('effects'); c.filter = cell.dataset.f; $$('.fcell', b).forEach((z) => z.classList.toggle('on', z === cell)); seek(time); }; });
   }
   if (kind === 'speed') {
     const c = obj; snapshot();
@@ -534,7 +563,7 @@ function openSheet(kind, obj) {
     snapshot();
     const isNew = !obj, T = Math.max(total(), 1);
     const t = obj || { id: uid(), content: '', style: 'bold', size: 0.08, y: 0.25, start: Math.min(time, Math.max(0, T - 1)), end: Math.min(T, time + 3) };
-    if (isNew) { if (t.end - t.start < 0.5) t.end = Math.min(T, t.start + 3); P.texts.push(t); sel = { type: 'text', id: t.id }; }
+    if (isNew) { if (t.end - t.start < 0.5) t.end = Math.min(T, t.start + 3); P.texts.push(t); sel = { type: 'text', id: t.id }; bump('texts'); }
     b.innerHTML = `<h3>${isNew ? 'Add text' : 'Edit text'}</h3><textarea rows="2" class="tc" placeholder="Type your text" maxlength="120"></textarea>
       <div class="row"><label>Style</label><div class="chips">${TEXT_STYLES.map(([k, n]) => `<button class="chip${t.style === k ? ' on' : ''}" data-st="${k}">${n}</button>`).join('')}</div></div>
       <div class="row"><label>Position</label><div class="chips">${[['Top', 0.18], ['Middle', 0.5], ['Bottom', 0.8]].map(([n, y]) => `<button class="chip${Math.abs(t.y - y) < 0.05 ? ' on' : ''}" data-y="${y}">${n}</button>`).join('')}</div></div>
@@ -586,7 +615,7 @@ $('#exportBtn').onclick = () => {
   if (!window.MediaRecorder || !cv.captureStream) { b.innerHTML = '<h3>Export</h3><p class="hint">This browser can’t export videos. Use Chrome, Edge or Safari 16+.</p><div class="acts"><button class="btn gold" data-a="done">OK</button></div>'; $('[data-a=done]', b).onclick = closeSheet; $('#sheet').classList.add('on'); $('#sheetBg').classList.add('on'); return; }
   const T = total();
   b.innerHTML = `<h3>Export</h3><div class="row"><label>Quality</label><div class="chips"><button class="chip" data-q="720">720p · smaller</button><button class="chip on" data-q="1080">1080p · best</button></div></div>
-    <p class="hint">Export plays your video once while it records (${fmt(T)}). Keep Flux Lite open and the screen on. Saved as <b>${type.includes('mp4') ? 'MP4' : 'WebM'}</b>.</p>
+    <p class="hint">Export plays your video once while it records (${fmt(T)}). Keep Flux open and the screen on. Saved as <b>${type.includes('mp4') ? 'MP4' : 'WebM'}</b>.</p>
     <div class="prog"><i></i></div><p class="hint st"></p><div class="acts"><button class="btn" data-a="cancel">Cancel</button><button class="btn gold" data-a="go">Export</button></div>`;
   let q = 1080;
   $$('[data-q]', b).forEach((ch) => (ch.onclick = () => { q = +ch.dataset.q; $$('[data-q]', b).forEach((z) => z.classList.toggle('on', z === ch)); }));
@@ -629,7 +658,7 @@ async function runExport(q, type, b) {
   acts.innerHTML = `<a class="btn" href="${url}" download="${esc(name)}">Save</a>${navigator.canShare && navigator.canShare({ files: [new File([blob], name, { type: blob.type })] }) ? '<button class="btn gold" data-a="share">Share</button>' : ''}<button class="btn" data-a="close">Close</button>`;
   $('[data-a=close]', b).onclick = closeSheet;
   const sh = $('[data-a=share]', b); if (sh) sh.onclick = () => navigator.share({ files: [new File([blob], name, { type: blob.type })], title: P.name }).catch(() => {});
-  window.__lastExport = blob;
+  window.__lastExport = blob; bump('exports'); bump('exportSecs', Math.round(total())); maxStat('maxDuration', Math.round(total()));
 }
 
 /* ============================ start ============================ */
@@ -637,5 +666,6 @@ renderHome();
 if ('serviceWorker' in navigator) addEventListener('load', () => navigator.serviceWorker.register('sw.js').catch(() => {}));
 addEventListener('visibilitychange', () => { if (document.hidden && P) { if (!exporting) pause(); save(); } });
 </script>
+<script src="app.js"></script>
 </body>
 </html>

@@ -1,6 +1,10 @@
 /* Flux — changelog. Shown once after an update, and any time from Settings → About. */
 'use strict';
 const CHANGELOG = [
+  { v: '7.2.0', date: '2026-11-25', items: [
+    'Viral Shorts from a link: paste a YouTube or Twitch link (a video or a past stream) and Flux downloads it and finds the best moments. Only use videos you own or have permission to use',
+    'Flux Mobile: the phone version now has Viral Shorts with captions, auto captions, templates, motion and transitions, plus your account, friends, profiles and achievements - open flux-editor.netlify.app/lite on your phone'
+  ] },
   { v: '7.1.0', date: '2026-11-24', items: [
     'New version names: Flux now counts 1.6, 1.7, 1.7.1… (this is 1.7.1)',
     'Templates fixed: the Templates button opened an empty project instead of the templates. Now there’s a whole Templates tab with live animated previews - hover to play, click to see it big',

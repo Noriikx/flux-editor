@@ -310,11 +310,43 @@ async function shLink(url) {
   SH.busy = true; shStage('Getting the link', null); shRender();
   let r;
   try { r = await api.shortsLink(url); } finally { SH.busy = false; shStage('', 0); }
+  if (r.error === 'yt') return shPlatform(r.url);
   if (r.error === 'platform') { shRender(); return shPlatformNote(r.host); }
   if (r.error === 'page') { shRender(); return toast('That link is a web page, not a video or audio file. Use a direct link to the file (it usually ends in .mp4 or .mp3) or a podcast’s RSS feed.', { error: true, duration: 9000 }); }
   if (r.error) { shRender(); return toast(r.error, { error: true, duration: 7000 }); }
   if (r.feed) { SH.feed = r.feed; shRender(); return; }
   await shSetSource(r.path, r.name);
+}
+// YouTube / Twitch: Flux downloads the video (with yt-dlp) and then finds the moments
+async function shPlatform(url) {
+  if (!api.shortsPlatform) return toast('Update Flux to use YouTube and Twitch links', { error: true });
+  if (!settings.ytOk) {
+    const ok = await new Promise((res) => {
+      const box = modal(`<h2>Use this video?</h2><p class="sub">Flux will download the video to your computer to make Shorts from it. Only use videos <b>you made</b> or that you have <b>permission</b> to use - re-uploading other people's videos can break copyright and the site's rules.</p>
+        <div class="footer"><button class="btn ghost" data-a="no">Cancel</button><button class="btn primary" data-a="yes">It's my video / I have permission</button></div>`);
+      $('[data-a=no]', box).onclick = () => { closeModal(); res(false); };
+      $('[data-a=yes]', box).onclick = () => { closeModal(); res(true); };
+    });
+    if (!ok) return shRender();
+    settings.ytOk = true; saveSettings();
+  }
+  SH.busy = true; SH.stop = false; SH.linkDl = true;
+  shStage(/twitch/i.test(url) ? 'Opening the Twitch link' : 'Opening the YouTube link', null); shRender();
+  if (!rt.shProgHooked && api.onShortsProgress) {
+    rt.shProgHooked = true;
+    api.onShortsProgress((v) => {
+      if (!SH.linkDl) return;
+      if (v.stage === 'tool') shStage('Getting the downloader (first time only)', v.value || null);
+      else if (v.stage === 'info') shStage('Reading the video', null);
+      else if (v.stage === 'download') shStage(`Downloading the video… ${Math.round(v.value * 100)}%${v.size ? ' of ' + v.size : ''}${v.eta && v.eta !== '00:00' ? ' · ' + v.eta + ' left' : ''}`, v.value);
+      else if (v.stage === 'merge') shStage('Putting the video together', null);
+    });
+  }
+  let r;
+  try { r = await api.shortsPlatform(url); } finally { SH.busy = false; SH.linkDl = false; shStage('', 0); }
+  if (r.error) { shRender(); if (r.error !== 'cancelled') toast(r.error, { error: true, duration: 8000 }); return; }
+  await shSetSource(r.path, r.name);
+  if (SH.src) toast('Ready - press Find the best moments');
 }
 function shPlatformNote(host) {
   const box = modal(`<h2>Links from ${host} can't be downloaded</h2>
@@ -441,7 +473,7 @@ function shRender() {
       <div class="sh-opts"></div>
       <div id="shProg" class="sh-prog" hidden><span></span><div class="enh-bar"><i></i></div><button class="link-btn sh-stop">Stop</button></div>
       <div class="sh-results"></div>`;
-    $('.sh-stop', page).onclick = () => { SH.stop = true; };
+    $('.sh-stop', page).onclick = () => { SH.stop = true; if (SH.linkDl && api.shortsCancelLink) api.shortsCancelLink(); };
     // drop a file right on the tab
     page.addEventListener('dragover', (e) => { e.preventDefault(); e.stopPropagation(); page.classList.add('sh-drop'); });
     page.addEventListener('dragleave', () => page.classList.remove('sh-drop'));
@@ -460,7 +492,8 @@ function shRender() {
   if (!SH.src) {
     srcBox.innerHTML = `<div class="sh-dropzone"><svg viewBox="0 0 24 24"><path d="M12 15V3M7 8l5-5 5 5"/><path d="M4 15v4a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-4"/></svg><b>Drop a long video or podcast here</b><small>MP4, MOV, MP3, M4A… any length</small><button class="btn sh-pick">Choose a file</button></div>
       <div class="sh-or">or paste a link</div>
-      <div class="sh-link"><input class="num-input" placeholder="https://… .mp4 / .mp3 file or podcast RSS feed"><button class="btn">Get</button></div>
+      <div class="sh-link"><input class="num-input" placeholder="Paste a YouTube or Twitch link (or a .mp4 / podcast link)"><button class="btn">Get</button></div>
+      <div class="sh-link-note">YouTube videos, streams and Twitch VODs work. Only use videos you made or have permission to use.</div>
       <div class="sh-proj"></div>`;
     $('.sh-pick', srcBox).onclick = shPick;
     const inp = $('.sh-link input', srcBox);

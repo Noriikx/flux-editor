@@ -86,6 +86,8 @@ contextBridge.exposeInMainWorld('flux', {
   appVersion: () => ipcRenderer.invoke('app:version'),
   fontGet: (opts) => ipcRenderer.invoke('font:get', opts),
   shortsLink: (url) => ipcRenderer.invoke('shorts:link', url),
+  shortsPlatform: (url) => ipcRenderer.invoke('shorts:platform', url),
+  shortsCancelLink: () => ipcRenderer.invoke('shorts:cancelLink'),
   onShortsProgress: (cb) => ipcRenderer.on('shorts:progress', (_e, v) => cb(v)),
   enhStatus: () => ipcRenderer.invoke('enh:status'),
   enhInstall: (k) => ipcRenderer.invoke('enh:install', k),

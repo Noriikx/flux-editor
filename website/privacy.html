@@ -107,10 +107,10 @@ footer .wrap { display:flex; gap:18px; flex-wrap:wrap; }
 <li><b>The speech model</b> for captions from Hugging Face (once, when you first make captions);</li>
 <li><b>The text to speech voices</b> from GitHub (once, when you turn them on);</li>
 <li><b>The AI upscale and AI slow motion engines</b> from GitHub (once each, when you first use them);</li>
-<li><b>Links you paste into Viral Shorts</b> (a video / audio file or a podcast feed), from the website you got the link from. Only when you paste one.</li>
+<li><b>Links you paste into Viral Shorts</b> (a video / audio file or a podcast feed), from the website you got the link from. Only when you paste one. For YouTube and Twitch links, the desktop app first downloads the free open-source tool yt-dlp from GitHub (checked with a secure hash), then the video from YouTube or Twitch.</li>
 <li><b>Update checks</b> and downloads from GitHub.</li>
 </ul>
-<p>Downloads are checked with secure hashes where possible. The website doesn't load anything from other companies: its fonts are stored on our own site.</p>
+<p>Downloads are checked with secure hashes where possible. The website doesn't load anything from other companies: its fonts are stored on our own site. The one exception is <b>Flux Mobile</b> (flux-editor.netlify.app/lite): when you make captions or Viral Shorts there, it downloads the speech engine from jsDelivr (cdn.jsdelivr.net) and the speech model from Hugging Face, once. Your video is never uploaded: the listening happens on your phone. If you sign in on Flux Mobile, your sign-in is kept in your browser's storage on that device until you sign out.</p>
 <p>While you export, Flux runs a small local server that only your own computer can reach (127.0.0.1). It never accepts connections from the internet.</p>
 
 <h2>7. Cookies and local storage</h2>

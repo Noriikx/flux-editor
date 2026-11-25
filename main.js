@@ -1378,16 +1378,111 @@ ipcMain.handle('enh:cancel', (_e, id) => {
 // ---------- Viral Shorts: get a long video / podcast from a link ----------
 // Only direct links to video / audio files and podcast feeds (RSS). Sites like YouTube, TikTok or Instagram
 // don't allow downloading in their terms, so Flux doesn't do it - people use their own files from there instead.
-const BLOCKED_HOSTS = /(^|\.)(youtube\.com|youtu\.be|tiktok\.com|instagram\.com|facebook\.com|fb\.watch|twitter\.com|x\.com|twitch\.tv|vimeo\.com|dailymotion\.com|spotify\.com|soundcloud\.com|netflix\.com|kick\.com|snapchat\.com|reddit\.com)$/i;
+// YouTube and Twitch links are downloaded with yt-dlp (see shorts:platform); these others still aren't supported
+const PLATFORM_HOSTS = /(^|\.)(youtube\.com|youtu\.be|twitch\.tv)$/i;
+const BLOCKED_HOSTS = /(^|\.)(tiktok\.com|instagram\.com|facebook\.com|fb\.watch|twitter\.com|x\.com|vimeo\.com|dailymotion\.com|spotify\.com|soundcloud\.com|netflix\.com|kick\.com|snapchat\.com|reddit\.com)$/i;
 const LINK_MEDIA_EXT = /\.(mp4|m4v|mov|mkv|webm|avi|mp3|m4a|aac|wav|ogg|opus|flac)(\?|#|$)/i;
 function checkLink(raw) {
   let u;
   try { u = new URL(String(raw || '').trim()); } catch { return { error: 'That doesn’t look like a link.' }; }
   if (!/^https?:$/.test(u.protocol)) return { error: 'Only https:// links work.' };
+  if (PLATFORM_HOSTS.test(u.hostname)) return { error: 'yt', url: u.href };
   if (BLOCKED_HOSTS.test(u.hostname)) return { error: 'platform', host: u.hostname.replace(/^www\./, '') };
   return { url: u.href };
 }
 const shortsDir = () => ensureDir(path.join(dataDir(), 'shorts'));
+// ---------- YouTube / Twitch links → Viral Shorts (with yt-dlp, the free open-source downloader) ----------
+const YTDLP_ASSET = process.platform === 'win32' ? 'yt-dlp.exe' : process.platform === 'darwin' ? 'yt-dlp_macos' : 'yt-dlp_linux';
+const ytdlpPath = () => path.join(ensureDir(path.join(dataDir(), 'bin')), YTDLP_ASSET);
+let ytdlpProc = null;
+async function ensureYtdlp(send) {
+  const file = ytdlpPath();
+  let fresh = false;
+  try { fresh = fs.statSync(file).size > 1e6 && Date.now() - fs.statSync(file).mtimeMs < 14 * 864e5; } catch {}
+  if (fresh) return file;
+  const base = 'https://github.com/yt-dlp/yt-dlp/releases/latest/download/';
+  try {
+    send({ stage: 'tool', value: 0 });
+    // the checksum list comes from the same release; the tool is only used if it matches
+    const sums = await (await net.fetch(base + 'SHA2-256SUMS')).text();
+    const m = new RegExp('^([a-f0-9]{64})\\s+\\*?' + YTDLP_ASSET.replace('.', '\\.') + '$', 'm').exec(sums);
+    if (!m) throw new Error('no checksum');
+    const tmp = file + '.part';
+    await download(base + YTDLP_ASSET, tmp, 0, (v) => send({ stage: 'tool', value: v.value }));
+    const got = crypto.createHash('sha256').update(require('original-fs').readFileSync(tmp)).digest('hex');
+    if (got !== m[1]) { try { fs.unlinkSync(tmp); } catch {} throw new Error('checksum'); }
+    try { fs.unlinkSync(file); } catch {}
+    fs.renameSync(tmp, file);
+    if (process.platform !== 'win32') fs.chmodSync(file, 0o755);
+    return file;
+  } catch (err) {
+    if (fs.existsSync(file)) return file; // an older copy still works most of the time
+    throw new Error('Flux couldn\u2019t get the YouTube/Twitch downloader. Check your internet and try again.');
+  }
+}
+function runYtdlp(args, onLine) {
+  return new Promise((resolve) => {
+    const p = rawSpawn(ytdlpPath(), args, { windowsHide: true });
+    ytdlpProc = p;
+    let out = '', err = '';
+    const feed = (d, isErr) => { const t = d.toString(); if (isErr) err = (err + t).slice(-20000); else out += t; if (onLine) t.split(/\r?\n|\r/).forEach((l) => l && onLine(l)); };
+    p.stdout.on('data', (d) => feed(d, false)); p.stderr.on('data', (d) => feed(d, true));
+    p.on('error', (e) => { ytdlpProc = null; resolve({ code: -1, out, err: String(e) }); });
+    p.on('close', (code) => { ytdlpProc = null; resolve({ code, out, err }); });
+  });
+}
+function ytError(err) {
+  if (/Private video|members-only|Join this channel|subscriber/i.test(err)) return 'That video is private or for members only.';
+  if (/Sign in to confirm your age|age-restricted/i.test(err)) return 'That video is age-restricted, so it can\u2019t be downloaded.';
+  if (/is not available|Video unavailable|does not exist|404/i.test(err)) return 'That video isn\u2019t available (removed, private or the link is wrong).';
+  if (/live event will begin|is live|currently live|Premieres in/i.test(err)) return 'That stream is live right now. Try again after it ends (when the VOD is ready).';
+  if (/HTTP Error 429|Too Many Requests|bot/i.test(err)) return 'YouTube is blocking downloads from your connection for a moment. Wait a few minutes and try again.';
+  return 'That link couldn\u2019t be downloaded. Check that the video is public and try again.';
+}
+ipcMain.handle('shorts:platform', async (e, raw) => {
+  const send = (v) => { try { e.sender.send('shorts:progress', v); } catch {} };
+  let u; try { u = new URL(String(raw || '').trim()); } catch { return { error: 'That doesn\u2019t look like a link.' }; }
+  if (!PLATFORM_HOSTS.test(u.hostname)) return { error: 'Only YouTube and Twitch links work here.' };
+  try { await ensureYtdlp(send); } catch (err) { return { error: err.message }; }
+  // 1) what is it?
+  send({ stage: 'info', value: null });
+  const info = await runYtdlp(['--no-playlist', '--no-warnings', '--dump-single-json', '--skip-download', u.href]);
+  if (info.code !== 0) return { error: ytError(info.err) };
+  let meta; try { meta = JSON.parse(info.out); } catch { return { error: 'That link couldn\u2019t be read.' }; }
+  if (meta.is_live || meta.live_status === 'is_live' || meta.live_status === 'is_upcoming') return { error: 'That stream is live right now. Try again after it ends (when the VOD is ready).' };
+  const dur = +meta.duration || 0;
+  if (dur && dur < 20) return { error: 'That video is already short - Viral Shorts is for long videos, streams and podcasts.' };
+  if (dur > 12 * 3600) return { error: 'That video is longer than 12 hours. Pick a shorter one.' };
+  const id = String(meta.id || crypto.createHash('sha1').update(u.href).digest('hex')).replace(/[^\w-]/g, '').slice(0, 40);
+  const site = /twitch/i.test(u.hostname) ? 'twitch' : 'yt';
+  const file = path.join(shortsDir(), `${site}-${id}.mp4`);
+  const name = String(meta.title || 'Video').replace(/[\\/:*?"<>|]+/g, ' ').slice(0, 90);
+  if (fs.existsSync(file) && fs.statSync(file).size > 100000) return { path: file, name, duration: dur };
+  // 2) download it (1080p at most - enough for vertical Shorts; long streams use 720p to save time and space)
+  const h = dur > 2 * 3600 ? 720 : 1080;
+  const fmt = `bv*[height<=${h}][vcodec^=avc1]+ba[ext=m4a]/bv*[height<=${h}]+ba/b[height<=${h}]/b`;
+  const ffdir = path.dirname(ffmpegPath());
+  let last = 0;
+  const r = await runYtdlp(['--no-playlist', '--no-warnings', '--newline', '-f', fmt, '--merge-output-format', 'mp4', '--ffmpeg-location', ffdir,
+    '--no-part', '-o', path.join(shortsDir(), `${site}-${id}.%(ext)s`), u.href], (line) => {
+    const m = /\[download\]\s+([\d.]+)%(?:\s+of\s+~?\s*([\d.]+\s*\w+))?(?:.*?ETA\s+([\d:]+))?/.exec(line);
+    if (m && Date.now() - last > 250) { last = Date.now(); send({ stage: 'download', value: Math.min(1, +m[1] / 100), size: m[2] || '', eta: m[3] || '' }); }
+    if (/\[Merger\]|\[FixupM3u8\]|\[VideoConvertor\]/.test(line)) send({ stage: 'merge', value: null });
+  });
+  if (r.code !== 0) {
+    if (r.code === null || /SIGTERM|SIGKILL/.test(r.err)) return { error: 'cancelled' };
+    return { error: ytError(r.err) };
+  }
+  if (!fs.existsSync(file)) {
+    // yt-dlp sometimes keeps another container: find what it made
+    const other = fs.readdirSync(shortsDir()).find((f) => f.startsWith(`${site}-${id}.`) && /\.(mp4|mkv|webm|m4a)$/.test(f));
+    if (!other) return { error: 'The download didn\u2019t finish. Try again.' };
+    return { path: path.join(shortsDir(), other), name, duration: dur };
+  }
+  return { path: file, name, duration: dur };
+});
+ipcMain.handle('shorts:cancelLink', () => { if (ytdlpProc) { try { ytdlpProc.kill(); } catch {} } return true; });
+
 ipcMain.handle('shorts:link', async (e, raw) => {
   const chk = checkLink(raw);
   if (chk.error) return chk;
