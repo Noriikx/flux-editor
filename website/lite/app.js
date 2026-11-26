@@ -8,7 +8,7 @@ const TERMS_VERSION = '2026-11-24';
 const TF_URL = 'https://cdn.jsdelivr.net/npm/@huggingface/transformers@3.8.1/dist/transformers.min.js';
 const isPhone = matchMedia('(pointer: coarse)').matches;
 // tells the Flux server this is Flux Mobile (and which kind of phone), so it shows up in the admin panel
-const MOBILE_OS = /android/i.test(navigator.userAgent) ? 'android' : /iphone|ipad|ipod/i.test(navigator.userAgent) || (/macintosh/i.test(navigator.userAgent) && navigator.maxTouchPoints > 1) ? 'ios' : 'web';
+const MOBILE_OS = window.FluxNative ? 'android-app' : /android/i.test(navigator.userAgent) ? 'android' : /iphone|ipad|ipod/i.test(navigator.userAgent) || (/macintosh/i.test(navigator.userAgent) && navigator.maxTouchPoints > 1) ? 'ios' : 'web';
 const ico = (d, c = 'i') => `<svg class="${c}" viewBox="0 0 24 24">${d}</svg>`;
 
 /* ============================ account ============================ */
@@ -505,7 +505,7 @@ async function transcribe(data, size, prog, isCancelled) {
 }
 const fmtMin = (s) => { s = Math.round(s); const h = Math.floor(s / 3600), m = Math.floor((s % 3600) / 60), x = s % 60; return (h ? h + ':' + String(m).padStart(2, '0') : m) + ':' + String(x).padStart(2, '0'); };
 let wakeLock = null;
-async function keepAwake(on) { try { if (on && 'wakeLock' in navigator) wakeLock = await navigator.wakeLock.request('screen'); else if (!on && wakeLock) { await wakeLock.release(); wakeLock = null; } } catch {} }
+async function keepAwake(on) { try { if (window.FluxNative) FluxNative.keepAwake(!!on); } catch {} try { if (on && 'wakeLock' in navigator) wakeLock = await navigator.wakeLock.request('screen'); else if (!on && wakeLock) { await wakeLock.release(); wakeLock = null; } } catch {} }
 
 /* ---------- captions ---------- */
 const CAP_STYLES = [['viral', 'Viral', 'yellow', true], ['bold', 'Bold', 'bold', true], ['box', 'Box', 'box', false], ['clean', 'Clean', 'clean', false], ['gold', 'Gold', 'gold', false]];
@@ -556,7 +556,7 @@ function renderShorts(page) {
   page.innerHTML = `<div class="sh-hero"><h1>Viral Shorts</h1><p>Choose a long video - a podcast, stream, vlog or interview. Flux finds the best moments and turns them into vertical Shorts with captions.</p>
       <button class="btn gold wide" data-a="pick">${ico('<rect x="3" y="5" width="18" height="14" rx="2"/><path d="M12 9v6M9 12h6"/>')}Choose a video</button>
       <div class="sh-link"><input type="url" placeholder="Or paste a YouTube or Twitch link" autocomplete="off" autocapitalize="off"><button class="btn" data-a="link">Go</button></div>
-      <p class="sh-note">Everything happens on your phone - your video isn’t uploaded anywhere.</p></div>
+      <p class="sh-note">${window.FluxNative ? 'Paste a YouTube video or a past Twitch stream - Flux downloads only the moments you keep. Only use videos you own or have permission to use.' : 'Everything happens on your phone - your video isn’t uploaded anywhere.'}</p></div>
     <div class="opt"><label>How long should each Short be?</label>${chipsHtml(Object.entries(SH_RANGES).map(([k, v]) => [k, v[2] + ' · ' + v[3]]), shOpts.range, 'range')}</div>
     <div class="opt"><label>Caption style</label>${chipsHtml(CAP_STYLES.map((x) => [x[0], x[1]]), shOpts.style, 'style')}</div>
     <div class="opt"><label>Listening</label>${chipsHtml([['tiny', 'Fast'], ['base', 'Most accurate']], shOpts.size, 'size')}<p class="sh-note">“Most accurate” is slower and downloads a bigger speech model (about 80 MB, only once).</p></div>
@@ -571,6 +571,7 @@ function renderShorts(page) {
 async function shortsLink(page, url) {
   if (!url) return toast('Paste a link first');
   let u; try { u = new URL(/^https?:/i.test(url) ? url : 'https://' + url); } catch { return toast('That doesn’t look like a link'); }
+  if (/(^|\.)(youtube\.com|youtu\.be|twitch\.tv)$/i.test(u.hostname) && window.FluxNative && FluxNative.linkInfo) return nativeLink(page, u.href);
   if (/(^|\.)(youtube\.com|youtu\.be|twitch\.tv)$/i.test(u.hostname)) {
     const b = sheet(`<h3>YouTube and Twitch links</h3>
       <p class="hint" style="font-size:14px">Phones and browsers aren’t allowed to download videos from YouTube or Twitch, so links work in the <b>Flux app for Windows and Mac</b>: paste the link in Viral Shorts there and it does everything for you.</p>
@@ -633,28 +634,83 @@ function showShortResults(page, again) {
   if (again) SHS.results = shAnalyze(SHS.words, SHS.peaks, SHS.dur, { range: shOpts.range, count: 0 });
   if (!SHS.results.length) { out.innerHTML = '<div class="card" style="margin-top:18px">No good moments found for this length. Try another length.</div>'; return; }
   out.innerHTML = `<div class="sec-h"><h2>${SHS.results.length} Shorts found</h2><button class="btn sm gold" data-a="all">Make all</button></div>
-    <video class="sh-vid" playsinline controls preload="metadata" src="${SHS.url}"></video><div style="height:10px"></div>`;
+    ${SHS.remote ? `<p class="sh-note">From: ${esc(SHS.name || '')} · Flux downloads only the moments you make into Shorts.</p>` : `<video class="sh-vid" playsinline controls preload="metadata" src="${SHS.url}"></video>`}<div style="height:10px"></div>`;
   const vid = $('video', out);
   SHS.results.forEach((r, i) => {
     const d = document.createElement('div'); d.className = 'sh-res';
     d.innerHTML = `<span class="score${r.viral >= 75 ? ' hot' : ''}">${r.viral}<small>SCORE</small></span><div><b>${esc(r.title || 'Short ' + (i + 1))}</b><small class="t">${fmtMin(r.s)} - ${fmtMin(r.e)} · ${Math.round(r.e - r.s)}s${r.why && r.why.length ? ' · ' + esc(r.why.join(', ')) : ''}</small>
       <div class="a"><button class="btn sm" data-a="play">${ico('<path d="M7 4l13 8-13 8z"/>')}Watch</button><button class="btn sm gold" data-a="make">Make Short</button></div></div>`;
-    $('[data-a=play]', d).onclick = () => { vid.currentTime = r.s; vid.play().catch(() => {}); vid.scrollIntoView({ behavior: 'smooth', block: 'center' }); const stop = () => { if (vid.currentTime >= r.e) { vid.pause(); vid.removeEventListener('timeupdate', stop); } }; vid.addEventListener('timeupdate', stop); };
+    $('[data-a=play]', d).onclick = () => { if (SHS.remote) return FluxNative.openUrl(SHS.site === 'yt' ? `https://www.youtube.com/watch?v=${encodeURIComponent(SHS.id)}&t=${Math.floor(r.s)}s` : `https://www.twitch.tv/videos/${SHS.id}?t=${Math.floor(r.s / 3600)}h${Math.floor((r.s % 3600) / 60)}m${Math.floor(r.s % 60)}s`); vid.currentTime = r.s; vid.play().catch(() => {}); vid.scrollIntoView({ behavior: 'smooth', block: 'center' }); const stop = () => { if (vid.currentTime >= r.e) { vid.pause(); vid.removeEventListener('timeupdate', stop); } }; vid.addEventListener('timeupdate', stop); };
     $('[data-a=make]', d).onclick = () => makeShort(r, true);
     out.appendChild(d);
   });
-  $('[data-a=all]', out).onclick = async () => { for (const r of SHS.results) await makeShort(r, false); toast(SHS.results.length + ' Shorts are in your projects'); go('create'); };
+  $('[data-a=all]', out).onclick = async () => { for (const r of SHS.results) { if ((await makeShort(r, false)) === false) return; } toast(SHS.results.length + ' Shorts are in your projects'); go('create'); };
 }
 async function makeShort(r, open) {
-  if (!SHS.fileId) { SHS.fileId = uid(); await putFile(SHS.fileId, SHS.file); }
-  const m = await loadMedia(SHS.fileId);
-  const s = Math.max(0, r.s - 0.15), e = Math.min(SHS.dur || m.dur, r.e + 0.35), d = e - s;
+  let fileId = SHS.fileId, fileName = SHS.file ? SHS.file.name : SHS.name, shift = 0;
+  if (SHS.remote) {
+    // download only this moment, straight to the phone
+    const busy = sheet(`<h3>Making your Short</h3><div class="busy"><i class="spin"></i><span class="st">Downloading just this moment…</span></div><div class="prog"><i></i></div><div class="acts"><button class="btn" data-a="x">Stop</button></div>`);
+    $('[data-a=x]', busy).onclick = () => FluxNative.linkCancel();
+    keepAwake(true);
+    try {
+      const cut = await nativeCall('linkCut', [SHS.url, Math.max(0, r.s - 1), Math.min(SHS.dur || r.e + 1, r.e + 1)], (st, v) => { $('.st', busy).textContent = st + '… ' + Math.round(v * 100) + '%'; $('.prog i', busy).style.width = Math.round(v * 100) + '%'; });
+      const blob = await (await fetch('/native/' + cut.path)).blob();
+      fileId = uid(); fileName = (SHS.name || 'Video') + ' ' + fmtMin(r.s) + '.mp4';
+      await putFile(fileId, new File([blob], fileName, { type: 'video/mp4' }));
+      shift = cut.start;
+      closeSheet();
+    } catch (e) { closeSheet(); toast(/cancel/i.test(e.message) ? 'Stopped' : 'Couldn’t download that moment: ' + e.message, 6000); return false; }
+    finally { keepAwake(false); }
+  } else if (!fileId) { fileId = SHS.fileId = uid(); await putFile(fileId, SHS.file); }
+  const m = await loadMedia(fileId);
+  const s = Math.max(0, r.s - 0.15), e = Math.min(SHS.dur || (m.dur + shift), r.e + 0.35), d = e - s;
   const caps = captionTexts(SHS.words, s, e, shOpts.style, { size: 0.085, y: 0.7 }, (t) => Math.max(0, Math.min(d, t - s)));
   const title = r.title || 'Short';
   const texts = [{ id: uid(), content: title, style: 'box', size: 0.058, y: 0.16, start: 0, end: Math.min(d, 3.2) }, ...caps];
-  const p = { id: uid(), name: title.slice(0, 60), aspect: '9:16', fit: 'cover', trans: 'dip', clips: [{ id: uid(), file: SHS.fileId, kind: m.kind === 'audio' ? 'video' : m.kind, name: SHS.file.name, in: s, out: e, speed: 1, volume: 1, filter: 'none', motion: 'none' }], texts, music: null, duration: d, createdAt: Date.now(), updatedAt: Date.now(), short: true };
+  const p = { id: uid(), name: title.slice(0, 60), aspect: '9:16', fit: 'cover', trans: 'dip', clips: [{ id: uid(), file: fileId, kind: m.kind === 'audio' ? 'video' : m.kind, name: fileName, in: Math.max(0, s - shift), out: Math.min(m.dur, e - shift), speed: 1, volume: 1, filter: 'none', motion: 'none' }], texts, music: null, duration: d, createdAt: Date.now(), updatedAt: Date.now(), short: true };
   await putProject(p); bump('shorts'); bump('projects');
   if (open) { await openProject(p); setProjectThumb(); toast('Your Short is ready - tap Export to save it'); }
+}
+
+/* ---------- YouTube / Twitch links in the Android app ---------- */
+const nativeCalls = {};
+window.__fluxCb = (id, err, data) => { const c = nativeCalls[id]; if (!c) return; delete nativeCalls[id]; err ? c.rej(new Error(err)) : c.res(data); };
+window.__fluxProg = (id, st, v) => { const c = nativeCalls[id]; if (c && c.prog) c.prog(st, v); };
+function nativeCall(method, args, prog) { return new Promise((res, rej) => { const id = 'c' + Date.now() + Math.random().toString(36).slice(2); nativeCalls[id] = { res, rej, prog }; FluxNative[method](id, ...args); }); }
+async function nativeLink(page, url) {
+  if (SHS.busy) return;
+  if (!hasPremium()) return renderShorts(page);
+  if (SHS.url) URL.revokeObjectURL(SHS.url);
+  SHS = { remote: true, url, file: null, fileId: null, dur: 0, words: null, peaks: null, results: [], busy: true, cancel: false };
+  const out = $('.sh-out', page);
+  out.innerHTML = `<div class="card" style="margin-top:18px"><b style="display:block;margin-bottom:4px">${esc(url)}</b><div class="busy"><i class="spin"></i><span class="st">Opening the link…</span></div><div class="prog"><i></i></div><p class="hint">Flux reads the video’s captions - it doesn’t download the whole video.</p><div class="acts" style="margin-top:10px"><button class="btn" data-a="stop">Stop</button></div></div>`;
+  out.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  const prog = (msg, p) => { if (!out.isConnected) return; $('.st', out).textContent = msg; if (p != null) $('.prog i', out).style.width = Math.round(p * 100) + '%'; };
+  $('[data-a=stop]', out).onclick = () => { SHS.cancel = true; FluxNative.linkCancel(); prog('Stopping…'); };
+  keepAwake(true);
+  try {
+    const info = await nativeCall('linkInfo', [url], (st, v) => prog(st + '…', v));
+    if (info.live) throw new Error('That’s a live stream. Wait until it’s over, then paste the link of the saved stream.');
+    Object.assign(SHS, { site: info.site, id: info.id, name: info.name, dur: info.duration });
+    if (SHS.dur && SHS.dur < 20) throw new Error('That video is too short - choose one longer than 20 seconds.');
+    if (info.words) SHS.words = info.words.map(([w, s, e]) => ({ w, s, e }));
+    else {
+      // no captions (most Twitch streams): get only the sound and listen to it here
+      if (SHS.dur > 3 * 3600) throw new Error('This stream has no captions and is over 3 hours - too long to listen to on a phone.');
+      const snd = await nativeCall('linkSound', [url], (st, v) => prog(st + '… ' + Math.round(v * 100) + '%', v));
+      prog('Reading the sound…', 0.02);
+      const data = await decodeAudio(await (await fetch('/native/' + snd.path)).blob());
+      SHS.peaks = peaksOf(data);
+      SHS.words = await transcribe(data, shOpts.size, prog, () => SHS.cancel);
+    }
+    if (!SHS.words || SHS.words.length < 30) throw new Error('Flux couldn’t find enough talking in this video.');
+    SHS.busy = false;
+    showShortResults(page, true);
+  } catch (e) {
+    SHS.busy = false;
+    out.innerHTML = `<div class="card" style="margin-top:18px">${esc(/cancel/i.test(e.message) ? 'Stopped.' : e.message || 'Something went wrong.')}</div>`;
+  } finally { keepAwake(false); }
 }
 
 /* ============================ editor: captions, motion, transitions ============================ */
@@ -718,6 +774,40 @@ function captionsSheet() {
       run = false; $('[data-a=go]', b).textContent = 'Make captions'; $('.cap-run', b).hidden = true;
       $('.err-msg', b).textContent = e && e.message === 'cancelled' ? 'Stopped.' : /fetch|import|network/i.test(String(e && e.message)) ? 'Couldn’t download the speech model. Check your internet and try again.' : 'Something went wrong: ' + ((e && e.message) || e);
     } finally { keepAwake(false); }
+  };
+}
+
+/* ============================ the Android app ============================ */
+// sends a finished video to the phone in pieces, then saves it to the gallery or opens the share menu
+async function nativeFile(blob, name, what) {
+  try {
+    toast(what === 'share' ? 'Getting it ready…' : 'Saving…', 8000);
+    const id = FluxNative.begin(name, blob.type || 'video/mp4'); if (!id) throw new Error();
+    const CH = 768 * 1024;
+    for (let o = 0; o < blob.size; o += CH) {
+      const buf = new Uint8Array(await blob.slice(o, o + CH).arrayBuffer());
+      let bin = ''; for (let i = 0; i < buf.length; i += 0x8000) bin += String.fromCharCode.apply(null, buf.subarray(i, i + 0x8000));
+      if (!FluxNative.append(id, btoa(bin))) throw new Error();
+    }
+    if (what === 'share') { FluxNative.share(id); return; }
+    toast(FluxNative.save(id) === 'ok' ? 'Saved to your gallery (Movies › Flux)' : 'Couldn’t save it', 4000);
+  } catch { toast('Couldn’t save it - try again', 4000); }
+}
+if (window.FluxNative) {
+  document.documentElement.classList.add('in-app');
+  // "Save" buttons go to the phone's gallery instead of a browser download
+  document.addEventListener('click', async (e) => {
+    const a = e.target.closest('a[download]'); if (!a) return;
+    e.preventDefault();
+    const blob = await (await fetch(a.href)).blob();
+    nativeFile(blob, a.getAttribute('download') || 'Flux video.mp4', 'save');
+  }, true);
+  // the phone's Back button: close what's open first
+  window.fluxBack = () => {
+    if ($('#sheet').classList.contains('on')) { if (typeof exporting !== 'undefined' && exporting) return true; closeSheet(); return true; }
+    if ($('#editor').classList.contains('on')) { $('#back').click(); return true; }
+    if (curPage !== 'create') { go('create'); return true; }
+    return false;
   };
 }
 

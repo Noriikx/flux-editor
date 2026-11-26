@@ -300,7 +300,7 @@ function premiumText(u) {
   return out.join(' ') || '<span class="pill">Free</span>';
 }
 
-const MOB_OS = { android: 'Android', ios: 'iPhone / iPad', web: 'Browser' };
+const MOB_OS = { 'android-app': 'Android app', android: 'Android browser', ios: 'iPhone / iPad', web: 'Browser' };
 function ago(t) { const m = Math.round((Date.now() - t) / 60000); return m < 2 ? 'just now' : m < 60 ? m + ' min ago' : m < 1440 ? Math.round(m / 60) + ' h ago' : Math.round(m / 1440) + ' days ago'; }
 function draw() {
   const q = $('#search').value.trim().toLowerCase().replace(/^@/, ''), f = $('#filter').value, now = Date.now(), d0 = new Date(new Date().toISOString().slice(0, 10)).getTime();

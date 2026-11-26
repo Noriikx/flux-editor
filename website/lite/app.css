@@ -127,3 +127,8 @@
 @media (min-width: 900px) { .tgrid { grid-template-columns: repeat(3, 1fr); } .nav { max-width: 760px; margin: 0 auto; border-radius: 20px 20px 0 0; border-left: 1px solid var(--line); border-right: 1px solid var(--line); } }
 .pm-badge { display: inline-block; font-size: 12px; font-weight: 700; color: #f2cf7f; border: 1px solid rgba(242,207,127,.45); background: rgba(242,207,127,.1); padding: 3px 10px; border-radius: 99px; margin-bottom: 10px; }
 .pm-list { display: grid; gap: 6px; font-size: 13.5px; color: var(--text); }
+.in-app #installBtn { display: none !important; }
+.get-app { display: flex; align-items: center; gap: 12px; margin: 14px 0 4px; padding: 12px 14px; border-radius: 16px; text-decoration: none; color: var(--text); background: linear-gradient(135deg, rgba(216,182,116,.18), rgba(216,182,116,.05)); border: 1px solid rgba(216,182,116,.35); }
+.get-app img { width: 42px; height: 42px; border-radius: 11px; }
+.get-app span { flex: 1; min-width: 0; } .get-app b { display: block; font-size: 14.5px; } .get-app small { color: var(--muted); font-size: 12.5px; }
+.get-app i { font-style: normal; font-weight: 700; color: #1a140a; background: var(--grad); padding: 7px 14px; border-radius: 99px; font-size: 13px; }

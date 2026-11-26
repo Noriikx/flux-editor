@@ -655,9 +655,9 @@ async function runExport(q, type, b) {
   $('.prog i', b).style.width = '100%';
   $('.st', b).innerHTML = `Done! ${(blob.size / 1048576).toFixed(1)} MB`;
   const acts = $('.acts', b);
-  acts.innerHTML = `<a class="btn" href="${url}" download="${esc(name)}">Save</a>${navigator.canShare && navigator.canShare({ files: [new File([blob], name, { type: blob.type })] }) ? '<button class="btn gold" data-a="share">Share</button>' : ''}<button class="btn" data-a="close">Close</button>`;
+  acts.innerHTML = `<a class="btn" href="${url}" download="${esc(name)}">Save</a>${window.FluxNative || (navigator.canShare && navigator.canShare({ files: [new File([blob], name, { type: blob.type })] })) ? '<button class="btn gold" data-a="share">Share</button>' : ''}<button class="btn" data-a="close">Close</button>`;
   $('[data-a=close]', b).onclick = closeSheet;
-  const sh = $('[data-a=share]', b); if (sh) sh.onclick = () => navigator.share({ files: [new File([blob], name, { type: blob.type })], title: P.name }).catch(() => {});
+  const sh = $('[data-a=share]', b); if (sh) sh.onclick = () => (window.FluxNative ? nativeFile(blob, name, 'share') : navigator.share({ files: [new File([blob], name, { type: blob.type })], title: P.name }).catch(() => {}));
   window.__lastExport = blob; bump('exports'); bump('exportSecs', Math.round(total())); maxStat('maxDuration', Math.round(total()));
 }
 

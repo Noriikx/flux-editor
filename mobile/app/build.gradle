@@ -1,0 +1,32 @@
+plugins { id 'com.android.application' }
+android {
+    namespace 'app.flux.mobile'
+    compileSdk 35
+    defaultConfig {
+        applicationId 'app.flux.mobile'
+        minSdk 26
+        targetSdk 35
+        versionCode((System.getenv('GITHUB_RUN_NUMBER') ?: '1') as int)
+        versionName '1.0.' + (System.getenv('GITHUB_RUN_NUMBER') ?: '0')
+    }
+    signingConfigs {
+        release {
+            // the signing key lives in mobile/keys so every build can update the app already on a phone
+            storeFile file(System.getenv('FLUX_KEYSTORE') ?: '../keys/flux-release.jks')
+            storePassword System.getenv('FLUX_KEY_PASS') ?: ''
+            keyAlias 'flux'
+            keyPassword System.getenv('FLUX_KEY_PASS') ?: ''
+        }
+    }
+    buildTypes {
+        release { minifyEnabled false; signingConfig signingConfigs.release }
+    }
+    compileOptions { sourceCompatibility JavaVersion.VERSION_17; targetCompatibility JavaVersion.VERSION_17; coreLibraryDesugaringEnabled true }
+    packaging { resources { excludes += ['META-INF/DEPENDENCIES', 'META-INF/LICENSE*', 'META-INF/NOTICE*', 'META-INF/*.kotlin_module'] } }
+}
+dependencies {
+    implementation 'androidx.webkit:webkit:1.12.1'
+    implementation 'androidx.core:core:1.13.1'
+    implementation 'com.github.teamnewpipe:NewPipeExtractor:v0.27.1'
+    coreLibraryDesugaring 'com.android.tools:desugar_jdk_libs_nio:2.1.4'
+}
