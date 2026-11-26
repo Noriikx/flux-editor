@@ -125,3 +125,5 @@
 .spin { width: 18px; height: 18px; border-radius: 50%; border: 2px solid var(--line2); border-top-color: var(--gold); animation: spin 0.8s linear infinite; flex: none; }
 @keyframes spin { to { transform: rotate(360deg); } }
 @media (min-width: 900px) { .tgrid { grid-template-columns: repeat(3, 1fr); } .nav { max-width: 760px; margin: 0 auto; border-radius: 20px 20px 0 0; border-left: 1px solid var(--line); border-right: 1px solid var(--line); } }
+.pm-badge { display: inline-block; font-size: 12px; font-weight: 700; color: #f2cf7f; border: 1px solid rgba(242,207,127,.45); background: rgba(242,207,127,.1); padding: 3px 10px; border-radius: 99px; margin-bottom: 10px; }
+.pm-list { display: grid; gap: 6px; font-size: 13.5px; color: var(--text); }

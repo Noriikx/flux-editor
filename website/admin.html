@@ -91,6 +91,7 @@
   .bcard.on .tick { background: var(--bc); border-color: var(--bc); }
   .bcard.on .tick::after { content: "✓"; }
   .bcard .sw { height: 46px; border-radius: 10px; }
+  .mob { display: inline-block; margin-top: 2px; font-size: 11.5px; color: #7ee0ff; }
   .tpl .texts span { font-size: 12px; padding: 3px 8px; border-radius: 6px; background: #1e1c2b; }
   .bdg { display: inline-block; font-size: 11px; padding: 1px 7px; border-radius: 99px; margin: 2px 3px 0 0; border: 1px solid; }
   .badge-box { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
@@ -200,9 +201,9 @@
     </div>
 
     <div class="card">
-      <div class="tools"><h2 style="margin:0;flex:none">Users <span class="muted" id="count"></span></h2><input id="search" placeholder="Search email or username…"><select id="filter" style="width:auto"><option value="">Everyone</option><option value="banned">Banned</option><option value="premium">Premium</option><option value="today">Active today</option></select><button class="small" id="reload">Refresh</button></div>
+      <div class="tools"><h2 style="margin:0;flex:none">Users <span class="muted" id="count"></span></h2><input id="search" placeholder="Search email or username…"><select id="filter" style="width:auto"><option value="">Everyone</option><option value="banned">Banned</option><option value="premium">Premium</option><option value="today">Active today</option><option value="mobile">📱 Flux Mobile users</option></select><button class="small" id="reload">Refresh</button></div>
       <table>
-        <thead><tr><th>User</th><th>Premium</th><th>Version</th><th>Joined</th><th>Last seen</th><th></th></tr></thead>
+        <thead><tr><th>User</th><th>Premium</th><th>App</th><th>Joined</th><th>Last seen</th><th></th></tr></thead>
         <tbody id="rows"><tr><td colspan="6" class="muted">Loading…</td></tr></tbody>
       </table>
     </div>
@@ -299,16 +300,18 @@ function premiumText(u) {
   return out.join(' ') || '<span class="pill">Free</span>';
 }
 
+const MOB_OS = { android: 'Android', ios: 'iPhone / iPad', web: 'Browser' };
+function ago(t) { const m = Math.round((Date.now() - t) / 60000); return m < 2 ? 'just now' : m < 60 ? m + ' min ago' : m < 1440 ? Math.round(m / 60) + ' h ago' : Math.round(m / 1440) + ' days ago'; }
 function draw() {
   const q = $('#search').value.trim().toLowerCase().replace(/^@/, ''), f = $('#filter').value, now = Date.now(), d0 = new Date(new Date().toISOString().slice(0, 10)).getTime();
   const list = users.filter((u) => (!q || u.email.includes(q) || (u.username || '').toLowerCase().includes(q))
-    && (!f || (f === 'banned' && u.banned) || (f === 'premium' && (u.grantUntil === -1 || u.grantUntil > now)) || (f === 'today' && (u.lastSeen || u.lastLogin || 0) >= d0)));
+    && (!f || (f === 'banned' && u.banned) || (f === 'premium' && (u.grantUntil === -1 || u.grantUntil > now)) || (f === 'today' && (u.lastSeen || u.lastLogin || 0) >= d0) || (f === 'mobile' && u.mobileSeen)));
   $('#count').textContent = `(${users.length})`;
   $('#rows').innerHTML = list.length ? list.map((u) => `
     <tr data-e="${esc(u.email)}">
       <td>${u.username ? '<b>@' + esc(u.username) + '</b> ' + (u.badges || []).map((b) => `<span class="bdg" style="color:${BADGES[b][1]};border-color:${BADGES[b][1]}55">${esc(BADGES[b][0])}</span>`).join('') + '<br>' : ''}<span class="em ${u.username ? 'muted' : ''}">${esc(u.email)}</span>${u.hasPassword ? '' : '<br><span class="muted">no account yet</span>'}${u.banned ? '<br><span class="pill ban">Banned' + (u.banned.reason ? ': ' + esc(u.banned.reason) : '') + '</span>' : ''}</td>
       <td>${premiumText(u)}</td>
-      <td class="muted">${u.version ? esc(dv(u.version)) + (u.os ? ' · ' + esc(u.os) : '') : '-'}</td>
+      <td class="muted">${u.version ? '💻 ' + esc(dv(u.version)) + (u.os ? ' · ' + esc({ win32: 'Windows', darwin: 'Mac', linux: 'Linux' }[u.os] || u.os) : '') : (u.mobileSeen ? '' : '-')}${u.mobileSeen ? `${u.version ? '<br>' : ''}<span class="mob" title="Last used Flux Mobile ${esc(ago(u.mobileSeen))}">📱 Mobile · ${esc(MOB_OS[u.mobileOs] || 'Browser')}</span>` : ''}</td>
       <td class="muted">${day(u.createdAt)}</td>
       <td class="muted">${day(u.lastSeen || u.lastLogin)}</td>
       <td><div class="acts">
@@ -356,7 +359,7 @@ async function loadDash() {
   const r = await call('admin/stats');
   if (r.error) { $('#dash').innerHTML = `<div class="stat"><small class="msg err">${esc(r.error)}</small></div>`; return; }
   const d = r.downloads;
-  const cards = [['Total users', r.users], ['Active today', r.activeToday], ['Active this week', r.active7], ['Premium users', r.premium], ['New today', r.newToday], ['Banned', r.banned]];
+  const cards = [['Total users', r.users], ['Active today', r.activeToday], ['Active this week', r.active7], ['Premium users', r.premium], ['📱 Mobile users', r.mobile || 0], ['📱 Mobile today', r.mobileToday || 0], ['New today', r.newToday], ['Banned', r.banned]];
   if (d) cards.push(['Downloads (installs)', d.installs, true], ['Quick updates', d.updates]);
   $('#dash').innerHTML = cards.map(([a, b, m]) => `<div class="stat${m ? ' money' : ''}"><small>${a}</small><b>${esc(b)}</b></div>`).join('');
   const vs = Object.entries(r.versions || {}).sort((a, b) => (b[0] > a[0] ? 1 : -1)), vmax = Math.max(1, ...vs.map((x) => x[1]));

@@ -454,7 +454,10 @@ export default async (req) => {
     if (me.email !== ADMIN_EMAIL && (await outdated(req))) return fail('Please sign in again.', 401);
     // which version people use + who was active today (saved at most once an hour per person)
     const ver = String(req.headers.get('x-flux-version') || ''), os = String(req.headers.get('x-flux-os') || '').slice(0, 12);
-    if (VER.test(ver) && (ver !== me.version || Date.now() - (me.lastSeen || 0) > 3600000)) { me.version = ver; me.os = os; me.lastSeen = Date.now(); await saveUser(me); }
+    // Flux Mobile (phones and browsers) is counted on its own, so it doesn't hide which computer app someone has
+    const mobile = /^(android|ios|web)/.test(os);
+    if (VER.test(ver) && mobile) { if (os !== me.mobileOs || Date.now() - (me.mobileSeen || 0) > 3600000) { me.mobileOs = os; me.mobileSeen = Date.now(); me.lastSeen = Date.now(); await saveUser(me); } }
+    else if (VER.test(ver) && (ver !== me.version || Date.now() - (me.lastSeen || 0) > 3600000)) { me.version = ver; me.os = os; me.lastSeen = Date.now(); await saveUser(me); }
 
     if (route === 'me') return json({ account: await publicUser(me, new URL(req.url).searchParams.get('refresh') === '1') });
 
@@ -696,6 +699,7 @@ export default async (req) => {
         const list = (await allUsers()).map((u) => ({
           email: u.email, username: u.username || null, badges: (u.badges || []).filter((x) => BADGES.includes(x)), avatar: avatarUrl(u), twoFactor: !!u.twoFA, createdAt: u.createdAt, lastLogin: u.lastLogin || null, lastSeen: u.lastSeen || null,
           version: u.version || null, os: u.os || null, hasPassword: !!u.hash && isVerified(u), banned: u.banned || null, themes: u.themes || [],
+          mobileOs: u.mobileOs || null, mobileSeen: u.mobileSeen || null,
           grantUntil: u.grantUntil || 0, subscription: u.stripe ? { active: !!u.stripe.active, until: u.stripe.until || null } : null
         }));
         list.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
@@ -713,6 +717,8 @@ export default async (req) => {
           active7: real.filter((u) => (u.lastSeen || u.lastLogin || 0) >= now - 7 * 86400000).length,
           premium: real.filter((u) => u.email === ADMIN_EMAIL || u.grantUntil === -1 || u.grantUntil > now).length,
           banned: all.filter((u) => u.banned).length,
+          mobile: real.filter((u) => u.mobileSeen).length,
+          mobileToday: real.filter((u) => (u.mobileSeen || 0) >= day0).length,
           newToday: real.filter((u) => (u.createdAt || 0) >= day0).length,
           new7: real.filter((u) => (u.createdAt || 0) >= now - 7 * 86400000).length,
           versions, config: await appConfig(), downloads: null

@@ -7,12 +7,15 @@ const APP_VERSION = '7.4.0';
 const TERMS_VERSION = '2026-11-24';
 const TF_URL = 'https://cdn.jsdelivr.net/npm/@huggingface/transformers@3.8.1/dist/transformers.min.js';
 const isPhone = matchMedia('(pointer: coarse)').matches;
+// tells the Flux server this is Flux Mobile (and which kind of phone), so it shows up in the admin panel
+const MOBILE_OS = /android/i.test(navigator.userAgent) ? 'android' : /iphone|ipad|ipod/i.test(navigator.userAgent) || (/macintosh/i.test(navigator.userAgent) && navigator.maxTouchPoints > 1) ? 'ios' : 'web';
 const ico = (d, c = 'i') => `<svg class="${c}" viewBox="0 0 24 24">${d}</svg>`;
 
 /* ============================ account ============================ */
 let acct = null;
 try { acct = JSON.parse(localStorage.getItem('flux.account') || 'null'); } catch {}
 const signedIn = () => !!(acct && acct.token);
+const hasPremium = () => !!(acct && acct.token && acct.premium && (!acct.until || acct.until > Date.now()));
 function storeAccount(token, a) {
   acct = { token, email: a.email, username: a.username || null, uid: a.uid || null, avatar: a.avatar || null, badges: a.badges || [], privacy: a.privacy || {}, twoFactor: !!a.twoFactor, premium: !!a.premium, until: a.until || null, source: a.source || null, needAge: !!a.needAge };
   try { localStorage.setItem('flux.account', JSON.stringify(acct)); } catch {}
@@ -22,10 +25,10 @@ function signOut(msg) {
   acct = null; socialCounts = null;
   try { localStorage.removeItem('flux.account'); } catch {}
   updateNavMe(); if (msg) toast(msg);
-  if (curPage !== 'create' && curPage !== 'templates' && curPage !== 'shorts') renderPage(curPage);
+  if (curPage !== 'create' && curPage !== 'templates') renderPage(curPage);
 }
 async function api(path, body) {
-  const headers = { 'content-type': 'application/json', 'x-flux-version': APP_VERSION, 'x-flux-os': 'web' };
+  const headers = { 'content-type': 'application/json', 'x-flux-version': APP_VERSION, 'x-flux-os': MOBILE_OS };
   if (acct && acct.token) headers.authorization = 'Bearer ' + acct.token;
   let r;
   try { r = await fetch(API_BASE + path, { method: body ? 'POST' : 'GET', headers, body: body ? JSON.stringify(body) : undefined }); }
@@ -138,7 +141,7 @@ function askUsername() {
 async function refreshMe() {
   if (!signedIn()) return;
   const r = await api('me');
-  if (r.account && acct) { storeAccount(acct.token, r.account); if (curPage === 'me') renderPage('me'); }
+  if (r.account && acct) { storeAccount(acct.token, r.account); if (curPage === 'me' || curPage === 'shorts') renderPage(curPage); }
 }
 function needSignIn(page, what) {
   page.innerHTML = `<h1 class="ph1">${what[0]}</h1><p class="sub2">${what[1]}</p>
@@ -540,6 +543,16 @@ const saveShOpts = () => { try { localStorage.setItem('flux.mshorts', JSON.strin
 const chipsHtml = (list, val, key) => `<div class="chips" data-k="${key}">${list.map(([k, n]) => `<button class="chip${k === val ? ' on' : ''}" data-v="${k}">${n}</button>`).join('')}</div>`;
 function renderShorts(page) {
   if (SHS.busy) return;
+  // Viral Shorts needs a Flux account with Premium
+  if (!signedIn()) return needSignIn(page, ['Viral Shorts', 'Turn long videos into vertical Shorts with captions. Sign in to use it - Viral Shorts is part of Flux Premium.']);
+  if (!hasPremium()) {
+    page.innerHTML = `<div class="sh-hero"><span class="pm-badge">👑 Premium</span><h1>Viral Shorts</h1><p>Choose a long video - a podcast, stream or vlog - and Flux finds the best moments and turns them into vertical Shorts with captions.</p>
+      <div class="pm-list"><span>✓ Finds the most viral moments</span><span>✓ Word-by-word captions in 5 styles</span><span>✓ Vertical crop, ready to post</span></div>
+      <div class="card" style="margin-top:16px"><b style="display:block;margin-bottom:4px">Viral Shorts is part of Flux Premium</b><span class="muted" style="font-size:13.5px">Premium isn’t for sale yet - it’s coming soon. You’re signed in as @${esc(acct.username || acct.email)}; when Premium is on your account, Viral Shorts unlocks here by itself.</span></div>
+      <button class="btn wide" style="margin-top:12px" data-a="chk">Check again</button></div>`;
+    $('[data-a=chk]', page).onclick = async () => { await refreshMe(); if (hasPremium()) { toast('Premium is on - enjoy Viral Shorts!'); } else toast('No Premium on this account yet'); renderShorts(page); };
+    return;
+  }
   page.innerHTML = `<div class="sh-hero"><h1>Viral Shorts</h1><p>Choose a long video - a podcast, stream, vlog or interview. Flux finds the best moments and turns them into vertical Shorts with captions.</p>
       <button class="btn gold wide" data-a="pick">${ico('<rect x="3" y="5" width="18" height="14" rx="2"/><path d="M12 9v6M9 12h6"/>')}Choose a video</button>
       <div class="sh-link"><input type="url" placeholder="Or paste a YouTube or Twitch link" autocomplete="off" autocapitalize="off"><button class="btn" data-a="link">Go</button></div>
@@ -577,6 +590,7 @@ async function shortsLink(page, url) {
 }
 async function runShorts(page, file) {
   if (SHS.busy) return;
+  if (!hasPremium()) return renderShorts(page);
   if (SHS.url) URL.revokeObjectURL(SHS.url);
   SHS = { file, fileId: null, dur: 0, words: null, peaks: null, results: [], busy: true, cancel: false, url: URL.createObjectURL(file) };
   const out = $('.sh-out', page);
