@@ -510,6 +510,57 @@ function ffmpegPath() {
   } catch {}
   return null;
 }
+// ---------- 1.7.6: is this song copyrighted? Reads the file's own tags (nothing is uploaded) ----------
+const copyrightCache = new Map();
+function readTags(file) {
+  const ff = ffmpegPath();
+  if (!ff) return Promise.resolve({});
+  return new Promise((resolve) => {
+    const { execFile } = require('child_process');
+    execFile(ff, ['-hide_banner', '-v', 'error', '-i', file, '-f', 'ffmetadata', '-'], { timeout: 15000, maxBuffer: 4 * 1024 * 1024, windowsHide: true }, (_err, out) => {
+      const tags = {};
+      for (const line of String(out || '').split(/\r?\n/)) {
+        const m = /^([^=;#\[]+)=(.*)$/.exec(line);
+        if (m) tags[m[1].trim().toLowerCase()] = m[2].replace(/\\(.)/g, '$1').trim().slice(0, 300);
+      }
+      resolve(tags);
+    });
+  });
+}
+function copyrightVerdict(tags, fileName) {
+  const all = Object.values(tags).join(' \n ');
+  const name = String(fileName || '');
+  const quote = (s) => '“' + String(s).slice(0, 80) + '”';
+  // the file says it's free
+  const freeRe = /creativecommons\.org|\bCC[- ]?(BY|0)\b|\bCC0\b|public domain|royalty[- ]free|copyright[- ]free|no copyright|free to use|incompetech|pixabay|youtube audio library|freesound|free music archive/i;
+  if (freeRe.test(all) || /royalty[- ]free|copyright[- ]free|no copyright|\bncs\b/i.test(name)) {
+    const credit = /\bBY\b|attribution|\bncs\b|nocopyrightsounds|incompetech/i.test(all + ' ' + name);
+    return { v: 'free', why: credit ? 'Its tags say it’s free to use with credit (Creative Commons or similar). Put the artist in your video description.' : 'Its tags say it’s free to use (Creative Commons, public domain or royalty-free).' };
+  }
+  // clear signs of a released, copyrighted song
+  const cr = tags.copyright || tags.tcop || tags.cprt;
+  if (cr) return { v: 'yes', why: 'The file says: ' + quote(cr) };
+  if (tags.isrc || tags.tsrc) return { v: 'yes', why: 'It has an ISRC code (' + (tags.isrc || tags.tsrc) + '), which record labels give to released songs.' };
+  const label = tags.publisher || tags.label || tags.tpub || tags.organization;
+  if (label) return { v: 'yes', why: 'Released by ' + quote(label) + '.' };
+  if (/itunes|apple music|amazon\.com|spotify|deezer|tidal|\(p\)|℗|©|all rights reserved|records\b|recordings\b|music group|entertainment\b|\bumg\b|sony music|warner|universal music/i.test(all))
+    return { v: 'yes', why: 'Its tags look like a store or label release.' };
+  if (/official (music )?(video|audio)|\(lyrics?\)|\[lyrics?\]|lyric video|\bvevo\b/i.test(name))
+    return { v: 'likely', why: 'The file name looks like a song downloaded from YouTube.' };
+  if (tags.artist && tags.album && (tags.track || tags.date || tags.genre))
+    return { v: 'likely', why: 'It has an artist, album and track info like a released song (' + quote(tags.artist + ' – ' + (tags.title || tags.album)) + ').' };
+  return { v: 'unknown', why: 'There’s nothing in the file that says who owns it.' };
+}
+ipcMain.handle('media:copyright', async (_e, file) => {
+  try {
+    if (!file || !fs.existsSync(file)) return { v: 'unknown', why: '' };
+    const st = fs.statSync(file), key = file + '|' + st.size + '|' + st.mtimeMs;
+    if (copyrightCache.has(key)) return copyrightCache.get(key);
+    const r = copyrightVerdict(await readTags(file), path.basename(file));
+    copyrightCache.set(key, r);
+    return r;
+  } catch { return { v: 'unknown', why: '' }; }
+});
 ipcMain.handle('export:finish', async (_e, { target, format, duration, quality, fps }) => {
   if (!exportJob) return { ok: false, error: 'No export in progress' };
   try { fs.closeSync(exportJob.fd); } catch {}

@@ -1,6 +1,11 @@
 /* Flux — changelog. Shown once after an update, and any time from Settings → About. */
 'use strict';
 const CHANGELOG = [
+  { v: '7.6.0', date: '2026-11-28', items: [
+    'Copyright check for songs: every song you bring in gets a small mark in the media library - a red “!” if it’s copyrighted, an orange “!” if it probably is, a green ✓ if it’s free to use, and a grey “?” if Flux can’t tell. Hover it to see why',
+    'Copyrighted songs on the timeline get a “!” too, and media folders show how many copyrighted songs are inside',
+    'It never stops you - you can still use any song. It just warns you that YouTube, TikTok or Instagram may mute or claim the video. The check reads the song’s own info on your computer; nothing is uploaded'
+  ] },
   { v: '7.5.0', date: '2026-11-27', items: [
     'Flux Collaboration: edit one project together at the same time. Click Share in the top bar, then add people by username, email or straight from your friends. You stay the owner and can remove anyone any time',
     'See who’s in the project right now: their profile pictures and “N editing” in the top bar, a coloured playhead for each person on the timeline, and the clip they’re working on outlined in their colour',

@@ -1971,3 +1971,15 @@ html.calm .hw-deco *, html.calm .hw-deco *::after { animation: none !important; 
 .co-you { font-weight: 500; color: var(--muted); font-size: 12px; }
 #topbar .top-right .btn { white-space: nowrap; }
 @media (max-width: 1520px) { .co-share .co-lbl, .co-count .co-lbl { display: none; } .co-share { padding: 0 10px; } }
+
+/* ============ 1.7.6 copyright marks on songs ============ */
+.cr-badge { position: absolute; left: 6px; bottom: 6px; z-index: 2; min-width: 18px; height: 18px; padding: 0 4px; border-radius: 9px; display: grid; place-items: center; font: 800 11.5px/1 var(--font); cursor: help; box-shadow: 0 1px 4px rgba(0,0,0,.5); }
+.cr-badge.cr-yes { background: #ff4d5e; color: #fff; }
+.cr-badge.cr-likely { background: #ffb02e; color: #1a1000; }
+.cr-badge.cr-free { background: #2fd27a; color: #04170c; font-size: 10.5px; }
+.cr-badge.cr-unknown { background: rgba(0,0,0,.6); color: #cfd2dc; border: 1px solid rgba(255,255,255,.25); }
+.clip .cr-clip { position: absolute; left: 6px; top: 4px; z-index: 3; width: 15px; height: 15px; border-radius: 50%; display: grid; place-items: center; background: #ffb02e; color: #1a1000; font: 800 10px/1 var(--font); cursor: help; box-shadow: 0 1px 3px rgba(0,0,0,.6); }
+.clip.has-cr .label { left: 26px; }
+.clip .cr-clip.sure { background: #ff4d5e; color: #fff; }
+[data-folder] { position: relative; }
+[data-folder] .cr-badge.cr-count { left: auto; right: 6px; bottom: auto; top: 6px; }

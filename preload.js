@@ -11,6 +11,7 @@ contextBridge.exposeInMainWorld('flux', {
   // for <video>/<audio>: a local address that supports jumping around (seeking)
   playUrl: (p) => { const base = mediaBase(); return base ? base + encodeURIComponent(p) : 'flux://app/media/' + encodeURIComponent(p); },
   fileExists: (p) => ipcRenderer.invoke('file:exists', p),
+  copyrightCheck: (p) => ipcRenderer.invoke('media:copyright', p),
   saveMediaFile: (opts) => ipcRenderer.invoke('media:save', opts),
 
   // projects (saved automatically)
