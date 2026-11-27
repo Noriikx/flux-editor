@@ -72,7 +72,7 @@ function renderHome() {
     card.tabIndex = 0;
     card.innerHTML = `
       <div class="proj-thumb"><div class="proj-frame" style="aspect-ratio:${W}/${H}">${p.thumb ? `<img src="${p.thumb}" alt="">` : '<img src="logo.png" class="ph" alt="">'}</div>
-        <span class="proj-ar">${p.aspect || '16:9'}</span>${p.duration ? `<span class="proj-dur">${fmt(p.duration, false)}</span>` : ''}
+        <span class="proj-ar">${p.aspect || '16:9'}</span>${p.shared ? '<span class="proj-shared" data-tip="Shared - others can edit this project"><svg viewBox="0 0 24 24"><circle cx="9" cy="8" r="3.2"/><path d="M3 19c.6-3.2 3-5 6-5s5.4 1.8 6 5"/><circle cx="17" cy="9" r="2.5"/><path d="M16 14.2c2.5 0 4.4 1.6 5 4.8"/></svg>Shared</span>' : ''}${p.duration ? `<span class="proj-dur">${fmt(p.duration, false)}</span>` : ''}
         <button class="proj-more" data-tip="More">⋯</button></div>
       <div class="proj-meta"><div class="proj-name"></div><div class="proj-sub">Edited ${timeAgo(p.updatedAt)}</div></div>`;
     $('.proj-name', card).textContent = p.name || 'Untitled project';
@@ -175,6 +175,7 @@ async function duplicateProject(id) {
   const src = homeProjects.find((p) => p.id === id);
   const copy = JSON.parse(JSON.stringify(data));
   copy.id = uid() + uid();
+  delete copy.collab; // a copy is your own, not shared
   copy.name = (data.name || 'Project') + ' (copy)';
   copy.createdAt = copy.updatedAt = Date.now();
   await projectStore.save(copy.id, copy, src ? src.thumb : null);
@@ -213,6 +214,7 @@ async function importProjectFile() {
   if (!r || !r.data) return;
   const data = r.data;
   data.id = uid() + uid();
+  delete data.collab;
   data.name = data.name || 'Imported project';
   data.updatedAt = Date.now();
   await projectStore.save(data.id, data, null);

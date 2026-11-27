@@ -104,6 +104,15 @@ const THEMES = [
     c: { bg: '#0c0906', panel: '#15100b', panel2: '#1c1610', panel3: '#241c14', line: '#2b2118', line2: '#3a2d20', line3: '#54412e',
       text: '#f6ede0', text2: '#dccdb8', muted: '#a3907a', faint: '#6f604f', sunken: '#0f0b07',
       accent: '#e2a65e', accent2: '#f5d8b0', deep: '#bb7634', gradA: '#f8e0bd', gradB: '#e3aa66' } },
+  // Halloween
+  { id: 'pumpkin', name: 'Pumpkin Night', sub: 'Pumpkin orange & midnight purple', dark: true,
+    c: { bg: '#0d0812', panel: '#150d1c', panel2: '#1c1225', panel3: '#25182f', line: '#2a1b35', line2: '#3a2649', line3: '#563a68',
+      text: '#f7eee6', text2: '#dfcfc4', muted: '#a8939f', faint: '#6f5e6c', sunken: '#0f0915',
+      accent: '#ff8a1f', accent2: '#ffd7a8', deep: '#d9570b', gradA: '#ffc46b', gradB: '#ff6a00' } },
+  { id: 'haunted', name: 'Haunted', sub: 'Ghostly green in the fog', dark: true,
+    c: { bg: '#070b0a', panel: '#0c1312', panel2: '#111a19', panel3: '#172322', line: '#1a2725', line2: '#233634', line3: '#34514d',
+      text: '#e9f5f1', text2: '#c3d8d2', muted: '#86a29b', faint: '#55706a', sunken: '#080e0d',
+      accent: '#7dffb0', accent2: '#d4ffe4', deep: '#2fbf75', gradA: '#c8ffdc', gradB: '#56e39a' } },
   // Limited Christmas themes (bought, or given by the Flux team)
   { id: 'xmas', name: 'Christmas Eve', sub: 'Pine, candle-red & gold', dark: true, limited: true,
     c: { bg: '#07100b', panel: '#0d1912', panel2: '#122218', panel3: '#182c20', line: '#1a2c21', line2: '#24402f', line3: '#36583f',

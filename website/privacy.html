@@ -43,7 +43,7 @@ footer .wrap { display:flex; gap:18px; flex-wrap:wrap; }
 <nav><a href="/terms.html">Terms</a><a href="/privacy.html" class="on">Privacy</a><a href="/">Home</a></nav></div></header>
 <main><div class="wrap">
 <h1>Privacy Policy</h1>
-<p class="eff">Effective 24 November 2026 (updated for Flux 1.7.1). This explains what data Flux uses, why, and your rights.</p>
+<p class="eff">Effective 24 November 2026 (updated 27 November 2026 for Flux 1.7.5). This explains what data Flux uses, why, and your rights.</p>
 
 <div class="tldr"><b>The short version:</b>
 <ul>
@@ -81,6 +81,7 @@ footer .wrap { display:flex; gap:18px; flex-wrap:wrap; }
 <tr><td><b>Messages you send:</b> feature requests and bug reports (your text, username, email, Flux version and system)</td><td>So the owner can read and answer them</td><td>Legitimate interests: improving Flux</td></tr>
 <tr><td><b>Profile picture</b> (only if you add one; shrunk to 256×256 on your computer before it's uploaded)</td><td>To show next to your username. Anyone who has your profile link can see it</td><td>Consent (Art. 6(1)(a)) - remove it any time in Settings → Account</td></tr>
 <tr><td><b>Profile and friends:</b> a random profile id, your badges, the limited themes you own, your friends, the people you follow and who follow you, friend requests, and your privacy choices (private account, friend requests on/off)</td><td>To run the friends and following features. Other users only ever see your username, picture, badges and - unless your account is private - how many friends and followers you have. <b>Never your email.</b></td><td>Contract</td></tr>
+<tr><td><b>Shared projects (Flux Collaboration):</b> only when you share a project or join one: the edit itself (clip positions and settings, text, effects, track and marker info, and the names of the media files - <b>never the videos, photos or music</b>, and never where they are on your computer), the changes each person makes, who owns the project and who can edit it, and for about 20 seconds after each change, where your playhead is and which clip you have selected</td><td>So everyone in the project gets each other's changes and can see who's editing. People in a shared project see each other's username and picture. If the owner adds you by email, they only see "Invited by email" until you accept - <b>your email is never shown</b></td><td>Contract</td></tr>
 <tr><td><b>2-step verification:</b> whether it's on</td><td>To ask for an email code when you sign in</td><td>Contract and legitimate interests (keeping accounts safe)</td></tr>
 <tr><td><b>Templates you share:</b> the template's name, description, clip timing, transitions, motion, look, title texts and your username (never your videos or photos)</td><td>So we can review it and, if approved, show it to everyone</td><td>Consent - you choose to send it; ask us to remove it any time</td></tr>
 <tr><td><b>Security data:</b> one-time codes (hashed, valid 15 minutes), code attempt counters, the time a code was last sent, and short-lived counters of sign-in tries per scrambled (hashed) IP address</td><td>To stop abuse and guessing of codes</td><td>Legitimate interests (Art. 6(1)(f)): keeping accounts safe</td></tr>
@@ -105,7 +106,8 @@ footer .wrap { display:flex; gap:18px; flex-wrap:wrap; }
 <li><b>Music</b> from incompetech.com and the Internet Archive (archive.org), where the free songs are stored;</li>
 <li><b>Extra fonts</b> from Google Fonts, only after you allow it (Flux asks the first time; change it any time in Settings → General);</li>
 <li><b>The speech model</b> for captions from Hugging Face (once, when you first make captions);</li>
-<li><b>The text to speech voices</b> from GitHub (once, when you turn them on);</li>
+<li><b>The text to speech engine</b> from GitHub and <b>each voice</b> from Hugging Face (once, the first time you pick that voice);</li>
+<li><b>Subtitle translation models</b> (Opus-MT) from Hugging Face (once per language, the first time you translate into it). The translating happens on your computer - your captions aren't sent anywhere;</li>
 <li><b>The AI upscale and AI slow motion engines</b> from GitHub (once each, when you first use them);</li>
 <li><b>Links you paste into Viral Shorts</b> (a video / audio file or a podcast feed), from the website you got the link from. Only when you paste one. For YouTube and Twitch links, the desktop app first downloads the free open-source tool yt-dlp from GitHub (checked with a secure hash). It then reads the video's details, captions and "most replayed" graph from YouTube or Twitch, and downloads only the parts you turn into Shorts. If a video has no captions (most Twitch streams), only its sound is downloaded so Flux can listen to it, and it's deleted after 2 days.</li>
 <li><b>Update checks</b> and downloads from GitHub.</li>
@@ -127,6 +129,7 @@ footer .wrap { display:flex; gap:18px; flex-wrap:wrap; }
 <h2>9. How long we keep data</h2>
 <ul>
 <li>Account data, profile picture and your friends/followers lists: until you delete your account. Then they're removed from our database straight away. Your username disappears from other people's lists too.</li>
+<li>Shared projects: until the owner stops sharing or deletes their account. When you leave a project or are removed, you stop getting changes; your own copy stays on your computer.</li>
 <li>Shared templates: until you ask us to remove them or we reject them (rejected templates are deleted within 90 days).</li>
 <li>One-time codes: until used or after 15 minutes.</li>
 <li>Server logs at our hosting provider: kept for a short time under Netlify's own rules.</li>

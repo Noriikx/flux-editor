@@ -1,6 +1,15 @@
 /* Flux — changelog. Shown once after an update, and any time from Settings → About. */
 'use strict';
 const CHANGELOG = [
+  { v: '7.5.0', date: '2026-11-27', items: [
+    'Flux Collaboration: edit one project together at the same time. Click Share in the top bar, then add people by username, email or straight from your friends. You stay the owner and can remove anyone any time',
+    'See who’s in the project right now: their profile pictures and “N editing” in the top bar, a coloured playhead for each person on the timeline, and the clip they’re working on outlined in their colour',
+    'Shared projects show up under “Shared with you” on the home screen. Only the edit is shared - everyone uses their own copy of the videos and photos, and Undo only undoes your own changes',
+    'Copy & paste between projects: copy clips in one project and paste them in another (their files come along). Right-click → Copy effects / Paste effects moves filters, colour and motion from one clip to another (Ctrl+Alt+C / Ctrl+Alt+V)',
+    'Subtitle translations (Translate button above the timeline): turn your captions into Spanish, French, German and more. Each language gets its own track - fix any line, pick which one shows in the video, and save .srt files for YouTube or TikTok',
+    'Text to speech sounds much more human: 9 new natural voices (American and British), better pauses and a cleaner, studio-style sound. Each voice downloads the first time you pick it',
+    'Two Halloween themes, free for everyone: Pumpkin Night (a harvest moon, bats and glowing jack-o’-lanterns) and Haunted (little ghosts in rolling fog)'
+  ] },
   { v: '7.4.0', date: '2026-11-25', items: [
     'Thumbnail Studio is now its own place: Home → Thumbnails. Add your own pictures (choose, drop or paste them), text, shapes and stickers - each one is a layer you can hide, lock, rename, drag up or down, fade and blend, like a simple Photoshop. Move, resize and rotate things right on the picture, undo anything, and your thumbnails save by themselves',
     'Sizes for YouTube thumbnails, Shorts / TikTok covers, square posts, channel banners and X headers',

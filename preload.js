@@ -44,6 +44,9 @@ contextBridge.exposeInMainWorld('flux', {
   // export & snapshots
   saveSnapshot: (dataUrl) => ipcRenderer.invoke('snapshot:save', dataUrl),
   saveThumbnail: (o) => ipcRenderer.invoke('thumb:save', o),
+  translate: (o) => ipcRenderer.invoke('translate:run', o),
+  onTranslateProgress: (cb) => ipcRenderer.on('translate:progress', (_e, v) => cb(v)),
+  saveSubtitles: (o) => ipcRenderer.invoke('subs:save', o),
   exportChoose: (opts) => ipcRenderer.invoke('export:choose', opts),
   exportBegin: () => ipcRenderer.invoke('export:begin'),
   exp2Begin: () => ipcRenderer.invoke('exp2:begin'),
@@ -73,7 +76,7 @@ contextBridge.exposeInMainWorld('flux', {
   ttsStatus: () => ipcRenderer.invoke('tts:status'),
   xfOpen: (o) => ipcRenderer.invoke('xf:open', o),
   xfClose: (o) => ipcRenderer.invoke('xf:close', o),
-  ttsInstall: () => ipcRenderer.invoke('tts:install'),
+  ttsInstall: (voice) => ipcRenderer.invoke('tts:install', voice),
   onTtsProgress: (cb) => ipcRenderer.on('tts:progress', (_e, v) => cb(v)),
   ttsSpeak: (opts) => ipcRenderer.invoke('tts:speak', opts),
 

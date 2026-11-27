@@ -273,7 +273,7 @@ ipcMain.handle('projects:list', () => {
       let thumb = null;
       const tp = path.join(dir, id + '.jpg');
       if (fs.existsSync(tp)) thumb = 'data:image/jpeg;base64,' + fs.readFileSync(tp).toString('base64');
-      out.push({ id, name: data.name, aspect: data.aspect, updatedAt: data.updatedAt, createdAt: data.createdAt, duration: data.duration || 0, clips: (data.clips || []).length, thumb });
+      out.push({ id, name: data.name, aspect: data.aspect, updatedAt: data.updatedAt, createdAt: data.createdAt, duration: data.duration || 0, clips: (data.clips || []).length, thumb, shared: !!data.collab });
     } catch (e) { console.warn('Bad project file', f, e.message); }
   }
   return out;
@@ -981,6 +981,69 @@ async function getAsr(size, send) {
   asrCache = { name, pipe };
   return pipe;
 }
+// ---------- Subtitle translation (1.7.5): Opus-MT models (CC BY 4.0, by Helsinki-NLP) that run on this computer ----------
+const TR_FROM_EN = { es: 'en-es', fr: 'en-fr', de: 'en-de', it: 'en-it', pt: 'en-ROMANCE', ro: 'en-ro', ru: 'en-ru', uk: 'en-uk', nl: 'en-nl', sv: 'en-sv', da: 'en-da', fi: 'en-fi',
+  cs: 'en-cs', hu: 'en-hu', ar: 'en-ar', hi: 'en-hi', id: 'en-id', vi: 'en-vi', zh: 'en-zh', ja: 'en-jap' };
+const TR_TO_EN = { es: 'es-en', fr: 'fr-en', de: 'de-en', it: 'it-en', pt: 'ROMANCE-en', ro: 'ROMANCE-en', ru: 'ru-en', uk: 'uk-en', nl: 'nl-en', sv: 'sv-en', da: 'da-en', fi: 'fi-en',
+  cs: 'cs-en', hu: 'hu-en', ar: 'ar-en', hi: 'hi-en', id: 'id-en', vi: 'vi-en', zh: 'zh-en', ja: 'ja-en', ko: 'ko-en', pl: 'pl-en', tr: 'tr-en', th: 'th-en' };
+const trCache = new Map();
+async function getTranslator(pair, send) {
+  if (trCache.has(pair)) return trCache.get(pair);
+  const { pipeline, env } = await import('@huggingface/transformers');
+  env.cacheDir = ensureDir(path.join(dataDir(), 'models'));
+  const files = {};
+  const pipe = await pipeline('translation', 'Xenova/opus-mt-' + pair, {
+    dtype: 'q8',
+    progress_callback: (p) => {
+      if (p.status === 'progress' && p.total) {
+        files[p.file] = [p.loaded, p.total];
+        const all = Object.values(files);
+        send({ stage: 'download', value: all.reduce((a, f) => a + f[0], 0) / all.reduce((a, f) => a + f[1], 0) });
+      }
+    }
+  });
+  if (trCache.size > 2) trCache.delete(trCache.keys().next().value); // keep memory use sensible
+  trCache.set(pair, pipe);
+  return pipe;
+}
+ipcMain.handle('translate:run', async (e, { texts, from, to }) => {
+  const send = (v) => { try { e.sender.send('translate:progress', v); } catch {} };
+  try {
+    from = String(from || 'en'); to = String(to || '');
+    if (from === to) return { texts };
+    // there are no direct models between most languages, so those go through English
+    const steps = [];
+    if (from !== 'en') { if (!TR_TO_EN[from]) return { error: 'Flux can’t translate from that language yet.' }; steps.push([TR_TO_EN[from], null]); }
+    if (to !== 'en') { if (!TR_FROM_EN[to]) return { error: 'Flux can’t translate into that language yet.' }; steps.push([TR_FROM_EN[to], TR_FROM_EN[to] === 'en-ROMANCE' ? '>>' + to + '<< ' : null]); }
+    let cur = (texts || []).map((t) => String(t || ''));
+    for (let k = 0; k < steps.length; k++) {
+      const [pair, prefix] = steps[k];
+      send({ stage: 'model', value: 0, step: k + 1, steps: steps.length });
+      const pipe = await getTranslator(pair, (v) => send({ ...v, step: k + 1, steps: steps.length }));
+      const out = [];
+      for (let i = 0; i < cur.length; i += 8) {
+        const part = cur.slice(i, i + 8);
+        const idx = part.map((t, j) => (t.trim() ? j : -1)).filter((j) => j >= 0);
+        const res = idx.length ? await pipe(idx.map((j) => (prefix || '') + part[j]), { max_new_tokens: 256 }) : [];
+        const arr = part.map(() => '');
+        idx.forEach((j, n) => { arr[j] = (res[n] && res[n].translation_text) || ''; });
+        out.push(...arr);
+        send({ stage: 'translate', value: Math.min(1, (i + part.length) / cur.length), step: k + 1, steps: steps.length });
+      }
+      cur = out;
+    }
+    return { texts: cur };
+  } catch (err) { return { error: 'Translation didn’t work: ' + (err.message || err) }; }
+});
+ipcMain.handle('subs:save', async (_e, { name, text }) => {
+  const r = await dialog.showSaveDialog(win, { title: 'Save subtitles', defaultPath: path.join(app.getPath('documents'), String(name || 'Subtitles').replace(/[\\/:*?"<>|]+/g, ' ') + '.srt'),
+    filters: [{ name: 'SubRip subtitles', extensions: ['srt'] }, { name: 'WebVTT subtitles', extensions: ['vtt'] }] });
+  if (r.canceled || !r.filePath) return null;
+  let out = String(text || '');
+  if (/\.vtt$/i.test(r.filePath)) out = 'WEBVTT\n\n' + out.replace(/(\d\d:\d\d:\d\d),(\d\d\d)/g, '$1.$2');
+  fs.writeFileSync(r.filePath, '\ufeff' + out, 'utf8');
+  return r.filePath;
+});
 ipcMain.handle('asr:transcribe', async (e, { file, start, end, model, language }) => {
   const send = (v) => { try { e.sender.send('asr:progress', v); } catch {} };
   try {
@@ -1025,12 +1088,30 @@ const TTS_ENGINES = {
   'darwin-x64': { url: 'https://github.com/rhasspy/piper/releases/download/2023.11.14-2/piper_macos_x64.tar.gz', sha: 'ced85c0a3df13945b1e623b878a48fdc2854d5c485b4b67f62857cf551deaf8b', size: 19146927, exe: 'piper' },
   'linux-x64': { url: 'https://github.com/rhasspy/piper/releases/download/2023.11.14-2/piper_linux_x86_64.tar.gz', sha: 'a50cb45f355b7af1f6d758c1b360717877ba0a398cc8cbe6d2a7a3a26e225992', size: 26460462, exe: 'piper' }
 };
-const TTS_VOICE = { url: 'https://github.com/rhasspy/piper/releases/download/v0.0.2/voice-en-us-libritts-high.tar.gz', sha: '328e3e9cb573a43a6c5e1aeca386e971232bdb1418a74d4674cf726c973a0ea8', size: 120620366, model: 'en-us-libritts-high.onnx' };
 const ttsDir = () => ensureDir(path.join(dataDir(), 'tts'));
 const ttsEngine = () => TTS_ENGINES[process.platform + '-' + process.arch] || (process.platform === 'win32' ? TTS_ENGINES['win32-x64'] : null);
 const ttsExe = () => { const e = ttsEngine(); return e ? path.join(ttsDir(), 'piper', e.exe) : null; };
-const ttsModel = () => path.join(ttsDir(), 'voice', TTS_VOICE.model);
-const ttsReady = () => { const x = ttsExe(); return !!(x && fs.existsSync(x) && fs.existsSync(ttsModel()) && fs.existsSync(ttsModel() + '.json')); };
+// Voices (Flux 1.7.5): clean single-speaker Piper voices, each free to use in videos (public domain, CC0, CC BY or CC BY-SA).
+// Each one is downloaded the first time you pick it, and checked before use.
+const HF_PIPER = 'https://huggingface.co/rhasspy/piper-voices/resolve/main/';
+const TTS_VOICES = {
+  ava:   { p: 'en/en_US/kristin/medium/en_US-kristin-medium', size: 63531379, sha: '5849957f929cbf720c258f8458692d6103fff2f0e3d3b19c8259474bb06a18d4', js: ['e94be84ab0dc3532b4b2b48cbb1f5d4a8746bedd', 4968], len: 1.04, lic: 'public domain' },
+  lily:  { p: 'en/en_US/ljspeech/high/en_US-ljspeech-high', size: 114199011, sha: '5d4f08ba6a2a48c44592eed3ce56bf85e9de3dd4e20df90541ae68a8310c029a', js: ['e4c9cbdf41a9c5fadd5eb7633513435342184918', 4970], len: 1.02, lic: 'public domain' },
+  nora:  { p: 'en/en_GB/cori/high/en_GB-cori-high', size: 114219352, sha: '470b4dd634c98f8a4850d7626ffc3dfc90774628eeef6605a6dd8f88f30a5903', js: ['ec08ff84191b2e7fe7dd91928b6068bca12ff81b', 4963], len: 1.0, lic: 'public domain' },
+  isla:  { p: 'en/en_GB/alba/medium/en_GB-alba-medium', size: 63221984, sha: '1f9da809b6da1ef4190bb5dd6cce4f4af803274539e9cf9e0693085150bac3d7', js: ['c565ce4419b62f4fa428215b8cdc6793b432cc21', 6295], len: 1.03, lic: 'CC BY 4.0' },
+  jack:  { p: 'en/en_US/joe/medium/en_US-joe-medium', size: 63221984, sha: 'abf4b998e34045cbd00eaf050de2de620f81ded6eb8b85a24b022a1c2b3f08d2', js: ['90f6ac5044e52f9353bb80d0dd61839b89d89d26', 6284], len: 1.03, lic: 'CC0' },
+  leo:   { p: 'en/en_US/john/medium/en_US-john-medium', size: 63531379, sha: '789c6c875726e627ddee93d51d8727859abe9c091c3d141591f4b83c2072e988', js: ['dc2a9b58e311033bb24d6cee2d8ec5be2e8c3c9d', 4965], len: 1.04, lic: 'public domain' },
+  max:   { p: 'en/en_US/bryce/medium/en_US-bryce-medium', size: 63531379, sha: 'dc9caa6c313199ffb5ac698b6e542fa6cba388aeaf2731e25262e33b9810aef1', js: ['2cbf22d4c9358974a8fba10bf6698194b8f0716b', 4966], len: 0.98, lic: 'public domain' },
+  grant: { p: 'en/en_US/norman/medium/en_US-norman-medium', size: 63531379, sha: 'b9739443232a80a59c7d18810dd856899bf16a7964725f5ab81ea49b1351cb71', js: ['64985a9c6620d5522c500dd42224be7998f83f39', 4968], len: 1.06, lic: 'public domain' },
+  alfie: { p: 'en/en_GB/northern_english_male/medium/en_GB-northern_english_male-medium', size: 63221984, sha: '41199d55776c142c151e018cf77bea80ca5f01b7b834f81cd781df5b751bf2fb', js: ['329d3b90125cef745002616530c245dce72bbdda', 6267], len: 1.02, lic: 'CC BY-SA 4.0' }
+};
+const ttsVoiceId = (v) => (TTS_VOICES[v] ? v : 'ava'); // old voice numbers from before 1.7.5 become Ava
+const ttsVoiceFile = (v) => path.join(ttsDir(), 'voices', ttsVoiceId(v) + '.onnx');
+const ttsHasVoice = (v) => fs.existsSync(ttsVoiceFile(v)) && fs.existsSync(ttsVoiceFile(v) + '.json');
+const ttsHasEngine = () => { const x = ttsExe(); return !!(x && fs.existsSync(x)); };
+const ttsReady = () => ttsHasEngine() && Object.keys(TTS_VOICES).some(ttsHasVoice);
+// git's checksum, which is how Hugging Face lists the small settings files
+const gitSha1 = (buf) => crypto.createHash('sha1').update('blob ' + buf.length + '\0').update(buf).digest('hex');
 function sha256File(file) {
   return new Promise((resolve, reject) => {
     const h = crypto.createHash('sha256');
@@ -1050,16 +1131,29 @@ function untar(archive, dest) {
   });
 }
 let ttsInstalling = null;
-async function ttsInstall(send) {
+async function ttsInstall(send, voiceId) {
   const eng = ttsEngine();
   if (!eng) throw new Error('Voices aren\u2019t available on this computer yet.');
   const dir = ttsDir(), tmp = os.tmpdir();
-  const parts = [[eng, 'engine', dir], [TTS_VOICE, 'voice', path.join(dir, 'voice')]];
-  const total = eng.size + TTS_VOICE.size;
+  const vid = ttsVoiceId(voiceId), V = TTS_VOICES[vid];
+  const total = (ttsHasEngine() ? 0 : eng.size) + (ttsHasVoice(vid) ? 0 : V.size);
   let doneBytes = 0;
+  if (!ttsHasVoice(vid)) {
+    const vdir = ensureDir(path.join(dir, 'voices')), tmpOnnx = ttsVoiceFile(vid) + '.part';
+    await download(HF_PIPER + V.p + '.onnx', tmpOnnx, V.size, (v) => send({ stage: 'download', value: (doneBytes + (v.value || 0) * V.size) / Math.max(1, total) }));
+    send({ stage: 'check', value: (doneBytes + V.size) / Math.max(1, total) });
+    if ((await sha256File(tmpOnnx)) !== V.sha) { try { fs.unlinkSync(tmpOnnx); } catch {} throw new Error('The voice download was damaged. Please try again.'); }
+    const jr = await net.fetch(HF_PIPER + V.p + '.onnx.json');
+    const jb = Buffer.from(await jr.arrayBuffer());
+    if (!jr.ok || gitSha1(jb) !== V.js[0]) { try { fs.unlinkSync(tmpOnnx); } catch {} throw new Error('The voice settings didn\u2019t download properly. Please try again.'); }
+    fs.writeFileSync(ttsVoiceFile(vid) + '.json', jb);
+    fs.renameSync(tmpOnnx, ttsVoiceFile(vid));
+    void vdir;
+    doneBytes += V.size;
+  }
+  const parts = [[eng, 'engine', dir]];
   for (const [item, what, dest] of parts) {
-    if (what === 'engine' && ttsExe() && fs.existsSync(ttsExe())) { doneBytes += item.size; continue; }
-    if (what === 'voice' && fs.existsSync(ttsModel()) && fs.existsSync(ttsModel() + '.json')) { doneBytes += item.size; continue; }
+    if (what === 'engine' && ttsHasEngine()) { continue; }
     const file = path.join(tmp, 'flux-tts-' + path.basename(item.url));
     await download(item.url, file, item.size, (v) => send({ stage: 'download', value: (doneBytes + (v.value || 0) * item.size) / total }));
     send({ stage: 'check', value: (doneBytes + item.size) / total });
@@ -1070,7 +1164,9 @@ async function ttsInstall(send) {
     doneBytes += item.size;
   }
   if (process.platform !== 'win32') { try { fs.chmodSync(ttsExe(), 0o755); } catch {} }
-  if (!ttsReady()) throw new Error('The voices could not be installed.');
+  if (!ttsHasEngine() || !ttsHasVoice(vid)) throw new Error('The voices could not be installed.');
+  // the old voice pack (before 1.7.5) isn't used any more
+  try { fs.rmSync(path.join(dir, 'voice'), { recursive: true, force: true }); } catch {}
   send({ stage: 'done', value: 1 });
   return true;
 }
@@ -1129,30 +1225,57 @@ function ttsWordTimes(buf, text) {
   });
   return { words, duration: n / sr };
 }
-ipcMain.handle('tts:status', () => ({ ready: ttsReady(), supported: !!ttsEngine(), size: (ttsEngine() ? ttsEngine().size : 0) + TTS_VOICE.size }));
-ipcMain.handle('tts:install', async (e) => {
+ipcMain.handle('tts:status', () => ({ ready: ttsHasEngine(), supported: !!ttsEngine(), engineSize: ttsEngine() ? ttsEngine().size : 0,
+  voices: Object.fromEntries(Object.entries(TTS_VOICES).map(([k, v]) => [k, { installed: ttsHasVoice(k), size: v.size, license: v.lic }])) }));
+ipcMain.handle('tts:install', async (e, voice) => {
   const send = (v) => { try { e.sender.send('tts:progress', v); } catch {} };
   try {
-    if (!ttsInstalling) ttsInstalling = ttsInstall(send).finally(() => { ttsInstalling = null; });
+    if (ttsInstalling) await ttsInstalling.catch(() => {});
+    if (!ttsInstalling) ttsInstalling = ttsInstall(send, voice).finally(() => { ttsInstalling = null; });
     await ttsInstalling;
     return { ok: true };
   } catch (err) { return { error: err.message || String(err) }; }
 });
-ipcMain.handle('tts:speak', (_e, { text, speaker, rate, preview }) => new Promise((resolve) => {
-  if (!ttsReady()) return resolve({ error: 'Voices are not installed yet' });
-  const clean = String(text || '').replace(/[\r\n\t]+/g, ' ').replace(/\s{2,}/g, ' ').trim().slice(0, 5000);
+// Text tidied up so the voice reads it like a person would
+function ttsTidy(text) {
+  return String(text || '').replace(/[\r\n\t]+/g, ' ')
+    .replace(/&/g, ' and ').replace(/\s+-\s+/g, ', ').replace(/([!?.]){2,}/g, '$1').replace(/…/g, '...')
+    .replace(/\b([A-Z]{5,})\b/g, (w) => w[0] + w.slice(1).toLowerCase()) // SHOUTING isn't spelled out letter by letter
+    .replace(/\s{2,}/g, ' ').trim().slice(0, 5000);
+}
+// makes the raw voice sound recorded rather than computer-made: removes rumble and hiss, softens harsh "s" sounds,
+// evens out the level, adds a tiny bit of room, and sets a normal loudness - all with the ffmpeg Flux already has
+function ttsPolish(raw, out) {
+  return new Promise((resolve) => {
+    const af = 'aresample=48000:resampler=soxr,highpass=f=75,lowpass=f=12500,deesser=i=0.35:m=0.5:f=0.5,'
+      + 'equalizer=f=180:t=q:w=1:g=1.5,equalizer=f=3200:t=q:w=1.2:g=1.2,'
+      + 'acompressor=threshold=-21dB:ratio=2.2:attack=10:release=140:makeup=1.5,'
+      + 'aecho=0.9:0.55:14|27:0.07|0.04,loudnorm=I=-16:TP=-1.5:LRA=9';
+    const p = spawn(ffmpegPath(), ['-hide_banner', '-loglevel', 'error', '-y', '-i', raw, '-af', af, '-ar', '48000', '-ac', '1', '-c:a', 'pcm_s16le', out], { windowsHide: true });
+    p.on('error', () => resolve(false));
+    p.on('close', (code) => resolve(code === 0 && fs.existsSync(out)));
+  });
+}
+ipcMain.handle('tts:speak', (_e, { text, speaker, voice, rate, preview }) => new Promise((resolve) => {
+  const vid = ttsVoiceId(voice || speaker);
+  if (!ttsHasEngine() || !ttsHasVoice(vid)) return resolve({ error: 'need-voice', voice: vid });
+  const clean = ttsTidy(text);
   if (!clean) return resolve({ error: 'Type something first' });
-  const out = preview ? path.join(cacheDir(), 'tts-preview-' + safeId(String(speaker)) + '.wav')
+  const out = preview ? path.join(cacheDir(), 'tts-preview-' + vid + '.wav')
     : uniquePath(mediaDir('voices'), safeName('Voice - ' + clean.slice(0, 40)) + '.wav');
-  const len = 1 / Math.max(0.5, Math.min(2, +rate || 1));
+  const raw = path.join(cacheDir(), 'tts-raw-' + Date.now() + '.wav');
+  const len = TTS_VOICES[vid].len / Math.max(0.5, Math.min(2, +rate || 1));
   const exe = ttsExe();
-  const p = spawn(exe, ['-m', ttsModel(), '-s', String(Math.max(0, Math.min(903, parseInt(speaker, 10) || 0))), '--length_scale', len.toFixed(3),
-    '--sentence_silence', '0.3', '-f', out], { cwd: path.dirname(exe), windowsHide: true });
+  // a little more natural variation in timing and tone than Piper's defaults
+  const p = spawn(exe, ['-m', ttsVoiceFile(vid), '--length_scale', len.toFixed(3), '--noise_scale', '0.62', '--noise_w', '0.88',
+    '--sentence_silence', '0.32', '-f', raw], { cwd: path.dirname(exe), windowsHide: true });
   let err = '';
   p.stderr.on('data', (d) => { err += d; });
   p.on('error', (x) => resolve({ error: x.message }));
-  p.on('close', (code) => {
-    if (code !== 0 || !fs.existsSync(out)) return resolve({ error: 'The voice could not be made. ' + err.slice(-200) });
+  p.on('close', async (code) => {
+    if (code !== 0 || !fs.existsSync(raw)) return resolve({ error: 'The voice could not be made. ' + err.slice(-200) });
+    if (!(await ttsPolish(raw, out))) fs.copyFileSync(raw, out);
+    try { fs.unlinkSync(raw); } catch {}
     let words = [], duration = 0;
     try { ({ words, duration } = ttsWordTimes(fs.readFileSync(out), clean)); } catch (x) { console.warn('tts timing', x); }
     resolve({ path: out, words, duration });

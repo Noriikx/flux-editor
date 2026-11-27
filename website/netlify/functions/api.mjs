@@ -6,6 +6,7 @@ import { getStore } from '@netlify/blobs';
 import crypto from 'node:crypto';
 import { promisify } from 'node:util';
 import nodemailer from 'nodemailer';
+import { collabRoute, collabForget } from '../lib/collab.mjs';
 
 export const config = { path: '/api/*' };
 
@@ -484,6 +485,10 @@ export default async (req) => {
       }
       return json({ users: out });
     }
+    if (route.startsWith('collab/')) {
+      if (await limited('collab', email, 20000, 86400000)) return fail(SLOW, 429);
+      return collabRoute(route, { req, body, me, json, fail, store: () => getStore({ name: 'collab', consistency: 'strong' }), userByUid, userByName, getUser, card, ensureUid, saveUser, isVerified });
+    }
     if (route === 'social') {
       const s = soc(me);
       return json({ friends: await cards(s.friends), requestsIn: await cards(s.reqIn), requestsOut: await cards(s.reqOut), following: await cards(s.following), followers: await cards(s.followers) });
@@ -644,6 +649,7 @@ export default async (req) => {
       if (err) { await saveUser(me); return fail(err); }
       if (me.username) { try { if ((await names().get(nameKey(me.username))) === me.email) await names().delete(nameKey(me.username)); } catch {} }
       if (me.uid) { try { await uidStore().delete(me.uid); await avatars().delete(me.uid); } catch {} }
+      if (me.uid) { try { await collabForget(me.uid, getStore({ name: 'collab', consistency: 'strong' })); } catch {} }
       await users().delete(keyOf(me.email));
       return json({ ok: true });
     }

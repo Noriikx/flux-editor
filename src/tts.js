@@ -2,42 +2,46 @@
    Runs on this computer (Piper engine + LibriTTS voices, CC BY 4.0 - free to use in your videos).
    The voice lands on a sound track at the playhead, and Flux can add matching auto captions straight away. */
 'use strict';
+// 1.7.5: clean, natural voices (each downloads the first time you pick it - all free to use in your videos)
 const TTS_VOICES = [
-  { id: 681, name: 'Ava', desc: 'Warm', g: 'f' },
-  { id: 723, name: 'Mia', desc: 'Friendly', g: 'f' },
-  { id: 699, name: 'Zoe', desc: 'Bright', g: 'f' },
-  { id: 195, name: 'Lily', desc: 'Lively', g: 'f' },
-  { id: 450, name: 'Nora', desc: 'Clear', g: 'f' },
-  { id: 204, name: 'Max', desc: 'Energetic', g: 'm' },
-  { id: 3, name: 'Jack', desc: 'Clear', g: 'm' },
-  { id: 117, name: 'Leo', desc: 'Warm', g: 'm' },
-  { id: 501, name: 'Sam', desc: 'Calm', g: 'm' },
-  { id: 342, name: 'Grant', desc: 'Deep narrator', g: 'm' }
+  { id: 'ava', name: 'Ava', desc: 'Warm', g: 'f' },
+  { id: 'lily', name: 'Lily', desc: 'Clear storyteller', g: 'f' },
+  { id: 'nora', name: 'Nora', desc: 'British, soft', g: 'f' },
+  { id: 'isla', name: 'Isla', desc: 'Scottish, friendly', g: 'f' },
+  { id: 'jack', name: 'Jack', desc: 'Casual', g: 'm' },
+  { id: 'max', name: 'Max', desc: 'Energetic', g: 'm' },
+  { id: 'leo', name: 'Leo', desc: 'Calm', g: 'm' },
+  { id: 'grant', name: 'Grant', desc: 'Deep narrator', g: 'm' },
+  { id: 'alfie', name: 'Alfie', desc: 'British, northern', g: 'm' }
 ];
-const tts = { ready: null, installing: false, prog: 0, opts: { voice: 681, rate: 1, captions: true, capStyle: 'classic' }, text: '', audio: null, busy: false };
+const tts = { ready: null, installing: false, prog: 0, voices: {}, opts: { voice: 'ava', rate: 1, captions: true, capStyle: 'classic' }, text: '', audio: null, busy: false };
 try { Object.assign(tts.opts, JSON.parse(localStorage.getItem('flux.ttsOpts') || '{}')); } catch {}
 const saveTtsOpts = () => { try { localStorage.setItem('flux.ttsOpts', JSON.stringify(tts.opts)); } catch {} };
-const ttsVoice = (id) => TTS_VOICES.find((v) => v.id === +id) || TTS_VOICES[0];
+const ttsVoice = (id) => TTS_VOICES.find((v) => v.id === id) || TTS_VOICES[0];
+if (!TTS_VOICES.some((v) => v.id === tts.opts.voice)) tts.opts.voice = 'ava'; // voices from before 1.7.5
+const ttsHas = (id) => !!(tts.voices[id] && tts.voices[id].installed);
 
 async function ttsCheck() {
   if (!api || !api.ttsStatus) { tts.ready = false; return tts; }
-  try { const s = await api.ttsStatus(); tts.ready = !!s.ready; tts.supported = s.supported !== false; tts.size = s.size; } catch { tts.ready = false; }
+  try { const s = await api.ttsStatus(); tts.voices = s.voices || {}; tts.ready = !!s.ready && TTS_VOICES.some((v) => ttsHas(v.id)); tts.supported = s.supported !== false; tts.size = (s.engineSize || 0) + ((tts.voices.ava && tts.voices.ava.size) || 63e6); } catch { tts.ready = false; }
   return tts;
 }
-async function ttsInstall() {
+async function ttsInstall(voiceId) {
   if (tts.installing) return false;
-  tts.installing = true; tts.prog = 0; renderTts();
-  const r = await api.ttsInstall();
+  const vid = typeof voiceId === 'string' ? voiceId : tts.opts.voice;
+  tts.installing = vid; tts.prog = 0; renderTts();
+  const r = await api.ttsInstall(vid);
   tts.installing = false;
   if (r && r.error) { toast(r.error, { error: true, duration: 7000 }); renderTts(); return false; }
-  tts.ready = true; renderTts();
-  toast('Voices installed - they work offline from now on');
+  await ttsCheck(); renderTts();
+  toast(`${ttsVoice(vid).name} is ready - voices work offline once downloaded`);
   return true;
 }
 // make the voice file (returns { path, words, duration })
 async function ttsMake(text, voiceId, preview) {
-  if (!tts.ready && !(await ttsInstall())) return null;
-  const r = await api.ttsSpeak({ text, speaker: voiceId, rate: tts.opts.rate, preview: !!preview });
+  if ((!tts.ready || !ttsHas(voiceId)) && !(await ttsInstall(voiceId))) return null;
+  let r = await api.ttsSpeak({ text, voice: voiceId, rate: tts.opts.rate, preview: !!preview });
+  if (r && r.error === 'need-voice') { if (!(await ttsInstall(voiceId))) return null; r = await api.ttsSpeak({ text, voice: voiceId, rate: tts.opts.rate, preview: !!preview }); }
   if (!r || r.error) { toast((r && r.error) || 'The voice could not be made', { error: true }); return null; }
   return r;
 }
@@ -105,12 +109,12 @@ function renderTts() {
   if (tts.supported === false) { box.innerHTML = '<p class="hint">Text to speech isn’t available on this computer yet.</p>'; return; }
   if (!tts.ready) {
     box.innerHTML = `<div class="tts-setup"><div class="tts-setup-ico"><svg viewBox="0 0 24 24"><path d="M12 3a3 3 0 0 0-3 3v6a3 3 0 0 0 6 0V6a3 3 0 0 0-3-3z"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/></svg></div>
-      <b>Natural AI voices</b><p>10 voices that read your text out loud. They run on your computer, work offline and are free to use in your videos.</p>
+      <b>Natural voices</b><p>9 natural-sounding voices that read your text out loud. They run on your computer, work offline and are free to use in your videos.</p>
       <button class="btn primary" id="ttsInstallBtn">${tts.installing ? 'Downloading…' : 'Get the voices'}</button>
       <div class="tts-bar"${tts.installing ? '' : ' hidden'}><i style="width:${Math.round(tts.prog * 100)}%"></i></div>
-      <small>One-time download, about ${Math.round((tts.size || 143e6) / 1e6)} MB</small></div>`;
+      <small>About ${Math.round((tts.size || 90e6) / 1e6)} MB for the first voice - other voices download when you pick them</small></div>`;
     $('#ttsInstallBtn', box).disabled = tts.installing;
-    $('#ttsInstallBtn', box).onclick = ttsInstall;
+    $('#ttsInstallBtn', box).onclick = () => ttsInstall(tts.opts.voice);
     return;
   }
   const sel = getClip(state.selectedId);
@@ -122,7 +126,7 @@ function renderTts() {
     <label class="v-opt"><input type="checkbox" id="ttsCaps"><span>Add auto captions too</span></label>
     <div class="v-field" id="ttsCapRow"><label>Caption style</label><select id="ttsCapStyle" class="dev-select"></select></div>
     <button class="btn primary tts-go" id="ttsGo">${tts.busy ? 'Making the voice…' : 'Add voice at the playhead'}</button>
-    <p class="hint">Voices: LibriTTS (CC BY 4.0) via Piper - free to use in your videos.</p>`;
+    <p class="hint">Voices made with Piper from public-domain and Creative Commons recordings - free to use in your videos (Isla: CC BY 4.0, Alfie: CC BY-SA 4.0).</p>${tts.installing ? `<div class="tts-bar"><i style="width:${Math.round(tts.prog * 100)}%"></i></div><small class="hint">Downloading ${ttsVoice(tts.installing).name}…</small>` : ''}`;
   const ta = $('#ttsText', box);
   ta.value = tts.text;
   const count = () => { $('.tts-count', box).textContent = ta.value.trim() ? `${ta.value.trim().split(/\s+/).length} words · about ${Math.max(1, Math.round(ta.value.trim().split(/\s+/).length / 2.6 / tts.opts.rate))}s` : ''; };
@@ -133,8 +137,8 @@ function renderTts() {
   for (const v of TTS_VOICES) {
     const b = el('div', 'tts-voice' + (v.id === tts.opts.voice ? ' active' : ''));
     b.innerHTML = `<span class="tts-av ${v.g}">${v.name[0]}</span><span class="tts-vn"><b></b><small></small></span><button class="tts-play" data-tip="Hear ${v.name}"><svg viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg></button>`;
-    $('b', b).textContent = v.name; $('small', b).textContent = v.desc; b.dataset.tip = `${v.name} - ${v.desc.toLowerCase()} ${v.g === 'f' ? 'female' : 'male'} voice`;
-    b.onclick = (e) => { if (e.target.closest('.tts-play')) return; tts.opts.voice = v.id; saveTtsOpts(); renderTts(); };
+    $('b', b).textContent = v.name; $('small', b).textContent = ttsHas(v.id) ? v.desc : v.desc + ' · ↓ ' + Math.round(((tts.voices[v.id] && tts.voices[v.id].size) || 63e6) / 1e6) + ' MB'; b.dataset.tip = `${v.name} - ${v.desc.toLowerCase()} ${v.g === 'f' ? 'female' : 'male'} voice`;
+    b.onclick = (e) => { if (e.target.closest('.tts-play')) return; tts.opts.voice = v.id; saveTtsOpts(); renderTts(); if (!ttsHas(v.id)) ttsInstall(v.id); };
     $('.tts-play', b).onclick = (e) => { e.stopPropagation(); ttsPreview(v.id, e.currentTarget); };
     grid.appendChild(b);
   }
